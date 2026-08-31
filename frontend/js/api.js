@@ -3,7 +3,9 @@
  * Integración directa con Open-Meteo API (Cerro de Pasco: -10.6674, -76.2567)
  */
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = (window.location.origin.includes('localhost:') || window.location.origin.includes('127.0.0.1:')) && !window.location.origin.includes(':5000')
+  ? 'http://localhost:5000/api'
+  : '/api';
 const OPEN_METEO_LIVE_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-10.6674&longitude=-76.2567&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_1cm,uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FLima';
 
 // ===== BANCO DE IMÁGENES ILUSTRATIVAS DE ALTA CALIDAD PARA AGRICULTORES =====
