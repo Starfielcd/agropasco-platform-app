@@ -268,16 +268,8 @@ async function handleCreateParcel(e) {
 }
 
 function viewParcelOnMap(parcelId) {
-  // Scroll al mapa y centrar en la parcela
   const mapEl = document.getElementById('parcel-map');
   if (mapEl) {
     mapEl.scrollIntoView({ behavior: 'smooth' });
   }
 }
-
-// Auto-init del mapa cuando se renderiza la página
-const _origHashListener = window.addEventListener('hashchange', () => {
-  if (window.location.hash === '#/parcels' && document.getElementById('parcel-map')) {
-    setTimeout(initParcelMap, 300);
-  }
-});
