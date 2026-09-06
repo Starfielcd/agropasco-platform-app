@@ -17,6 +17,9 @@ const { initializeDatabase } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+//  Confía en el proxy de Render
+app.set('trust proxy', 1);
+
 // ===== SEGURIDAD =====
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors());
