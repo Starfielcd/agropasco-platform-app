@@ -43,7 +43,7 @@ async function renderCropDetail(cropId) {
   // Get AI recommendations
   let recommendations = [];
   try {
-    const aiRes = await api.getRecommendations(cropId);
+    const aiRes = await api.getRecommendationsAI(cropId);
     if (aiRes.success) recommendations = aiRes.data.recommendations || [];
   } catch(e) {}
 

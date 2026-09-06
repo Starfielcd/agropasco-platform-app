@@ -163,6 +163,81 @@ async function initializeDatabase() {
     )
   `);
 
+  // ===== TABLA: parcels (polígonos de parcelas) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS parcels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      geo_json TEXT NOT NULL,
+      area_hectares REAL DEFAULT 0,
+      center_lat REAL,
+      center_lng REAL,
+      crop_type TEXT,
+      planting_date DATE,
+      status TEXT DEFAULT 'activa' CHECK(status IN ('activa', 'en_descanso', 'planificada', 'cosechada')),
+      altitude_masl INTEGER DEFAULT 4380,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ===== TABLA: pest_markers (marcadores de plagas georreferenciados) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS pest_markers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      advisor_id INTEGER NOT NULL,
+      parcel_id INTEGER,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      pest_type TEXT NOT NULL CHECK(pest_type IN ('insecto', 'hongo', 'bacteria', 'virus', 'maleza', 'nematodo', 'otro')),
+      severity TEXT DEFAULT 'moderado' CHECK(severity IN ('leve', 'moderado', 'grave', 'critico')),
+      title TEXT NOT NULL,
+      description TEXT,
+      photo_url TEXT,
+      resolved INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+    )
+  `);
+
+  // ===== TABLA: advisor_recommendations =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS advisor_recommendations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      advisor_id INTEGER NOT NULL,
+      farmer_id INTEGER,
+      parcel_id INTEGER,
+      category TEXT NOT NULL CHECK(category IN ('fertilizacion', 'riego', 'plagas', 'cosecha', 'rotacion', 'general')),
+      title TEXT NOT NULL,
+      recommendation TEXT NOT NULL,
+      priority TEXT DEFAULT 'normal' CHECK(priority IN ('baja', 'normal', 'alta', 'urgente')),
+      status TEXT DEFAULT 'pendiente' CHECK(status IN ('pendiente', 'leida', 'aplicada', 'descartada')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+    )
+  `);
+
+  // ===== TABLA: audit_logs (auditoría del administrador) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id INTEGER,
+      details TEXT,
+      ip_address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // ===== SEED DATA =====
   await seedData();
 

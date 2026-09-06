@@ -25,7 +25,8 @@ async function register(req, res) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const validRole = ['farmer', 'advisor', 'supermarket', 'admin'].includes(role) ? role : 'farmer';
+    const validRole = ['farmer', 'advisor', 'supermarket'].includes(role) ? role : 'farmer';
+    // Admin role cannot be self-assigned via registration — must be assigned by another admin
 
     const result = await dbRun(
       'INSERT INTO users (name, email, password_hash, role, location, phone) VALUES (?, ?, ?, ?, ?, ?)',

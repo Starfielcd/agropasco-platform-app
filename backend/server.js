@@ -40,20 +40,40 @@ app.use('/api/weather', require('./routes/weather'));
 app.use('/api/advisory', require('./routes/advisory'));
 app.use('/api/v1/supermarket', require('./routes/supermarket'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/parcels', require('./routes/parcels'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/advisor', require('./routes/advisor'));
+
+// ===== CONFIGURACIÓN DE MAPAS (público, para frontend) =====
+app.get('/api/config/maps', (req, res) => {
+  res.json({
+    provider: process.env.MAPS_PROVIDER || 'leaflet',
+    apiKey: process.env.MAPS_PROVIDER === 'google' ? (process.env.MAPS_API_KEY || '') : '',
+    defaultCenter: {
+      lat: parseFloat(process.env.DEFAULT_LAT) || -10.6868,
+      lng: parseFloat(process.env.DEFAULT_LON) || -76.2625
+    }
+  });
+});
 
 // ===== RUTA DE INFO =====
 app.get('/api', (req, res) => {
   res.json({
     platform: 'AgroPasco Digital',
-    version: '1.0.0',
+    version: '2.0.0',
     description: 'Plataforma Agrícola Inteligente para la Región Pasco, Perú',
+    roles: ['farmer', 'advisor', 'supermarket', 'admin'],
     endpoints: {
       auth: { register: 'POST /api/auth/register', login: 'POST /api/auth/login', profile: 'GET /api/auth/me' },
       crops: { list: 'GET /api/crops', create: 'POST /api/crops', detail: 'GET /api/crops/:id', logs: 'POST /api/crops/:id/logs', traceability: 'GET /api/crops/:id/traceability' },
+      parcels: { list: 'GET /api/parcels', create: 'POST /api/parcels', detail: 'GET /api/parcels/:id' },
       weather: { current: 'GET /api/weather/current', forecast: 'GET /api/weather/forecast', alerts: 'GET /api/weather/alerts' },
       advisory: { tips: 'GET /api/advisory/tips?crop=papa', emergency: 'GET /api/advisory/emergency', calendar: 'GET /api/advisory/calendar/:cropType' },
+      advisor: { markers: 'GET /api/advisor/markers', create_marker: 'POST /api/advisor/markers', recommendations: 'GET /api/advisor/recommendations', create_recommendation: 'POST /api/advisor/recommendations' },
       supermarket: { products: 'GET /api/v1/supermarket/products', trace: 'GET /api/v1/supermarket/products/:id/trace' },
-      ai: { recommend: 'GET /api/ai/recommend/:cropId', frost_risk: 'GET /api/ai/frost-risk', irrigation: 'GET /api/ai/irrigation/:cropId' }
+      admin: { users: 'GET /api/admin/users', update_role: 'PUT /api/admin/users/:id/role', audit: 'GET /api/admin/audit', stats: 'GET /api/admin/stats' },
+      ai: { recommend: 'GET /api/ai/recommend/:cropId', frost_risk: 'GET /api/ai/frost-risk', irrigation: 'GET /api/ai/irrigation/:cropId' },
+      maps: { config: 'GET /api/config/maps' }
     }
   });
 });

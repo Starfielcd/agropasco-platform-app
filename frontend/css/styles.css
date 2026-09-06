@@ -1160,6 +1160,116 @@ a:hover { color: var(--green-400); }
 .font-bold { font-weight: 700; }
 .w-full { width: 100%; }
 
+/* ===== MAP CONTAINER ===== */
+.map-container {
+  width: 100%;
+  min-height: 400px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  background: var(--bg-secondary);
+}
+
+.map-container .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+/* Leaflet custom styling for dark theme */
+.leaflet-control-layers,
+.leaflet-control-zoom {
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: var(--bg-card) !important;
+}
+
+.leaflet-control-layers-expanded {
+  color: var(--text-primary) !important;
+  padding: 8px 12px !important;
+}
+
+.leaflet-control-zoom a {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--bg-glass-hover) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.leaflet-popup-tip {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.leaflet-popup-content {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  margin: 10px 14px !important;
+}
+
+.leaflet-popup-close-button {
+  color: var(--text-muted) !important;
+}
+
+/* Draw controls */
+.leaflet-draw-toolbar a {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Custom marker styling */
+.custom-marker-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-marker {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  text-align: center;
+  line-height: 32px;
+}
+
+/* Parcel tooltip */
+.parcel-tooltip {
+  background: rgba(17, 24, 39, 0.9) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text-primary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 10px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.parcel-tooltip::before {
+  border-top-color: rgba(17, 24, 39, 0.9) !important;
+}
+
+/* Role indicator in header */
+.role-indicator {
+  display: flex;
+  align-items: center;
+}
+
 /* ===== INTERACTIVE EMERGENCY PROTOCOL UI ===== */
 .btn-emergency-action {
   width: 100%;

@@ -8,6 +8,13 @@
   <meta name="author" content="AgroPasco Digital">
   <title>AgroPasco Digital — Plataforma Agrícola Inteligente</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌾</text></svg>">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <!-- Leaflet Draw CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+
+  <!-- AgroPasco Styles -->
   <link rel="stylesheet" href="frontend/css/styles.css">
 </head>
 <body>
@@ -28,7 +35,18 @@
     }
   </style>
 
-  <!-- Frontend Modules -->
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <!-- Leaflet Draw JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <!-- Map Services -->
+  <script src="frontend/services/maps/config.js"></script>
+  <script src="frontend/services/maps/leafletMap.js"></script>
+  <script src="frontend/services/maps/geocoding.js"></script>
+  <script src="frontend/services/maps/routing.js"></script>
+
+  <!-- Frontend Core Modules -->
   <script src="frontend/js/api.js"></script>
   <script src="frontend/js/auth.js"></script>
   <script src="frontend/js/dashboard.js"></script>
@@ -37,6 +55,14 @@
   <script src="frontend/js/advisory.js"></script>
   <script src="frontend/js/traceability.js"></script>
   <script src="frontend/js/supermarket.js"></script>
+
+  <!-- Role-Specific Modules -->
+  <script src="frontend/js/parcels.js"></script>
+  <script src="frontend/js/advisor-panel.js"></script>
+  <script src="frontend/js/logistics.js"></script>
+  <script src="frontend/js/admin-panel.js"></script>
+
+  <!-- App Router (must be last) -->
   <script src="frontend/js/app.js"></script>
 </body>
 </html>

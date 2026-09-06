@@ -118,6 +118,30 @@ const api = {
   addCropLog: (id, data) => apiRequest(`/crops/${id}/logs`, { method: 'POST', body: JSON.stringify(data) }),
   getTraceability: (id) => apiRequest(`/crops/${id}/traceability`),
 
+  // Parcels (Farmer / Advisor)
+  getParcels: () => apiRequest('/parcels'),
+  createParcel: (data) => apiRequest('/parcels', { method: 'POST', body: JSON.stringify(data) }),
+  getParcel: (id) => apiRequest(`/parcels/${id}`),
+  updateParcel: (id, data) => apiRequest(`/parcels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteParcel: (id) => apiRequest(`/parcels/${id}`, { method: 'DELETE' }),
+
+  // Advisor — Pest Markers
+  getPestMarkers: (params = '') => apiRequest(`/advisor/markers${params ? '?' + params : ''}`),
+  createPestMarker: (data) => apiRequest('/advisor/markers', { method: 'POST', body: JSON.stringify(data) }),
+  resolvePestMarker: (id) => apiRequest(`/advisor/markers/${id}/resolve`, { method: 'PUT' }),
+
+  // Advisor — Recommendations
+  getRecommendations: () => apiRequest('/advisor/recommendations'),
+  createRecommendation: (data) => apiRequest('/advisor/recommendations', { method: 'POST', body: JSON.stringify(data) }),
+  getAdvisorFarmers: () => apiRequest('/advisor/farmers'),
+
+  // Admin
+  getAdminUsers: (params = '') => apiRequest(`/admin/users${params ? '?' + params : ''}`),
+  updateUserRole: (id, data) => apiRequest(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (id) => apiRequest(`/admin/users/${id}`, { method: 'DELETE' }),
+  getAuditLog: (params = '') => apiRequest(`/admin/audit${params ? '?' + params : ''}`),
+  getAdminStats: () => apiRequest('/admin/stats'),
+
   // Weather
   getCurrentWeather: () => apiRequest('/weather/current'),
   getLiveWeather: getLiveWeatherData,
@@ -137,7 +161,7 @@ const api = {
   publishProduct: (data) => apiRequest('/v1/supermarket/products', { method: 'POST', body: JSON.stringify(data) }),
 
   // AI
-  getRecommendations: (cropId) => apiRequest(`/ai/recommend/${cropId}`),
+  getRecommendationsAI: (cropId) => apiRequest(`/ai/recommend/${cropId}`),
   getFrostRisk: () => apiRequest('/ai/frost-risk'),
   getIrrigationPlan: (cropId) => apiRequest(`/ai/irrigation/${cropId}`),
 };
