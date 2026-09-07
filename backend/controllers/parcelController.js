@@ -47,17 +47,17 @@ async function createParcel(req, res) {
        crop_type || null, planting_date || null, altitude_masl || 4380, notes || null]
     );
 
-    // Audit log
-    await dbRun(
+    // Audit log (non-blocking)
+    dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, 'CREATE', 'parcel', result.lastID, `Parcela "${name}" creada`]
-    );
+    ).catch(e => console.warn('Audit log error:', e.message));
 
     const parcel = await dbGet('SELECT * FROM parcels WHERE id = ?', [result.lastID]);
     res.status(201).json({ success: true, message: 'Parcela registrada exitosamente.', data: parcel });
   } catch (err) {
     console.error('Error al crear parcela:', err);
-    res.status(500).json({ success: false, error: 'Error al registrar parcela.' });
+    res.status(500).json({ success: false, error: `Error al registrar parcela: ${err.message}` });
   }
 }
 
