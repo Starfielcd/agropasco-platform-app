@@ -15,9 +15,13 @@ const routes = {
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer'] },
   '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer'] },
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer'] },
+  '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer'] },
+  '/farmer/sales': { title: 'Mis Ventas', subtitle: 'Productos publicados y su estado de validación', icon: '📦', render: renderFarmerSalesPage, roles: ['farmer'] },
 
   // Advisor routes
   '/advisor/parcels': { title: 'Parcelas de la Región', subtitle: 'Visualiza y monitorea todas las parcelas de Pasco', icon: '🗺️', render: renderAdvisorParcelsPage, roles: ['advisor'] },
+  '/advisor/pest-reports': { title: 'Gestión de Plagas', subtitle: 'Reportes de plagas de agricultores', icon: '🐛', render: renderAdvisorPestReportsPage, roles: ['advisor'] },
+  '/advisor/validate-products': { title: 'Validar Productos', subtitle: 'Revisa y valida productos para el catálogo', icon: '✅', render: renderValidateProductsPage, roles: ['advisor'] },
   '/advisor/recommendations': { title: 'Recomendaciones', subtitle: 'Emite recomendaciones técnicas personalizadas', icon: '📋', render: renderAdvisorRecommendationsPage, roles: ['advisor'] },
   '/advisor/advisory': { title: 'Base de Conocimiento', subtitle: 'Asesoría técnica de referencia', icon: '📚', render: renderAdvisoryPage, roles: ['advisor'] },
 
@@ -133,6 +137,7 @@ async function navigateTo(path) {
     setTimeout(() => {
       if (path === '/parcels' && typeof initParcelMap === 'function') initParcelMap();
       if (path === '/advisor/parcels' && typeof initAdvisorMap === 'function') initAdvisorMap();
+      if (path === '/advisor/pest-reports' && typeof initPestReportMap === 'function') initPestReportMap();
       if (path === '/supermarket/logistics' && typeof initLogisticsMap === 'function') initLogisticsMap();
     }, 300);
   } catch (err) {
@@ -248,6 +253,14 @@ function getNavItemsForRole(role) {
       <div class="nav-item" data-route="/advisory" onclick="window.location.hash='#/advisory'">
         <span class="nav-item-icon">📚</span> Asesoría
       </div>
+      <div class="nav-item" data-route="/pest-reports" onclick="window.location.hash='#/pest-reports'">
+        <span class="nav-item-icon">🐛</span> Reportar Plagas
+      </div>
+
+      <div class="nav-section-title">Comercio</div>
+      <div class="nav-item" data-route="/farmer/sales" onclick="window.location.hash='#/farmer/sales'">
+        <span class="nav-item-icon">📦</span> Vender Productos
+      </div>
 
       <div class="nav-section-title">Trazabilidad</div>
       <div class="nav-item" data-route="/traceability" onclick="window.location.hash='#/traceability'">
@@ -262,10 +275,18 @@ function getNavItemsForRole(role) {
         <span class="nav-item-icon">🗺️</span> Parcelas de la Región
       </div>
 
-      <div class="nav-section-title">Intervención</div>
+      <div class="nav-section-title">Gestión</div>
+      <div class="nav-item" data-route="/advisor/pest-reports" onclick="window.location.hash='#/advisor/pest-reports'">
+        <span class="nav-item-icon">🐛</span> Gestión de Plagas
+      </div>
+      <div class="nav-item" data-route="/advisor/validate-products" onclick="window.location.hash='#/advisor/validate-products'">
+        <span class="nav-item-icon">✅</span> Validar Productos
+      </div>
       <div class="nav-item" data-route="/advisor/recommendations" onclick="window.location.hash='#/advisor/recommendations'">
         <span class="nav-item-icon">📋</span> Recomendaciones
       </div>
+
+      <div class="nav-section-title">Conocimiento</div>
       <div class="nav-item" data-route="/advisor/advisory" onclick="window.location.hash='#/advisor/advisory'">
         <span class="nav-item-icon">📚</span> Base de Conocimiento
       </div>

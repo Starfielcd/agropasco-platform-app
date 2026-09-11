@@ -1,5 +1,6 @@
 /**
  * AgroPasco — Módulo de Autenticación (Frontend)
+ * Login y registro con selección visual de roles
  */
 
 function renderLoginPage() {
@@ -13,8 +14,8 @@ function renderLoginPage() {
         </div>
         <div class="login-card">
           <div class="login-tabs">
-            <button class="login-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</button>
-            <button class="login-tab" onclick="switchAuthTab('register')">Registrarse</button>
+            <button class="login-tab active" id="tab-login" onclick="switchAuthTab('login')">Iniciar Sesión</button>
+            <button class="login-tab" id="tab-register" onclick="switchAuthTab('register')">Registrarse</button>
           </div>
 
           <div id="login-form-container">
@@ -43,22 +44,36 @@ function renderLoginPage() {
                 <label class="form-label">Correo Electrónico</label>
                 <input type="email" class="form-input" id="reg-email" placeholder="tu@correo.com" required>
               </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Contraseña</label>
-                  <input type="password" class="form-input" id="reg-password" placeholder="Mínimo 6 caracteres" required minlength="6">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Rol</label>
-                  <select class="form-select" id="reg-role">
-                    <option value="farmer">🌱 Agricultor</option>
-                    <option value="advisor">📋 Asesor</option>
-                    <option value="supermarket">🏪 Supermercado</option>
-                  </select>
-                </div>
-              </div>
               <div class="form-group">
-                <label class="form-label">📍 Zona / Distrito de Siembra (Región Pasco)</label>
+                <label class="form-label">Contraseña</label>
+                <input type="password" class="form-input" id="reg-password" placeholder="Mínimo 6 caracteres" required minlength="6">
+              </div>
+
+              <!-- Selector de Rol Visual -->
+              <div class="form-group">
+                <label class="form-label" style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Selecciona tu Rol</label>
+                <div class="role-selector">
+                  <div class="role-card active" data-role="farmer" onclick="selectRole('farmer')">
+                    <div class="role-card-icon">🌱</div>
+                    <div class="role-card-title">Agricultor</div>
+                    <div class="role-card-desc">Gestiona cultivos, parcelas y comercializa productos</div>
+                  </div>
+                  <div class="role-card" data-role="advisor" onclick="selectRole('advisor')">
+                    <div class="role-card-icon">📋</div>
+                    <div class="role-card-title">Asesor Técnico</div>
+                    <div class="role-card-desc">Monitorea parcelas, valida productos y asesora</div>
+                  </div>
+                  <div class="role-card" data-role="supermarket" onclick="selectRole('supermarket')">
+                    <div class="role-card-icon">🏪</div>
+                    <div class="role-card-title">Supermercado</div>
+                    <div class="role-card-desc">Accede al catálogo de productos certificados</div>
+                  </div>
+                </div>
+                <input type="hidden" id="reg-role" value="farmer">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">📍 Zona / Distrito (Región Pasco)</label>
                 <select class="form-select" id="reg-location-select" onchange="toggleCustomLocation(this.value)">
                   <optgroup label="Provincia Daniel Alcides Carrión">
                     <option value="Yanahuanca, Pasco" selected>📍 Yanahuanca</option>
@@ -105,7 +120,7 @@ function renderLoginPage() {
             </form>
           </div>
 
-          <p class="text-center text-sm text-muted mt-md">
+          <p class="text-center text-sm" style="color: var(--text-secondary); margin-top: 16px;">
             Plataforma para agricultores de la Región Pasco 🇵🇪
           </p>
         </div>
@@ -114,16 +129,25 @@ function renderLoginPage() {
   `;
 }
 
+function selectRole(role) {
+  document.getElementById('reg-role').value = role;
+  document.querySelectorAll('.role-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.role === role);
+  });
+}
+
 function switchAuthTab(tab) {
-  const tabs = document.querySelectorAll('.login-tab');
-  tabs.forEach(t => t.classList.remove('active'));
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
 
   if (tab === 'login') {
-    tabs[0].classList.add('active');
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
     document.getElementById('login-form-container').classList.remove('hidden');
     document.getElementById('register-form-container').classList.add('hidden');
   } else {
-    tabs[1].classList.add('active');
+    tabRegister.classList.add('active');
+    tabLogin.classList.remove('active');
     document.getElementById('login-form-container').classList.add('hidden');
     document.getElementById('register-form-container').classList.remove('hidden');
   }

@@ -224,6 +224,24 @@ async function handlePolygonCreated(data) {
   document.getElementById('parcel-center-lat').value = centerLat;
   document.getElementById('parcel-center-lng').value = centerLng;
 
+  // Obtener altitud automáticamente desde Open-Meteo Elevation API
+  const altField = document.getElementById('parcel-altitude');
+  altField.value = '';
+  altField.placeholder = '⏳ Obteniendo altitud...';
+  try {
+    const elevation = await AgroMap.getElevation(centerLat, centerLng);
+    if (elevation != null) {
+      altField.value = elevation;
+      altField.placeholder = 'Altitud (msnm)';
+    } else {
+      altField.value = 4380;
+      altField.placeholder = 'Altitud (msnm)';
+    }
+  } catch (e) {
+    altField.value = 4380;
+    altField.placeholder = 'Altitud (msnm)';
+  }
+
   // Geocodificación inversa
   try {
     const geoResult = await GeocodingService.reverseGeocode(centerLat, centerLng);
@@ -234,7 +252,7 @@ async function handlePolygonCreated(data) {
     document.getElementById('parcel-address').value = `${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}`;
   }
 
-  showToast(`Parcela de ${data.areaHectares} ha dibujada. Completa el formulario.`, 'success');
+  showToast(`Parcela de ${data.areaHectares} ha dibujada. Altitud: ${altField.value} msnm`, 'success');
 }
 
 async function handleCreateParcel(e) {

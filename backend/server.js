@@ -46,6 +46,7 @@ app.use('/api/ai', require('./routes/ai'));
 app.use('/api/parcels', require('./routes/parcels'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/advisor', require('./routes/advisor'));
+app.use('/api/pest-reports', require('./routes/pestReports'));
 
 // ===== CONFIGURACIÓN DE MAPAS (público, para frontend) =====
 app.get('/api/config/maps', (req, res) => {

@@ -238,6 +238,42 @@ async function initializeDatabase() {
     )
   `);
 
+  // ===== TABLA: pest_reports (reportes de plagas agricultor → asesor) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS pest_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      farmer_id INTEGER NOT NULL,
+      parcel_id INTEGER,
+      pest_name TEXT NOT NULL,
+      description TEXT,
+      photo_url TEXT,
+      location_lat REAL,
+      location_lng REAL,
+      status TEXT DEFAULT 'pendiente' CHECK(status IN ('pendiente', 'en_revision', 'resuelto')),
+      advisor_response TEXT,
+      advisor_id INTEGER,
+      responded_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL,
+      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  // ===== MIGRACIÓN: columnas de validación en products =====
+  const productMigrations = [
+    "ALTER TABLE products ADD COLUMN validation_status TEXT DEFAULT 'approved'",
+    "ALTER TABLE products ADD COLUMN validated_by INTEGER",
+    "ALTER TABLE products ADD COLUMN validation_notes TEXT",
+    "ALTER TABLE products ADD COLUMN validated_at DATETIME",
+    "ALTER TABLE products ADD COLUMN photo_url TEXT",
+    "ALTER TABLE products ADD COLUMN is_natural INTEGER DEFAULT 0",
+    "ALTER TABLE products ADD COLUMN original_price REAL DEFAULT 0"
+  ];
+  for (const sql of productMigrations) {
+    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
   // ===== SEED DATA =====
   await seedData();
 

@@ -306,4 +306,23 @@ class AgroMap {
       this.map = null;
     }
   }
+
+  /**
+   * Obtiene la altitud (msnm) de una coordenada usando Open-Meteo Elevation API
+   * @param {number} lat - Latitud
+   * @param {number} lng - Longitud
+   * @returns {Promise<number|null>} Altitud en metros sobre el nivel del mar
+   */
+  static async getElevation(lat, lng) {
+    try {
+      const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
+      if (!res.ok) throw new Error('Elevation API error');
+      const data = await res.json();
+      const elevation = data.elevation?.[0];
+      return elevation != null ? Math.round(elevation) : null;
+    } catch (err) {
+      console.warn('Error al obtener altitud:', err.message);
+      return null;
+    }
+  }
 }

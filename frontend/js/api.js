@@ -159,6 +159,13 @@ const api = {
   getProduct: (id) => apiRequest(`/v1/supermarket/products/${id}`),
   getProductTrace: (id) => apiRequest(`/v1/supermarket/products/${id}/trace`),
   publishProduct: (data) => apiRequest('/v1/supermarket/products', { method: 'POST', body: JSON.stringify(data) }),
+  getPendingProducts: () => apiRequest('/v1/supermarket/products/pending'),
+  validateProduct: (id, data) => apiRequest(`/v1/supermarket/products/${id}/validate`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Pest Reports (farmer → advisor)
+  createPestReport: (data) => apiRequest('/pest-reports', { method: 'POST', body: JSON.stringify(data) }),
+  getPestReports: (params = '') => apiRequest(`/pest-reports${params ? '?' + params : ''}`),
+  respondPestReport: (id, data) => apiRequest(`/pest-reports/${id}/respond`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // AI
   getRecommendationsAI: (cropId) => apiRequest(`/ai/recommend/${cropId}`),

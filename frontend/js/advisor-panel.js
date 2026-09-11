@@ -1,6 +1,6 @@
 /**
  * AgroPasco — Panel del Asesor Técnico
- * Visualización de parcelas, marcadores de plagas y recomendaciones
+ * Parcelas por región (agrupadas por provincia), marcadores de plagas y recomendaciones
  */
 
 let advisorMap = null;
@@ -14,6 +14,29 @@ async function renderAdvisorParcelsPage() {
   const parcels = parcelsRes.data || [];
   const markers = markersRes.data || [];
   const unresolvedMarkers = markers.filter(m => !m.resolved);
+
+  // Agrupar parcelas por provincia
+  const provinceGroups = {};
+  parcels.forEach(p => {
+    const location = p.farmer_location || p.notes || 'Región Pasco';
+    // Extraer provincia del formato "Distrito, Provincia" o "Distrito, Pasco"
+    let province = 'Otros';
+    const parts = location.split(',').map(s => s.trim());
+    if (parts.length >= 2) {
+      const prov = parts[parts.length - 1];
+      if (prov.includes('Pasco') || prov.includes('pasco')) province = 'Provincia de Pasco';
+      else if (prov.includes('Oxapampa') || prov.includes('oxapampa')) province = 'Provincia de Oxapampa';
+      else province = prov;
+    } else if (location.toLowerCase().includes('oxapampa') || location.toLowerCase().includes('villa rica')) {
+      province = 'Provincia de Oxapampa';
+    } else if (location.toLowerCase().includes('yanahuanca') || location.toLowerCase().includes('chacayán') || location.toLowerCase().includes('tusi')) {
+      province = 'Provincia Daniel A. Carrión';
+    } else {
+      province = 'Provincia de Pasco';
+    }
+    if (!provinceGroups[province]) provinceGroups[province] = [];
+    provinceGroups[province].push(p);
+  });
 
   return `
     <div class="page-content">
@@ -49,6 +72,44 @@ async function renderAdvisorParcelsPage() {
         <div id="advisor-map" class="map-container" style="height: 500px; width: 100%;"></div>
       </div>
 
+      <!-- Parcelas por Provincia -->
+      <div class="card mb-lg">
+        <div class="card-header">
+          <div class="card-title"><span class="card-title-icon">📍</span> Parcelas por Provincia</div>
+        </div>
+        ${Object.keys(provinceGroups).length > 0 ? `
+          ${Object.entries(provinceGroups).map(([province, pList]) => `
+            <div style="margin-bottom: 12px;">
+              <button class="btn btn-secondary btn-block" style="text-align: left; font-weight: 700; font-size: 14px; padding: 12px 16px; margin-bottom: 8px;"
+                onclick="toggleProvinceAccordion(this)">
+                📍 ${province} (${pList.length} parcelas) <span style="float: right;">▼</span>
+              </button>
+              <div class="province-parcels" style="display: none; padding-left: 12px;">
+                ${pList.map(p => `
+                  <div class="alert-card info" style="margin-bottom: 8px; cursor: pointer;" onclick="focusParcelOnMap(${p.center_lat || 'null'}, ${p.center_lng || 'null'}, '${p.geo_json ? p.geo_json.replace(/'/g, "\\'").substring(0, 0) : ''}', ${p.id})">
+                    <span class="alert-icon">🗺️</span>
+                    <div class="alert-content" style="flex: 1;">
+                      <div class="alert-title">${p.name}</div>
+                      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                        <span class="badge badge-green">${p.crop_type ? '🌱 ' + p.crop_type : '📍 Sin cultivo'}</span>
+                        <span class="badge badge-blue">📐 ${p.area_hectares || 0} ha</span>
+                        <span class="badge badge-purple">🏔️ ${p.altitude_masl || '—'} msnm</span>
+                        ${p.farmer_name ? `<span class="badge badge-amber">👨‍🌾 ${p.farmer_name}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        ` : `
+          <div class="empty-state" style="padding: 24px;">
+            <div class="empty-state-icon">🗺️</div>
+            <div class="empty-state-title">Sin parcelas registradas</div>
+          </div>
+        `}
+      </div>
+
       <!-- Marcadores de Plagas -->
       <div class="card mb-lg">
         <div class="card-header">
@@ -82,6 +143,24 @@ async function renderAdvisorParcelsPage() {
       </div>
     </div>
   `;
+}
+
+function toggleProvinceAccordion(btn) {
+  const content = btn.nextElementSibling;
+  if (content) {
+    const isHidden = content.style.display === 'none';
+    content.style.display = isHidden ? 'block' : 'none';
+    const arrow = btn.querySelector('span[style*="float"]');
+    if (arrow) arrow.textContent = isHidden ? '▲' : '▼';
+  }
+}
+
+function focusParcelOnMap(lat, lng, geoJsonStr, parcelId) {
+  if (advisorMap && lat && lng) {
+    advisorMap.setCenter(lat, lng, 16);
+    const mapEl = document.getElementById('advisor-map');
+    if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 async function renderAdvisorRecommendationsPage() {
@@ -171,7 +250,8 @@ async function loadAdvisorMapData() {
               👨‍🌾 ${p.farmer_name || 'Agricultor'}<br>
               ${p.crop_type ? '🌱 ' + p.crop_type + '<br>' : ''}
               📐 ${p.area_hectares} ha<br>
-              🏔️ ${p.altitude_masl} msnm
+              🏔️ ${p.altitude_masl} msnm<br>
+              📍 ${p.farmer_location || ''}
             </div>
           `,
           tooltip: p.name
