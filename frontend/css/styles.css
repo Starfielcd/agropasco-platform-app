@@ -1390,3 +1390,349 @@ a:hover { color: var(--green-400); }
   gap: 16px;
   margin-top: 20px;
 }
+
+/* ===== MODAL SYSTEM ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 9, 20, 0.78);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  overflow-y: auto;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.modal {
+  background: #0f172a;
+  background: linear-gradient(180deg, #131d33 0%, #0d1527 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  position: relative;
+  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h3 {
+  font-size: 19px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-close {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: rotate(90deg);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ===== ROLE SELECTOR & ACCESSIBLE AUTH (WCAG AA) ===== */
+.role-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
+@media (max-width: 480px) {
+  .role-selector {
+    grid-template-columns: 1fr;
+  }
+}
+
+.role-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+.role-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.role-card-icon {
+  font-size: 30px;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+}
+
+.role-card-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.role-card-desc {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+/* Active Roles differentiated by identity colors */
+.role-card[data-role="farmer"].active {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.22) 0%, rgba(20, 83, 45, 0.35) 100%);
+  border-color: #22c55e;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.35), inset 0 0 12px rgba(34, 197, 94, 0.15);
+}
+.role-card[data-role="farmer"].active .role-card-title {
+  color: #4ade80;
+}
+
+.role-card[data-role="advisor"].active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.22) 0%, rgba(30, 58, 138, 0.35) 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35), inset 0 0 12px rgba(59, 130, 246, 0.15);
+}
+.role-card[data-role="advisor"].active .role-card-title {
+  color: #60a5fa;
+}
+
+.role-card[data-role="supermarket"].active {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.22) 0%, rgba(88, 28, 135, 0.35) 100%);
+  border-color: #a855f7;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.35), inset 0 0 12px rgba(168, 85, 247, 0.15);
+}
+.role-card[data-role="supermarket"].active .role-card-title {
+  color: #c084fc;
+}
+
+.role-card.active::after {
+  content: '✓';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: currentColor;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* High Contrast Input Fields for Accessibility */
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 6px;
+}
+
+.form-input, .form-select, .form-textarea {
+  background: #1e293b !important;
+  color: #ffffff !important;
+  border: 1.5px solid #475569 !important;
+  font-weight: 500;
+}
+
+.form-input::placeholder, .form-textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: #22c55e !important;
+  background: #24344d !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35) !important;
+}
+
+/* High Contrast Auth Buttons */
+.login-card {
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.login-tab {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.login-tab.active {
+  background: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(22, 163, 74, 0.4);
+}
+
+#login-btn, #register-btn {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 13px;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #ffffff !important;
+  border: none;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.45);
+}
+
+#login-btn:hover, #register-btn:hover {
+  background: linear-gradient(135deg, #22c55e, #4ade80);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.55);
+}
+
+/* Toast Container */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 380px;
+}
+
+.toast {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.toast.success { border-left: 4px solid #22c55e; }
+.toast.error { border-left: 4px solid #ef4444; }
+.toast.warning { border-left: 4px solid #f59e0b; }
+.toast.info { border-left: 4px solid #3b82f6; }
+
+/* Pulse infection animation for pest map */
+@keyframes infectionPulse {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  50% { transform: scale(1.15); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.9; }
+}
+
+.infection-beacon {
+  animation: infectionPulse 2s infinite ease-in-out;
+}
+
+/* ===== GEOLOCATION PULSE MARKER ===== */
+.geo-pulse-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+.geo-pulse-marker {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geo-pulse-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle, #4ade80 0%, #22c55e 60%, #16a34a 100%);
+  border-radius: 50%;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6),
+              0 0 20px rgba(34, 197, 94, 0.3);
+  z-index: 2;
+}
+
+.geo-pulse-ring {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(34, 197, 94, 0.5);
+  animation: geoPulseRing 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: 1;
+}
+
+@keyframes geoPulseRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+    border-color: rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0.15;
+    border-color: rgba(34, 197, 94, 0.2);
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+    border-color: transparent;
+  }
+}
+
+/* Geolocation accuracy circle styling */
+.leaflet-interactive[stroke='#22c55e'][fill='#22c55e'] {
+  pointer-events: none;
+}

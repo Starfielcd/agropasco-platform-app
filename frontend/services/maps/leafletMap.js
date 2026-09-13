@@ -15,11 +15,15 @@ class AgroMap {
     };
     this.drawControl = null;
     this.drawnItems = null;
+    this.userLocationMarker = null;
+    this.userAccuracyCircle = null;
     this.options = {
       center: options.center || [MapsConfig.DEFAULT_CENTER.lat, MapsConfig.DEFAULT_CENTER.lng],
       zoom: options.zoom || MapsConfig.DEFAULT_ZOOM,
       satellite: options.satellite !== undefined ? options.satellite : true,
       drawEnabled: options.drawEnabled || false,
+      autoLocate: options.autoLocate || false,
+      onLocationFound: options.onLocationFound || null,
       onClick: options.onClick || null,
       onPolygonCreated: options.onPolygonCreated || null,
       onMarkerClick: options.onMarkerClick || null
@@ -88,6 +92,108 @@ class AgroMap {
 
     // Forzar re-render después de que el contenedor sea visible
     setTimeout(() => this.map.invalidateSize(), 200);
+
+    // Auto-localización del agricultor si está habilitada
+    if (this.options.autoLocate) {
+      this.locateUser();
+    }
+
+    return this;
+  }
+
+  /**
+   * Detecta la ubicación actual del agricultor via Geolocation API del navegador.
+   * Centra el mapa, muestra marcador pulsante con radio de precisión,
+   * y dispara callback onLocationFound con {lat, lng, accuracy, altitude}.
+   */
+  locateUser() {
+    if (!this.map) return this;
+    if (!navigator.geolocation) {
+      console.warn('AgroMap: Geolocation API no disponible en este navegador');
+      showToast('Tu navegador no soporta geolocalización. Usa el mapa para ubicarte manualmente.', 'warning');
+      return this;
+    }
+
+    showToast('📡 Detectando tu ubicación actual...', 'info');
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy; // metros
+
+        // Centrar mapa en la ubicación detectada
+        this.map.setView([lat, lng], 15, { animate: true });
+
+        // Remover marcador/círculo anterior si existía
+        if (this.userLocationMarker) this.map.removeLayer(this.userLocationMarker);
+        if (this.userAccuracyCircle) this.map.removeLayer(this.userAccuracyCircle);
+
+        // Marcador pulsante de ubicación del agricultor
+        this.userLocationMarker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            html: `<div class="geo-pulse-marker">
+              <div class="geo-pulse-dot"></div>
+              <div class="geo-pulse-ring"></div>
+            </div>`,
+            className: 'geo-pulse-container',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          }),
+          zIndexOffset: 1000
+        }).addTo(this.map);
+
+        this.userLocationMarker.bindPopup(
+          `<div style="font-family:Inter,sans-serif;text-align:center;">
+            <strong style="color:#22c55e;">📍 Tu ubicación actual</strong><br>
+            <span style="font-size:12px;color:#94a3b8;">Precisión: ~${Math.round(accuracy)}m</span>
+          </div>`
+        );
+
+        // Círculo de precisión
+        this.userAccuracyCircle = L.circle([lat, lng], {
+          radius: Math.min(accuracy, 500),
+          color: '#22c55e',
+          fillColor: '#22c55e',
+          fillOpacity: 0.08,
+          weight: 1,
+          dashArray: '5, 5'
+        }).addTo(this.map);
+
+        // Obtener altitud real via API
+        let altitude = null;
+        try {
+          altitude = await AgroMap.getElevation(lat, lng);
+        } catch (e) {
+          console.warn('No se pudo obtener altitud para ubicación detectada');
+        }
+
+        showToast(
+          `✅ Ubicación detectada: ${lat.toFixed(4)}, ${lng.toFixed(4)}` +
+          (altitude != null ? ` · Altitud: ${altitude} msnm` : ''),
+          'success'
+        );
+
+        // Disparar callback
+        if (this.options.onLocationFound) {
+          this.options.onLocationFound({ lat, lng, accuracy, altitude });
+        }
+      },
+      (error) => {
+        const messages = {
+          1: 'Permiso de ubicación denegado. Activa la geolocalización en tu navegador.',
+          2: 'No se pudo determinar tu ubicación. Verifica tu conexión GPS/WiFi.',
+          3: 'Tiempo de espera agotado al obtener ubicación.'
+        };
+        showToast(messages[error.code] || 'Error al obtener ubicación', 'warning');
+        console.warn('Geolocation error:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000
+      }
+    );
 
     return this;
   }
@@ -308,20 +414,36 @@ class AgroMap {
   }
 
   /**
-   * Obtiene la altitud (msnm) de una coordenada usando Open-Meteo Elevation API
+   * Obtiene la altitud (msnm) de una coordenada.
+   * Estrategia: Open-Elevation API (primario) → Open-Meteo (fallback).
    * @param {number} lat - Latitud
    * @param {number} lng - Longitud
    * @returns {Promise<number|null>} Altitud en metros sobre el nivel del mar
    */
   static async getElevation(lat, lng) {
+    // 1. Intentar Open-Elevation API (gratuita, sin API key)
+    try {
+      const res = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        const elevation = data.results?.[0]?.elevation;
+        if (elevation != null && elevation !== 0) {
+          return Math.round(elevation);
+        }
+      }
+    } catch (err) {
+      console.warn('Open-Elevation API no disponible, usando fallback:', err.message);
+    }
+
+    // 2. Fallback: Open-Meteo Elevation API
     try {
       const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
-      if (!res.ok) throw new Error('Elevation API error');
+      if (!res.ok) throw new Error('Open-Meteo Elevation error');
       const data = await res.json();
       const elevation = data.elevation?.[0];
       return elevation != null ? Math.round(elevation) : null;
     } catch (err) {
-      console.warn('Error al obtener altitud:', err.message);
+      console.warn('Error al obtener altitud (ambos proveedores fallaron):', err.message);
       return null;
     }
   }

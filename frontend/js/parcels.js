@@ -16,7 +16,26 @@ async function renderParcelsPage() {
           <h3 style="font-size: 18px; font-weight: 700;">🗺️ Mis Parcelas (${parcels.length})</h3>
           <p class="text-sm text-muted">Dibuja polígonos en el mapa satelital para delimitar tus parcelas.</p>
         </div>
-        <button class="btn btn-primary" onclick="toggleParcelDrawMode()">✏️ Dibujar Nueva Parcela</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="relocateFarmer()" title="Detectar mi ubicación actual">
+            📡 Mi Ubicación
+          </button>
+          <button class="btn btn-primary" onclick="toggleParcelDrawMode()">✏️ Dibujar Nueva Parcela</button>
+        </div>
+      </div>
+
+      <!-- Banner de geolocalización -->
+      <div id="geolocation-banner" class="card mb-lg" style="display: none; padding: 12px 16px; border-left: 4px solid #22c55e; background: rgba(34, 197, 94, 0.06);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="geo-pulse-marker" style="width: 16px; height: 16px;">
+            <div class="geo-pulse-dot" style="width: 10px; height: 10px; border-width: 2px;"></div>
+            <div class="geo-pulse-ring" style="width: 16px; height: 16px;"></div>
+          </div>
+          <div>
+            <span id="geo-banner-text" style="font-size: 13px; font-weight: 600; color: var(--green-400);">Ubicación detectada</span>
+            <span id="geo-banner-detail" class="text-sm text-muted" style="margin-left: 8px;"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Mapa Principal -->
@@ -102,16 +121,17 @@ function renderParcelCard(parcel) {
   const cropIcons = { papa: '🥔', maca: '🌿', cafe: '☕', quinua: '🌾', habas: '🫘', olluco: '🟡' };
 
   return `
-    <div class="crop-card" onclick="viewParcelOnMap(${parcel.id})" style="cursor: pointer;">
+    <div class="crop-card" onclick="viewParcelOnMap(${parcel.id})" style="cursor: pointer; position: relative;">
       <div class="crop-card-header">
         <div>
           <div class="crop-card-name">${parcel.name}</div>
-          <div class="crop-card-type">${parcel.crop_type ? (cropIcons[parcel.crop_type] || '🌱') + ' ' + parcel.crop_type : '📍 Sin cultivo'}</div>
+          <div class="crop-card-type">${parcel.crop_type ? (cropIcons[parcel.crop_type] || '🌱') + ' ' + parcel.crop_type : '📍 Sin cultivo asignado'}</div>
         </div>
         <div class="crop-card-icon">🗺️</div>
       </div>
-      <div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
         <span class="badge badge-${statusColors[parcel.status] || 'green'}">${parcel.status}</span>
+        ${parcel.planting_date ? `<span class="text-sm text-muted">📅 ${parcel.planting_date}</span>` : ''}
       </div>
       <div class="crop-card-stats">
         <div class="crop-card-stat">
@@ -119,9 +139,19 @@ function renderParcelCard(parcel) {
           <div class="crop-card-stat-label">Área</div>
         </div>
         <div class="crop-card-stat">
-          <div class="crop-card-stat-value">${parcel.altitude_masl || 4380}</div>
+          <div class="crop-card-stat-value" style="color: var(--green-400);">🏔️ ${parcel.altitude_masl || 4380}</div>
           <div class="crop-card-stat-label">msnm</div>
         </div>
+      </div>
+
+      <!-- Acciones de Gestión de Parcela -->
+      <div style="display: flex; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);">
+        <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="event.stopPropagation(); showEditParcelModal(${parcel.id})">
+          ✏️ Editar
+        </button>
+        <button class="btn btn-sm btn-danger" style="flex: 0.5;" onclick="event.stopPropagation(); handleDeleteParcel(${parcel.id}, '${parcel.name.replace(/'/g, "\\'")}')">
+          🗑️
+        </button>
       </div>
     </div>
   `;
@@ -137,11 +167,63 @@ function initParcelMap() {
   parcelMap = new AgroMap('parcel-map', {
     satellite: true,
     drawEnabled: false,
+    autoLocate: true,
+    onLocationFound: handleFarmerLocationDetected,
     onPolygonCreated: handlePolygonCreated
   }).init();
 
   // Cargar parcelas existentes
   loadParcelsOnMap();
+}
+
+/**
+ * Callback: Se ejecuta cuando la Geolocation API detecta la ubicación del agricultor.
+ * Auto-rellena la altitud y coordenadas en el formulario de parcela.
+ */
+function handleFarmerLocationDetected(location) {
+  // Guardar ubicación del agricultor para uso posterior
+  window._farmerDetectedLocation = location;
+
+  // Mostrar banner de geolocalización
+  const banner = document.getElementById('geolocation-banner');
+  const bannerText = document.getElementById('geo-banner-text');
+  const bannerDetail = document.getElementById('geo-banner-detail');
+  if (banner) {
+    banner.style.display = 'block';
+    if (bannerText) bannerText.textContent = `📍 Ubicación detectada`;
+    if (bannerDetail) {
+      bannerDetail.textContent = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` +
+        (location.altitude != null ? ` · 🏔️ ${location.altitude} msnm` : '') +
+        (location.accuracy ? ` · Precisión: ~${Math.round(location.accuracy)}m` : '');
+    }
+  }
+
+  // Si el formulario de parcela está visible, pre-rellenar altitud
+  const altField = document.getElementById('parcel-altitude');
+  if (altField && location.altitude != null) {
+    altField.value = location.altitude;
+  }
+
+  // También pre-rellenar en el formulario de cultivos si existe
+  const cropAltField = document.getElementById('crop-altitude');
+  if (cropAltField && location.altitude != null) {
+    cropAltField.value = location.altitude;
+    const badge = document.getElementById('altitude-source-badge');
+    if (badge) badge.textContent = `📡 GPS: ${location.altitude} msnm`;
+  }
+}
+
+/**
+ * Botón "Mi Ubicación": Re-dispara la geolocalización del navegador
+ * y centra el mapa en la posición actual del agricultor.
+ */
+function relocateFarmer() {
+  if (parcelMap) {
+    parcelMap.locateUser();
+  } else {
+    showToast('Inicializando mapa...', 'info');
+    initParcelMap();
+  }
 }
 
 async function loadParcelsOnMap() {
@@ -162,12 +244,17 @@ async function loadParcelsOnMap() {
           color: color,
           tooltip: `${p.name}${p.crop_type ? ' — ' + p.crop_type : ''}`,
           popup: `
-            <div style="font-family: Inter, sans-serif;">
-              <strong>${p.name}</strong><br>
-              ${p.crop_type ? '🌱 ' + p.crop_type + '<br>' : ''}
-              📐 ${p.area_hectares} ha<br>
-              🏔️ ${p.altitude_masl} msnm<br>
-              <em>${p.status}</em>
+            <div style="font-family: Inter, sans-serif; min-width: 190px;">
+              <strong style="font-size: 14px; color: #22c55e;">${p.name}</strong><br>
+              ${p.crop_type ? '🌱 Cultivo: <strong>' + p.crop_type + '</strong><br>' : '📍 Sin cultivo<br>'}
+              📐 Área: <strong>${p.area_hectares} ha</strong><br>
+              🏔️ Altitud: <strong style="color: #4ade80;">${p.altitude_masl || 4380} msnm</strong><br>
+              <em>Estado: ${p.status}</em>
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);">
+                <button class="btn btn-sm btn-primary btn-block" onclick="showEditParcelModal(${p.id})">
+                  ✏️ Editar Datos de Parcela
+                </button>
+              </div>
             </div>
           `
         });
@@ -227,16 +314,14 @@ async function handlePolygonCreated(data) {
   // Obtener altitud automáticamente desde Open-Meteo Elevation API
   const altField = document.getElementById('parcel-altitude');
   altField.value = '';
-  altField.placeholder = '⏳ Obteniendo altitud...';
+  altField.placeholder = '⏳ Calculando altitud satelital...';
+
   try {
     const elevation = await AgroMap.getElevation(centerLat, centerLng);
-    if (elevation != null) {
-      altField.value = elevation;
-      altField.placeholder = 'Altitud (msnm)';
-    } else {
-      altField.value = 4380;
-      altField.placeholder = 'Altitud (msnm)';
-    }
+    const finalAlt = elevation != null ? elevation : 4380;
+    altField.value = finalAlt;
+    altField.placeholder = 'Altitud (msnm)';
+    showToast(`✅ Polígono delimitado: ${data.areaHectares} ha. Altitud calculada automáticamente: ${finalAlt} msnm`, 'success');
   } catch (e) {
     altField.value = 4380;
     altField.placeholder = 'Altitud (msnm)';
@@ -249,10 +334,8 @@ async function handlePolygonCreated(data) {
       document.getElementById('parcel-address').value = geoResult.address;
     }
   } catch (e) {
-    document.getElementById('parcel-address').value = `${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}`;
+    document.getElementById('parcel-address').value = `${centerLat.toFixed(4)}, ${centerLng.toFixed(4)} (Pasco)`;
   }
-
-  showToast(`Parcela de ${data.areaHectares} ha dibujada. Altitud: ${altField.value} msnm`, 'success');
 }
 
 async function handleCreateParcel(e) {
@@ -277,11 +360,167 @@ async function handleCreateParcel(e) {
   });
 
   if (result.success) {
-    showToast('¡Parcela registrada exitosamente!', 'success');
+    showToast('¡Parcela registrada exitosamente con altitud calculada!', 'success');
     cancelParcelDraw();
     navigateTo('/parcels');
   } else {
     showToast(result.error || 'Error al registrar parcela', 'error');
+  }
+}
+
+// ===== MODAL DE EDICIÓN DE PARCELAS =====
+async function showEditParcelModal(parcelId) {
+  const result = await api.getParcel(parcelId);
+  if (!result.success) {
+    showToast('Error al cargar datos de la parcela', 'error');
+    return;
+  }
+
+  const p = result.data;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'edit-parcel-modal';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  modal.innerHTML = `
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>✏️ Editar Parcela: ${p.name}</h3>
+        <button class="modal-close" onclick="document.getElementById('edit-parcel-modal').remove()">✕</button>
+      </div>
+
+      <form onsubmit="handleUpdateParcel(event, ${p.id})">
+        <div class="form-group">
+          <label class="form-label">Nombre de la Parcela</label>
+          <input type="text" class="form-input" id="edit-parcel-name" value="${p.name || ''}" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Cultivo Asignado</label>
+            <select class="form-select" id="edit-parcel-crop">
+              <option value="" ${!p.crop_type ? 'selected' : ''}>Sin cultivo asignado</option>
+              <option value="papa" ${p.crop_type === 'papa' ? 'selected' : ''}>🥔 Papa</option>
+              <option value="maca" ${p.crop_type === 'maca' ? 'selected' : ''}>🌿 Maca</option>
+              <option value="quinua" ${p.crop_type === 'quinua' ? 'selected' : ''}>🌾 Quinua</option>
+              <option value="habas" ${p.crop_type === 'habas' ? 'selected' : ''}>🫘 Habas</option>
+              <option value="cafe" ${p.crop_type === 'cafe' ? 'selected' : ''}>☕ Café</option>
+              <option value="olluco" ${p.crop_type === 'olluco' ? 'selected' : ''}>🟡 Olluco</option>
+              <option value="cebada" ${p.crop_type === 'cebada' ? 'selected' : ''}>🌾 Cebada</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estado de la Parcela</label>
+            <select class="form-select" id="edit-parcel-status">
+              <option value="activa" ${p.status === 'activa' ? 'selected' : ''}>✅ Activa</option>
+              <option value="en_descanso" ${p.status === 'en_descanso' ? 'selected' : ''}>🟡 En Descanso</option>
+              <option value="planificada" ${p.status === 'planificada' ? 'selected' : ''}>📝 Planificada</option>
+              <option value="cosechada" ${p.status === 'cosechada' ? 'selected' : ''}>🧺 Cosechada</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Área (hectáreas)</label>
+            <input type="number" class="form-input" id="edit-parcel-area" step="0.01" value="${p.area_hectares || 0}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              Altitud (msnm)
+              ${p.center_lat && p.center_lng ? `
+                <button type="button" class="btn btn-sm btn-secondary" style="padding: 2px 8px; font-size: 11px; margin-left: 6px;" onclick="recalcParcelElevation(${p.center_lat}, ${p.center_lng})">
+                  🔄 Satelital
+                </button>
+              ` : ''}
+            </label>
+            <input type="number" class="form-input" id="edit-parcel-altitude" value="${p.altitude_masl || 4380}" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Fecha de Siembra</label>
+            <input type="date" class="form-input" id="edit-parcel-planting-date" value="${p.planting_date || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Coordenadas del Centro</label>
+            <input type="text" class="form-input" readonly style="background: var(--bg-glass);" value="${p.center_lat ? `${p.center_lat.toFixed(4)}, ${p.center_lng.toFixed(4)}` : 'No registradas'}">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Notas / Observaciones</label>
+          <textarea class="form-textarea" id="edit-parcel-notes" rows="3" placeholder="Observaciones de suelo, acceso a riego o ubicación...">${p.notes || ''}</textarea>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
+            💾 Guardar Cambios
+          </button>
+          <button type="button" class="btn btn-secondary btn-lg" onclick="document.getElementById('edit-parcel-modal').remove()">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function recalcParcelElevation(lat, lng) {
+  const altInput = document.getElementById('edit-parcel-altitude');
+  if (!altInput) return;
+  altInput.value = '';
+  altInput.placeholder = '⏳ Calculando...';
+
+  try {
+    const elevation = await AgroMap.getElevation(lat, lng);
+    if (elevation != null) {
+      altInput.value = elevation;
+      showToast(`Altitud satelital recalculada: ${elevation} msnm`, 'success');
+    } else {
+      altInput.value = 4380;
+    }
+  } catch (e) {
+    altInput.value = 4380;
+  }
+}
+
+async function handleUpdateParcel(e, parcelId) {
+  e.preventDefault();
+
+  const result = await api.updateParcel(parcelId, {
+    name: document.getElementById('edit-parcel-name').value,
+    crop_type: document.getElementById('edit-parcel-crop').value || null,
+    status: document.getElementById('edit-parcel-status').value,
+    area_hectares: parseFloat(document.getElementById('edit-parcel-area').value) || 0,
+    altitude_masl: parseInt(document.getElementById('edit-parcel-altitude').value) || 4380,
+    planting_date: document.getElementById('edit-parcel-planting-date').value || null,
+    notes: document.getElementById('edit-parcel-notes').value || null
+  });
+
+  if (result.success) {
+    document.getElementById('edit-parcel-modal')?.remove();
+    showToast('¡Parcela actualizada exitosamente!', 'success');
+    navigateTo('/parcels');
+  } else {
+    showToast(result.error || 'Error al actualizar parcela', 'error');
+  }
+}
+
+async function handleDeleteParcel(parcelId, parcelName) {
+  if (!confirm(`¿Estás seguro de eliminar la parcela "${parcelName}"? Esta acción no se puede deshacer.`)) {
+    return;
+  }
+
+  const result = await api.deleteParcel(parcelId);
+  if (result.success) {
+    showToast(`Parcela "${parcelName}" eliminada correctamente`, 'warning');
+    navigateTo('/parcels');
+  } else {
+    showToast(result.error || 'Error al eliminar parcela', 'error');
   }
 }
 

@@ -281,16 +281,24 @@ async function initializeDatabase() {
 }
 
 async function seedData() {
-  // Ensure default demo user exists for foreign keys
-  const userCount = await dbGet('SELECT COUNT(*) as count FROM users');
-  if (!userCount || userCount.count === 0) {
-    const bcrypt = require('bcryptjs');
-    const defaultHash = await bcrypt.hash('123456', 12);
-    await dbRun(
-      `INSERT INTO users (id, name, email, password_hash, role, location, phone)
-       VALUES (1, 'Agricultor de Pasco', 'agricultor@agropasco.pe', ?, 'farmer', 'Yanahuanca, Pasco', '963987638')`,
-      [defaultHash]
-    );
+  const bcrypt = require('bcryptjs');
+  const defaultHash = await bcrypt.hash('123456', 10);
+
+  // Ensure demo users exist for each core role
+  const demoUsers = [
+    { name: 'Agricultor de Pasco', email: 'agricultor@agropasco.pe', role: 'farmer', location: 'Yanahuanca, Pasco', phone: '963987638' },
+    { name: 'Ing. Asesor Agrícola', email: 'asesor@agropasco.pe', role: 'advisor', location: 'Cerro de Pasco', phone: '963112233' },
+    { name: 'Supermercado Central Pasco', email: 'supermercado@agropasco.pe', role: 'supermarket', location: 'Chaupimarca, Pasco', phone: '963445566' }
+  ];
+
+  for (const u of demoUsers) {
+    const exists = await dbGet('SELECT id FROM users WHERE email = ?', [u.email]);
+    if (!exists) {
+      await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, location, phone) VALUES (?, ?, ?, ?, ?, ?)`,
+        [u.name, u.email, defaultHash, u.role, u.location, u.phone]
+      );
+    }
   }
 
   // Check if advisory tips already seeded

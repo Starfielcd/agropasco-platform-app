@@ -31,6 +31,22 @@ function authenticateToken(req, res, next) {
   }
 }
 
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+  } catch (err) {
+    req.user = null;
+  }
+  next();
+}
+
 // Middleware para verificar roles
 function requireRole(...roles) {
   return (req, res, next) => {
@@ -53,4 +69,4 @@ function generateToken(user) {
   );
 }
 
-module.exports = { authenticateToken, requireRole, generateToken };
+module.exports = { authenticateToken, optionalAuth, requireRole, generateToken };

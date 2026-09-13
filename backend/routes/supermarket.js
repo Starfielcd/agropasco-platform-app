@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const { getProducts, getProduct, getProductTrace, publishProduct, validateProduct, getPendingProducts } = require('../controllers/supermarketController');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, optionalAuth, requireRole } = require('../middleware/auth');
 
-// Public endpoints for supermarket integration
-router.get('/products', authenticateToken, getProducts);
+// Public/authenticated endpoints for supermarket integration
+router.get('/products', optionalAuth, getProducts);
 router.get('/products/pending', authenticateToken, requireRole('advisor'), getPendingProducts);
 router.get('/products/:id', getProduct);
 router.get('/products/:id/trace', getProductTrace);

@@ -184,22 +184,53 @@ async function renderCropDetail(cropId) {
   `;
 }
 
-function showNewCropModal() {
+let cropModalMap = null;
+let cropDrawnLayer = null;
+
+async function showNewCropModal() {
+  // Obtener parcelas del agricultor para auto-rellenado opcional
+  let parcels = [];
+  try {
+    const res = await api.getParcels();
+    parcels = res.data || [];
+  } catch (e) {}
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'crop-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
+      modal.remove();
+    }
+  };
+
+  const parcelsOptions = parcels.length > 0
+    ? `<option value="">-- Opcional: Seleccionar de mis parcelas --</option>` +
+      parcels.map(p => `<option value="${p.id}" data-area="${p.area_hectares || 0}" data-alt="${p.altitude_masl || 4380}" data-crop="${p.crop_type || ''}" data-lat="${p.center_lat || ''}" data-lng="${p.center_lng || ''}" data-name="${p.name}">${p.name} (${p.area_hectares} ha · ${p.altitude_masl || 4380} msnm)</option>`).join('')
+    : '<option value="">No tienes parcelas registradas aún</option>';
+
   modal.innerHTML = `
-    <div class="modal">
+    <div class="modal" style="max-width: 680px;">
       <div class="modal-header">
         <h3>🌱 Registrar Nuevo Cultivo</h3>
-        <button class="modal-close" onclick="document.getElementById('crop-modal').remove()">✕</button>
+        <button class="modal-close" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal').remove()">✕</button>
       </div>
+
+      <!-- Selector de parcela existente para auto-rellenado -->
+      <div class="form-group" style="background: rgba(34, 197, 94, 0.08); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(34, 197, 94, 0.25);">
+        <label class="form-label" style="color: #4ade80;">🗺️ Vincular con Parcela Existente (Auto-completa altitud y área):</label>
+        <select class="form-select" id="crop-parcel-select" onchange="handleSelectExistingParcel(this)">
+          ${parcelsOptions}
+        </select>
+      </div>
+
       <form onsubmit="handleCreateCrop(event)">
         <div class="form-group">
           <label class="form-label">Nombre del Cultivo</label>
-          <input type="text" class="form-input" id="crop-name" placeholder="Ej: Papa Huayro - Parcela Norte" required>
+          <input type="text" class="form-input" id="crop-name" placeholder="Ej: Papa Nativa Huayro - Parcela San Juan" required>
         </div>
+
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Tipo de Cultivo</label>
@@ -218,19 +249,49 @@ function showNewCropModal() {
           </div>
           <div class="form-group">
             <label class="form-label">Variedad (opcional)</label>
-            <input type="text" class="form-input" id="crop-variety" placeholder="Ej: Huayro, Canchan...">
+            <input type="text" class="form-input" id="crop-variety" placeholder="Ej: Huayro, Peruanita, Amarilla...">
           </div>
         </div>
+
+        <!-- SECCIÓN DE MAPA PARA DIBUJAR PARCELA Y OBTENER ALTITUD -->
+        <div class="form-group" style="margin: 16px 0;">
+          <div class="flex items-center justify-between mb-sm">
+            <label class="form-label" style="margin-bottom: 0; font-weight: 700; color: var(--text-primary);">
+              📍 Dibujar o Ubicar Parcela en el Mapa (Auto-calcula Altitud msnm)
+            </label>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="toggleCropModalMap()">
+              🗺️ <span id="btn-toggle-crop-map-text">Abrir Mapa</span>
+            </button>
+          </div>
+
+          <div id="crop-map-container" style="display: none; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-top: 8px; position: relative;">
+            <div style="background: rgba(15, 23, 42, 0.9); padding: 8px 12px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; justify-content: space-between;">
+              <span>✏️ Haz clic para marcar o usa la herramienta para dibujar tu parcela</span>
+              <span id="crop-map-status" style="color: #4ade80; font-weight: 600;">Listo</span>
+            </div>
+            <div id="crop-modal-map" style="height: 260px; width: 100%;"></div>
+          </div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Área (hectáreas)</label>
-            <input type="number" class="form-input" id="crop-area" step="0.1" placeholder="0.5" value="0.5">
+            <input type="number" class="form-input" id="crop-area" step="0.01" placeholder="0.5" value="0.5">
           </div>
           <div class="form-group">
-            <label class="form-label">Altitud (msnm)</label>
-            <input type="number" class="form-input" id="crop-altitude" placeholder="4380" value="4380">
+            <label class="form-label">
+              Altitud (msnm)
+              <span id="altitude-source-badge" class="badge badge-green" style="font-size: 10px; margin-left: 6px;">Auto-calculable</span>
+            </label>
+            <input type="number" class="form-input" id="crop-altitude" placeholder="Obteniendo..." value="4380" required>
           </div>
         </div>
+
+        <div class="form-group">
+          <label class="form-label">Detalle de Ubicación / Dirección</label>
+          <input type="text" class="form-input" id="crop-location" placeholder="Ej: Yanahuanca, Daniel Alcides Carrión, Pasco">
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Fecha de Siembra</label>
@@ -240,40 +301,264 @@ function showNewCropModal() {
             <label class="form-label">Estado Actual</label>
             <select class="form-select" id="crop-status">
               <option value="planificado">📝 Planificado</option>
-              <option value="sembrado">🌱 Sembrado</option>
+              <option value="sembrado" selected>🌱 Sembrado</option>
               <option value="crecimiento">🌿 En Crecimiento</option>
               <option value="floracion">🌸 Floración</option>
               <option value="maduracion">🟡 Maduración</option>
             </select>
           </div>
         </div>
+
         <div class="form-group">
           <label class="form-label">Notas (opcional)</label>
-          <textarea class="form-textarea" id="crop-notes" placeholder="Observaciones adicionales..."></textarea>
+          <textarea class="form-textarea" id="crop-notes" placeholder="Observaciones de suelo, manejo tradicional o características climáticas..."></textarea>
         </div>
-        <button type="submit" class="btn btn-primary btn-block btn-lg">🌾 Registrar Cultivo</button>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg" style="margin-top: 16px;">
+          🌾 Registrar Cultivo con Altitud
+        </button>
       </form>
     </div>
   `;
   document.body.appendChild(modal);
+
+  // Set today as default planting date
+  const today = new Date().toISOString().split('T')[0];
+  const dateInput = document.getElementById('crop-planting-date');
+  if (dateInput) dateInput.value = today;
+}
+
+function handleSelectExistingParcel(select) {
+  const opt = select.selectedOptions[0];
+  if (!opt || !opt.value) return;
+
+  const area = opt.getAttribute('data-area');
+  const alt = opt.getAttribute('data-alt');
+  const crop = opt.getAttribute('data-crop');
+  const name = opt.getAttribute('data-name');
+  const lat = opt.getAttribute('data-lat');
+  const lng = opt.getAttribute('data-lng');
+
+  if (area) document.getElementById('crop-area').value = area;
+  if (alt) {
+    document.getElementById('crop-altitude').value = alt;
+    document.getElementById('altitude-source-badge').textContent = 'De Parcela Registrada';
+  }
+  if (crop) document.getElementById('crop-type').value = crop;
+  if (name && !document.getElementById('crop-name').value) {
+    document.getElementById('crop-name').value = `Cultivo en ${name}`;
+  }
+  if (lat && lng) {
+    document.getElementById('crop-location').value = `Coord: ${parseFloat(lat).toFixed(4)}, ${parseFloat(lng).toFixed(4)} (Pasco)`;
+  }
+  showToast(`Datos vinculados de "${name}". Altitud: ${alt} msnm`, 'success');
+}
+
+function toggleCropModalMap() {
+  const container = document.getElementById('crop-map-container');
+  const btnText = document.getElementById('btn-toggle-crop-map-text');
+  if (!container) return;
+
+  const isHidden = container.style.display === 'none';
+  if (isHidden) {
+    container.style.display = 'block';
+    if (btnText) btnText.textContent = 'Ocultar Mapa';
+    initCropModalMap();
+  } else {
+    container.style.display = 'none';
+    if (btnText) btnText.textContent = 'Abrir Mapa';
+  }
+}
+
+function initCropModalMap() {
+  if (cropModalMap) {
+    setTimeout(() => cropModalMap.invalidateSize(), 200);
+    return;
+  }
+
+  const mapEl = document.getElementById('crop-modal-map');
+  if (!mapEl) return;
+
+  // Centro por defecto: Cerro de Pasco (o ubicación detectada previamente)
+  const startLat = window._farmerDetectedLocation?.lat || MapsConfig.DEFAULT_CENTER.lat;
+  const startLng = window._farmerDetectedLocation?.lng || MapsConfig.DEFAULT_CENTER.lng;
+  const startZoom = window._farmerDetectedLocation ? 15 : 13;
+
+  cropModalMap = L.map('crop-modal-map', {
+    center: [startLat, startLng],
+    zoom: startZoom
+  });
+
+  L.tileLayer(MapsConfig.ESRI_SAT_URL, {
+    attribution: MapsConfig.ESRI_SAT_ATTRIBUTION,
+    maxZoom: 18
+  }).addTo(cropModalMap);
+
+  // Drawn items group
+  const drawnItems = new L.FeatureGroup().addTo(cropModalMap);
+
+  // Si tenemos ubicación previa, agregar marcador de referencia
+  if (window._farmerDetectedLocation) {
+    const loc = window._farmerDetectedLocation;
+    L.marker([loc.lat, loc.lng], {
+      icon: L.divIcon({
+        html: `<div class="geo-pulse-marker"><div class="geo-pulse-dot"></div><div class="geo-pulse-ring"></div></div>`,
+        className: 'geo-pulse-container',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      }),
+      zIndexOffset: 999
+    }).addTo(cropModalMap).bindTooltip('📍 Tu ubicación', { permanent: false });
+  }
+
+  // Auto-geolocalización si no tenemos ubicación previa
+  if (!window._farmerDetectedLocation && navigator.geolocation) {
+    const statusEl = document.getElementById('crop-map-status');
+    if (statusEl) statusEl.textContent = '📡 Detectando ubicación...';
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        cropModalMap.setView([lat, lng], 15, { animate: true });
+
+        L.marker([lat, lng], {
+          icon: L.divIcon({
+            html: `<div class="geo-pulse-marker"><div class="geo-pulse-dot"></div><div class="geo-pulse-ring"></div></div>`,
+            className: 'geo-pulse-container',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          })
+        }).addTo(cropModalMap).bindTooltip('📍 Tu ubicación', { permanent: false });
+
+        if (statusEl) statusEl.textContent = `✅ Ubicación detectada`;
+        await applyCropElevation(lat, lng);
+
+        window._farmerDetectedLocation = { lat, lng, accuracy: position.coords.accuracy };
+      },
+      (err) => {
+        if (statusEl) statusEl.textContent = 'Listo (ubicación manual)';
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  // Habilitar dibujo con Leaflet.Draw si existe
+  if (typeof L.Control.Draw !== 'undefined') {
+    const drawControl = new L.Control.Draw({
+      position: 'topleft',
+      draw: {
+        polyline: false,
+        circle: false,
+        circlemarker: false,
+        rectangle: true,
+        marker: true,
+        polygon: {
+          allowIntersection: false,
+          showArea: true,
+          shapeOptions: { color: '#22c55e', weight: 3, fillOpacity: 0.3 }
+        }
+      },
+      edit: { featureGroup: drawnItems, remove: true }
+    });
+    cropModalMap.addControl(drawControl);
+
+    cropModalMap.on(L.Draw.Event.CREATED, async (e) => {
+      drawnItems.clearLayers();
+      const layer = e.layer;
+      drawnItems.addLayer(layer);
+
+      const statusEl = document.getElementById('crop-map-status');
+      if (statusEl) statusEl.textContent = '⏳ Obteniendo altitud satelital...';
+
+      let centerLat, centerLng, areaHa = 0;
+
+      if (layer.getLatLngs) {
+        // Polígono o rectángulo
+        const latlngs = layer.getLatLngs()[0];
+        centerLat = latlngs.reduce((s, ll) => s + ll.lat, 0) / latlngs.length;
+        centerLng = latlngs.reduce((s, ll) => s + ll.lng, 0) / latlngs.length;
+        const areaM2 = L.GeometryUtil ? L.GeometryUtil.geodesicArea(latlngs) : 0;
+        areaHa = parseFloat((areaM2 / 10000).toFixed(2));
+        if (areaHa > 0) document.getElementById('crop-area').value = areaHa;
+      } else if (layer.getLatLng) {
+        // Marcador
+        const ll = layer.getLatLng();
+        centerLat = ll.lat;
+        centerLng = ll.lng;
+      }
+
+      await applyCropElevation(centerLat, centerLng);
+    });
+  }
+
+  // Click simple en mapa como fallback para marcar punto y obtener altitud
+  cropModalMap.on('click', async (e) => {
+    drawnItems.clearLayers();
+    const marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(drawnItems);
+    await applyCropElevation(e.latlng.lat, e.latlng.lng);
+  });
+
+  setTimeout(() => cropModalMap.invalidateSize(), 300);
+}
+
+async function applyCropElevation(lat, lng) {
+  const altField = document.getElementById('crop-altitude');
+  const statusEl = document.getElementById('crop-map-status');
+  const badge = document.getElementById('altitude-source-badge');
+
+  if (altField) {
+    altField.value = '';
+    altField.placeholder = '⏳ Calculando altitud...';
+  }
+  if (statusEl) statusEl.textContent = `📍 [${lat.toFixed(4)}, ${lng.toFixed(4)}] Obteniendo altitud...`;
+
+  try {
+    const elevation = await AgroMap.getElevation(lat, lng);
+    const finalAlt = elevation != null ? elevation : 4380;
+    if (altField) altField.value = finalAlt;
+    if (badge) badge.textContent = `✅ Calculado: ${finalAlt} msnm`;
+    if (statusEl) statusEl.textContent = `✅ Altitud detectada: ${finalAlt} msnm`;
+
+    // Intentar geocodificación inversa
+    try {
+      const geo = await GeocodingService.reverseGeocode(lat, lng);
+      if (geo.success && geo.address) {
+        document.getElementById('crop-location').value = geo.address;
+      } else {
+        document.getElementById('crop-location').value = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (Pasco)`;
+      }
+    } catch (e) {
+      document.getElementById('crop-location').value = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)} (Pasco)`;
+    }
+
+    showToast(`Altitud calculada automáticamente: ${finalAlt} msnm`, 'success');
+  } catch (err) {
+    if (altField) altField.value = 4380;
+    if (statusEl) statusEl.textContent = 'Altitud estándar: 4380 msnm';
+  }
 }
 
 async function handleCreateCrop(e) {
   e.preventDefault();
+  const altValue = parseInt(document.getElementById('crop-altitude').value) || 4380;
+
   const result = await api.createCrop({
     name: document.getElementById('crop-name').value,
     crop_type: document.getElementById('crop-type').value,
     variety: document.getElementById('crop-variety').value,
     area_hectares: parseFloat(document.getElementById('crop-area').value) || 0,
-    altitude_masl: parseInt(document.getElementById('crop-altitude').value) || 4380,
+    altitude_masl: altValue,
+    location_detail: document.getElementById('crop-location').value || null,
     planting_date: document.getElementById('crop-planting-date').value || null,
     status: document.getElementById('crop-status').value,
     notes: document.getElementById('crop-notes').value
   });
 
   if (result.success) {
+    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
     document.getElementById('crop-modal')?.remove();
-    showToast('¡Cultivo registrado exitosamente!', 'success');
+    showToast(`¡Cultivo registrado exitosamente con ${altValue} msnm!`, 'success');
     window.location.hash = '#/crops';
     navigateTo('/crops');
   } else {

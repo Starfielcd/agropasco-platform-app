@@ -9,7 +9,7 @@ async function getProducts(req, res) {
   try {
     const { quality, crop_type, available, search } = req.query;
 
-    let sql = `SELECT p.*, u.name as farmer_name, u.location as farmer_location,
+    let sql = `SELECT p.*, u.name as farmer_name, u.location as farmer_location, u.phone as farmer_phone,
                       val.name as validator_name
                FROM products p
                LEFT JOIN users u ON p.farmer_id = u.id
@@ -17,9 +17,12 @@ async function getProducts(req, res) {
                WHERE 1=1`;
     const params = [];
 
-    // Supermercado solo ve productos aprobados
-    if (req.user && req.user.role === 'supermarket') {
+    // Supermercado o público externo solo ve productos aprobados
+    if (!req.user || req.user.role === 'supermarket') {
       sql += " AND p.validation_status = 'approved'";
+    } else if (req.user.role === 'farmer') {
+      sql += " AND (p.validation_status = 'approved' OR p.farmer_id = ?)";
+      params.push(req.user.id);
     }
 
     if (quality) { sql += ' AND p.quality = ?'; params.push(quality); }
@@ -47,7 +50,7 @@ async function getProducts(req, res) {
 async function getProduct(req, res) {
   try {
     const product = await dbGet(
-      `SELECT p.*, u.name as farmer_name, u.location as farmer_location,
+      `SELECT p.*, u.name as farmer_name, u.location as farmer_location, u.phone as farmer_phone,
               val.name as validator_name
        FROM products p
        LEFT JOIN users u ON p.farmer_id = u.id
@@ -270,7 +273,7 @@ async function validateProduct(req, res) {
 async function getPendingProducts(req, res) {
   try {
     const products = await dbAll(
-      `SELECT p.*, u.name as farmer_name, u.location as farmer_location
+      `SELECT p.*, u.name as farmer_name, u.location as farmer_location, u.phone as farmer_phone
        FROM products p
        LEFT JOIN users u ON p.farmer_id = u.id
        WHERE p.validation_status = 'pending'

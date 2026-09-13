@@ -151,6 +151,10 @@ function renderCropCard(crop) {
           <div class="crop-card-stat-label">Área</div>
         </div>
         <div class="crop-card-stat">
+          <div class="crop-card-stat-value">${crop.altitude_masl || 4380} m</div>
+          <div class="crop-card-stat-label">Altitud</div>
+        </div>
+        <div class="crop-card-stat">
           <div class="crop-card-stat-value">${crop.total_logs || 0}</div>
           <div class="crop-card-stat-label">Registros</div>
         </div>

@@ -4,6 +4,8 @@
  */
 
 let advisorMap = null;
+let advisorParcelsData = [];
+let highlightedParcelLayer = null;
 
 async function renderAdvisorParcelsPage() {
   const [parcelsRes, markersRes] = await Promise.all([
@@ -12,40 +14,42 @@ async function renderAdvisorParcelsPage() {
   ]);
 
   const parcels = parcelsRes.data || [];
+  advisorParcelsData = parcels;
   const markers = markersRes.data || [];
   const unresolvedMarkers = markers.filter(m => !m.resolved);
 
-  // Agrupar parcelas por provincia
-  const provinceGroups = {};
+  // Clasificar parcelas en las 3 provincias oficiales de Pasco
+  const provinceGroups = {
+    'Provincia Daniel Alcides Carrión': [],
+    'Provincia de Pasco': [],
+    'Provincia de Oxapampa': []
+  };
+
   parcels.forEach(p => {
-    const location = p.farmer_location || p.notes || 'Región Pasco';
-    // Extraer provincia del formato "Distrito, Provincia" o "Distrito, Pasco"
-    let province = 'Otros';
-    const parts = location.split(',').map(s => s.trim());
-    if (parts.length >= 2) {
-      const prov = parts[parts.length - 1];
-      if (prov.includes('Pasco') || prov.includes('pasco')) province = 'Provincia de Pasco';
-      else if (prov.includes('Oxapampa') || prov.includes('oxapampa')) province = 'Provincia de Oxapampa';
-      else province = prov;
-    } else if (location.toLowerCase().includes('oxapampa') || location.toLowerCase().includes('villa rica')) {
-      province = 'Provincia de Oxapampa';
-    } else if (location.toLowerCase().includes('yanahuanca') || location.toLowerCase().includes('chacayán') || location.toLowerCase().includes('tusi')) {
-      province = 'Provincia Daniel A. Carrión';
+    const loc = ((p.farmer_location || '') + ' ' + (p.name || '') + ' ' + (p.notes || '')).toLowerCase();
+
+    if (loc.includes('yanahuanca') || loc.includes('chacayan') || loc.includes('chacayán') ||
+        loc.includes('tapuc') || loc.includes('paucar') || loc.includes('vilcabamba') ||
+        loc.includes('tusi') || loc.includes('goyllarisquizga') || loc.includes('carrión') || loc.includes('carrion')) {
+      provinceGroups['Provincia Daniel Alcides Carrión'].push(p);
+    } else if (loc.includes('oxapampa') || loc.includes('villa rica') || loc.includes('chontabamba') ||
+               loc.includes('huancabamba') || loc.includes('pozuzo') || loc.includes('bermudez') ||
+               loc.includes('bermúdez') || loc.includes('constitucion') || loc.includes('constitución') || loc.includes('palcazu')) {
+      provinceGroups['Provincia de Oxapampa'].push(p);
     } else {
-      province = 'Provincia de Pasco';
+      // Provincia de Pasco (Cerro de Pasco, Chaupimarca, Yanacancha, Tinyahuarco, Ninacaca, Huayllay, Vicco, Paucartambo...)
+      provinceGroups['Provincia de Pasco'].push(p);
     }
-    if (!provinceGroups[province]) provinceGroups[province] = [];
-    provinceGroups[province].push(p);
   });
 
   return `
     <div class="page-content">
       <div class="flex items-center justify-between mb-lg">
         <div>
-          <h3 style="font-size: 18px; font-weight: 700;">🗺️ Parcelas de la Región Pasco</h3>
-          <p class="text-sm text-muted">${parcels.length} parcelas registradas · ${unresolvedMarkers.length} alertas de plagas activas</p>
+          <h3 style="font-size: 20px; font-weight: 800;">🗺️ Parcelas en la Región Pasco</h3>
+          <p class="text-sm text-muted">Monitoreo territorial agrupado por provincias: Daniel A. Carrión, Pasco y Oxapampa.</p>
         </div>
-        <button class="btn btn-primary" onclick="showPestMarkerModal()">🐛 Reportar Plaga</button>
+        <button class="btn btn-primary" onclick="showPestMarkerModal()">🐛 + Reportar Plaga</button>
       </div>
 
       <!-- Stats -->
@@ -53,67 +57,107 @@ async function renderAdvisorParcelsPage() {
         <div class="stat-card" style="--stat-color: var(--green-500)">
           <div class="stat-card-icon">🗺️</div>
           <div class="stat-card-value">${parcels.length}</div>
-          <div class="stat-card-label">Parcelas en la Región</div>
+          <div class="stat-card-label">Parcelas Registradas</div>
         </div>
         <div class="stat-card" style="--stat-color: var(--red-500)">
           <div class="stat-card-icon">🐛</div>
           <div class="stat-card-value">${unresolvedMarkers.length}</div>
-          <div class="stat-card-label">Plagas No Resueltas</div>
+          <div class="stat-card-label">Alertas de Plagas Activas</div>
         </div>
         <div class="stat-card" style="--stat-color: var(--blue-500)">
-          <div class="stat-card-icon">📋</div>
-          <div class="stat-card-value">${markers.length}</div>
-          <div class="stat-card-label">Reportes Totales</div>
+          <div class="stat-card-icon">🏔️</div>
+          <div class="stat-card-value">${Object.values(provinceGroups).filter(list => list.length > 0).length} / 3</div>
+          <div class="stat-card-label">Provincias con Cultivos</div>
         </div>
       </div>
 
-      <!-- Mapa -->
-      <div class="card mb-lg" style="padding: 0; overflow: hidden;">
-        <div id="advisor-map" class="map-container" style="height: 500px; width: 100%;"></div>
+      <!-- Ficha Técnica Flotante de Parcela Seleccionada -->
+      <div id="selected-parcel-detail" class="card mb-lg" style="display: none; border-left: 5px solid #22c55e; background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.95));">
+        <!-- Contenido inyectado dinámicamente al hacer clic en una parcela -->
       </div>
 
-      <!-- Parcelas por Provincia -->
+      <!-- Mapa Satelital de la Región -->
+      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1.5px solid var(--border);">
+        <div style="padding: 12px 18px; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border);">
+          <strong style="color: #ffffff; font-size: 14px;">🛰️ Vista Satelital de Polígonos de Parcelas</strong>
+          <span class="badge badge-green">3 Provincias de Pasco</span>
+        </div>
+        <div id="advisor-map" class="map-container" style="height: 480px; width: 100%;"></div>
+      </div>
+
+      <!-- PARCELAS AGRUPADAS POR PROVINCIA -->
       <div class="card mb-lg">
         <div class="card-header">
-          <div class="card-title"><span class="card-title-icon">📍</span> Parcelas por Provincia</div>
-        </div>
-        ${Object.keys(provinceGroups).length > 0 ? `
-          ${Object.entries(provinceGroups).map(([province, pList]) => `
-            <div style="margin-bottom: 12px;">
-              <button class="btn btn-secondary btn-block" style="text-align: left; font-weight: 700; font-size: 14px; padding: 12px 16px; margin-bottom: 8px;"
-                onclick="toggleProvinceAccordion(this)">
-                📍 ${province} (${pList.length} parcelas) <span style="float: right;">▼</span>
-              </button>
-              <div class="province-parcels" style="display: none; padding-left: 12px;">
-                ${pList.map(p => `
-                  <div class="alert-card info" style="margin-bottom: 8px; cursor: pointer;" onclick="focusParcelOnMap(${p.center_lat || 'null'}, ${p.center_lng || 'null'}, '${p.geo_json ? p.geo_json.replace(/'/g, "\\'").substring(0, 0) : ''}', ${p.id})">
-                    <span class="alert-icon">🗺️</span>
-                    <div class="alert-content" style="flex: 1;">
-                      <div class="alert-title">${p.name}</div>
-                      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
-                        <span class="badge badge-green">${p.crop_type ? '🌱 ' + p.crop_type : '📍 Sin cultivo'}</span>
-                        <span class="badge badge-blue">📐 ${p.area_hectares || 0} ha</span>
-                        <span class="badge badge-purple">🏔️ ${p.altitude_masl || '—'} msnm</span>
-                        ${p.farmer_name ? `<span class="badge badge-amber">👨‍🌾 ${p.farmer_name}</span>` : ''}
-                      </div>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `).join('')}
-        ` : `
-          <div class="empty-state" style="padding: 24px;">
-            <div class="empty-state-icon">🗺️</div>
-            <div class="empty-state-title">Sin parcelas registradas</div>
+          <div class="card-title">
+            <span class="card-title-icon">📍</span>
+            <span>Parcelas por Provincia (${parcels.length} registradas)</span>
           </div>
-        `}
+          <span class="text-sm text-muted">Selecciona una provincia para desplegar sus parcelas</span>
+        </div>
+
+        <div style="display: grid; gap: 14px;">
+          ${Object.entries(provinceGroups).map(([province, pList], idx) => {
+            const icons = {
+              'Provincia Daniel Alcides Carrión': '🏔️',
+              'Provincia de Pasco': '⛏️',
+              'Provincia de Oxapampa': '☕'
+            };
+            const openDefault = idx === 0 || pList.length > 0;
+
+            return `
+              <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+                <button class="btn btn-secondary btn-block" style="text-align: left; font-weight: 700; font-size: 15px; padding: 14px 18px; border-radius: 0; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04);"
+                  onclick="toggleProvinceAccordion(this)">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">${icons[province] || '📍'}</span>
+                    <span>${province}</span>
+                    <span class="badge badge-${pList.length > 0 ? 'green' : 'blue'}" style="font-size: 11px;">
+                      ${pList.length} parcelas
+                    </span>
+                  </div>
+                  <span style="font-size: 14px; color: var(--text-muted);">${openDefault ? '▲' : '▼'}</span>
+                </button>
+
+                <div class="province-parcels" style="display: ${openDefault ? 'block' : 'none'}; padding: 14px; background: rgba(0,0,0,0.2);">
+                  ${pList.length > 0 ? `
+                    <div class="grid-3" style="gap: 12px;">
+                      ${pList.map(p => `
+                        <div class="alert-card info" style="margin-bottom: 0; cursor: pointer; transition: all 0.2s;"
+                             onclick="inspectParcelOnMap(${p.id})">
+                          <span class="alert-icon">🗺️</span>
+                          <div class="alert-content" style="flex: 1;">
+                            <div class="alert-title" style="font-size: 15px; font-weight: 700; color: #ffffff;">
+                              ${p.name}
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12.5px;">
+                              <div>🌱 <strong>Producto:</strong> <span style="color: #4ade80;">${p.crop_type || 'Sin cultivo'}</span></div>
+                              <div>🏔️ <strong>Altitud:</strong> <span style="color: #38bdf8;">${p.altitude_masl || 4380} msnm</span></div>
+                              <div>👨‍🌾 <strong>Dueño:</strong> <span>${p.farmer_name || 'Agricultor'}</span></div>
+                              <div>📐 <strong>Área:</strong> <span>${p.area_hectares || 0} ha</span></div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" style="margin-top: 10px; width: 100%;" onclick="event.stopPropagation(); inspectParcelOnMap(${p.id})">
+                              🔍 Ver Polígono en Mapa
+                            </button>
+                          </div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : `
+                    <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                      No hay parcelas registradas actualmente en esta provincia.
+                    </div>
+                  `}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
       </div>
 
-      <!-- Marcadores de Plagas -->
+      <!-- Marcadores de Plagas Georreferenciados -->
       <div class="card mb-lg">
         <div class="card-header">
-          <div class="card-title"><span class="card-title-icon">🐛</span> Reportes de Plagas</div>
+          <div class="card-title"><span class="card-title-icon">🐛</span> Marcadores Georreferenciados de Plagas</div>
         </div>
         ${unresolvedMarkers.length > 0 ? `
           <div style="display: grid; gap: 12px;">
@@ -123,7 +167,7 @@ async function renderAdvisorParcelsPage() {
                 <div class="alert-content">
                   <div class="alert-title">${m.title} ${m.parcel_name ? '— ' + m.parcel_name : ''}</div>
                   <div class="alert-message">${m.description || ''}</div>
-                  <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center;">
+                  <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap;">
                     <span class="badge badge-${m.severity === 'critico' ? 'red' : m.severity === 'grave' ? 'amber' : 'blue'}">${m.severity}</span>
                     <span class="text-sm text-muted">📍 ${m.lat.toFixed(4)}, ${m.lng.toFixed(4)}</span>
                     <span class="text-sm text-muted">👤 ${m.advisor_name || 'Asesor'}</span>
@@ -136,8 +180,8 @@ async function renderAdvisorParcelsPage() {
         ` : `
           <div class="empty-state" style="padding: 24px;">
             <div class="empty-state-icon">✅</div>
-            <div class="empty-state-title">Sin plagas reportadas</div>
-            <div class="empty-state-text">Todas las parcelas están en buen estado.</div>
+            <div class="empty-state-title">Sin plagas activas en el mapa</div>
+            <div class="empty-state-text">Todas las zonas se encuentran libres de focos críticos.</div>
           </div>
         `}
       </div>
@@ -150,69 +194,118 @@ function toggleProvinceAccordion(btn) {
   if (content) {
     const isHidden = content.style.display === 'none';
     content.style.display = isHidden ? 'block' : 'none';
-    const arrow = btn.querySelector('span[style*="float"]');
+    const arrow = btn.querySelector('span:last-child');
     if (arrow) arrow.textContent = isHidden ? '▲' : '▼';
   }
 }
 
-function focusParcelOnMap(lat, lng, geoJsonStr, parcelId) {
-  if (advisorMap && lat && lng) {
-    advisorMap.setCenter(lat, lng, 16);
-    const mapEl = document.getElementById('advisor-map');
-    if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
-  }
-}
+// Al hacer clic en una parcela: mostrar el gráfico dibujado con datos: producto sembrado, altitud, agricultor dueño, área y ubicación
+async function inspectParcelOnMap(parcelId) {
+  const parcel = advisorParcelsData.find(p => p.id === parcelId);
+  if (!parcel) return;
 
-async function renderAdvisorRecommendationsPage() {
-  const [recsRes, farmersRes] = await Promise.all([
-    api.getRecommendations(),
-    api.getAdvisorFarmers()
-  ]);
+  const mapEl = document.getElementById('advisor-map');
+  const detailEl = document.getElementById('selected-parcel-detail');
 
-  const recs = recsRes.data || [];
-  const farmers = farmersRes.data || [];
-
-  return `
-    <div class="page-content">
-      <div class="flex items-center justify-between mb-lg">
-        <div>
-          <h3 style="font-size: 18px; font-weight: 700;">📋 Recomendaciones Técnicas</h3>
-          <p class="text-sm text-muted">${recs.length} recomendaciones emitidas</p>
+  // Mostrar Ficha Técnica de la Parcela con los 5 campos requeridos
+  if (detailEl) {
+    detailEl.style.display = 'block';
+    detailEl.innerHTML = `
+      <div class="flex items-center justify-between mb-sm">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 24px;">🗺️</span>
+          <div>
+            <h4 style="font-size: 17px; font-weight: 700; color: #ffffff; margin: 0;">${parcel.name}</h4>
+            <span class="text-sm text-muted">Ficha Técnica Georreferenciada</span>
+          </div>
         </div>
-        <button class="btn btn-primary" onclick="showRecommendationModal()">+ Nueva Recomendación</button>
+        <button class="modal-close" onclick="document.getElementById('selected-parcel-detail').style.display='none'">✕</button>
       </div>
 
-      ${recs.length > 0 ? `
-        <div style="display: grid; gap: 12px;">
-          ${recs.map(r => `
-            <div class="card" style="border-left: 4px solid ${{urgente:'var(--red-500)', alta:'var(--amber-500)', normal:'var(--blue-500)', baja:'var(--text-muted)'}[r.priority] || 'var(--blue-500)'};">
-              <div class="flex items-center justify-between mb-sm">
-                <div style="font-weight: 600;">${r.title}</div>
-                <div style="display: flex; gap: 6px;">
-                  <span class="badge badge-${r.priority === 'urgente' ? 'red' : r.priority === 'alta' ? 'amber' : 'blue'}">${r.priority}</span>
-                  <span class="badge badge-${r.status === 'aplicada' ? 'green' : r.status === 'leida' ? 'blue' : 'amber'}">${r.status}</span>
-                </div>
-              </div>
-              <div class="text-sm text-muted mb-sm">${r.recommendation}</div>
-              <div class="text-sm text-muted">
-                📂 ${r.category} · 👨‍🌾 ${r.farmer_name || 'General'} · ${r.parcel_name ? '🗺️ ' + r.parcel_name + ' · ' : ''}📅 ${new Date(r.created_at).toLocaleDateString('es-PE')}
-              </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 14px;">
+        <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; border-left: 3px solid #22c55e;">
+          <div class="text-sm text-muted">🌾 Producto Sembrado</div>
+          <div style="font-size: 15px; font-weight: 700; color: #4ade80; margin-top: 2px;">
+            ${parcel.crop_type ? '🌱 ' + parcel.crop_type.toUpperCase() : 'Sin cultivo asignado'}
+          </div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; border-left: 3px solid #38bdf8;">
+          <div class="text-sm text-muted">🏔️ Altitud</div>
+          <div style="font-size: 15px; font-weight: 700; color: #38bdf8; margin-top: 2px;">
+            ${parcel.altitude_masl || 4380} msnm
+          </div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; border-left: 3px solid #60a5fa;">
+          <div class="text-sm text-muted">👨‍🌾 Agricultor Dueño</div>
+          <div style="font-size: 15px; font-weight: 700; color: #ffffff; margin-top: 2px;">
+            ${parcel.farmer_name || 'Agricultor de Pasco'}
+          </div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+          <div class="text-sm text-muted">📐 Área Calculada</div>
+          <div style="font-size: 15px; font-weight: 700; color: #fbbf24; margin-top: 2px;">
+            ${parcel.area_hectares || 0} hectáreas
+          </div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; border-left: 3px solid #a855f7; grid-column: span 2;">
+          <div class="text-sm text-muted">📍 Ubicación Geográfica</div>
+          <div style="font-size: 14px; font-weight: 600; color: #f1f5f9; margin-top: 2px;">
+            ${parcel.farmer_location || parcel.notes || 'Región Pasco'} ${parcel.center_lat ? `(${parcel.center_lat.toFixed(4)}, ${parcel.center_lng.toFixed(4)})` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    detailEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Foco en el mapa
+  if (advisorMap) {
+    if (highlightedParcelLayer) {
+      advisorMap.map.removeLayer(highlightedParcelLayer);
+      highlightedParcelLayer = null;
+    }
+
+    if (parcel.geo_json) {
+      try {
+        const geo = JSON.parse(parcel.geo_json);
+        const coords = geo.geometry?.coordinates?.[0]?.map(c => [c[1], c[0]]) || [];
+        if (coords.length > 0) {
+          highlightedParcelLayer = L.polygon(coords, {
+            color: '#fbbf24',
+            weight: 5,
+            fillColor: '#22c55e',
+            fillOpacity: 0.45
+          }).addTo(advisorMap.map);
+
+          highlightedParcelLayer.bindPopup(`
+            <div style="font-family: Inter, sans-serif; min-width: 220px;">
+              <strong style="font-size: 15px; color: #22c55e;">${parcel.name}</strong><br>
+              🌱 <strong>Producto:</strong> ${parcel.crop_type || 'Sin cultivo'}<br>
+              🏔️ <strong>Altitud:</strong> ${parcel.altitude_masl || 4380} msnm<br>
+              👨‍🌾 <strong>Dueño:</strong> ${parcel.farmer_name || 'Agricultor'}<br>
+              📐 <strong>Área:</strong> ${parcel.area_hectares} ha<br>
+              📍 <strong>Ubicación:</strong> ${parcel.farmer_location || 'Pasco'}
             </div>
-          `).join('')}
-        </div>
-      ` : `
-        <div class="empty-state">
-          <div class="empty-state-icon">📋</div>
-          <div class="empty-state-title">Sin recomendaciones</div>
-          <div class="empty-state-text">Emite tu primera recomendación técnica para los agricultores.</div>
-        </div>
-      `}
-    </div>
-  `;
+          `).openPopup();
+
+          advisorMap.map.fitBounds(highlightedParcelLayer.getBounds(), { padding: [40, 40] });
+        }
+      } catch (e) {
+        console.warn('Error al enfocar polígono:', e);
+      }
+    } else if (parcel.center_lat && parcel.center_lng) {
+      advisorMap.setCenter(parcel.center_lat, parcel.center_lng, 16);
+    }
+  }
+
+  showToast(`Parcela "${parcel.name}" enfocada en el mapa satelital`, 'success');
 }
 
-// ===== INICIALIZAR MAPA DEL ASESOR =====
-
+// Inicializar Mapa del Asesor
 function initAdvisorMap() {
   if (advisorMap) { advisorMap.destroy(); advisorMap = null; }
   const container = document.getElementById('advisor-map');
@@ -236,7 +329,7 @@ async function loadAdvisorMapData() {
     api.getPestMarkers()
   ]);
 
-  // Dibujar parcelas
+  // Dibujar todas las parcelas en mapa
   (parcelsRes.data || []).forEach(p => {
     try {
       const geoJson = JSON.parse(p.geo_json);
@@ -247,11 +340,11 @@ async function loadAdvisorMapData() {
           popup: `
             <div style="font-family: Inter, sans-serif;">
               <strong>${p.name}</strong><br>
-              👨‍🌾 ${p.farmer_name || 'Agricultor'}<br>
-              ${p.crop_type ? '🌱 ' + p.crop_type + '<br>' : ''}
-              📐 ${p.area_hectares} ha<br>
-              🏔️ ${p.altitude_masl} msnm<br>
-              📍 ${p.farmer_location || ''}
+              👨‍🌾 <strong>Dueño:</strong> ${p.farmer_name || 'Agricultor'}<br>
+              🌱 <strong>Producto:</strong> ${p.crop_type || 'Sin cultivo'}<br>
+              📐 <strong>Área:</strong> ${p.area_hectares} ha<br>
+              🏔️ <strong>Altitud:</strong> ${p.altitude_masl || 4380} msnm<br>
+              📍 <strong>Ubicación:</strong> ${p.farmer_location || 'Pasco'}
             </div>
           `,
           tooltip: p.name
@@ -443,3 +536,78 @@ async function handleCreateRecommendation(e) {
     showToast(result.error || 'Error', 'error');
   }
 }
+
+async function renderAdvisorRecommendationsPage() {
+  const result = await api.getRecommendations();
+  const recs = result.data || [];
+
+  const categoryIcons = {
+    plagas: '🐛',
+    fertilizacion: '🌿',
+    riego: '💧',
+    cosecha: '🧺',
+    rotacion: '🔄',
+    general: '📋'
+  };
+
+  const priorityColors = {
+    baja: 'green',
+    normal: 'blue',
+    alta: 'amber',
+    urgente: 'red'
+  };
+
+  return `
+    <div class="page-content">
+      <div class="flex items-center justify-between mb-lg">
+        <div>
+          <h3 style="font-size: 20px; font-weight: 800;">📋 Recomendaciones Técnicas Emitidas (${recs.length})</h3>
+          <p class="text-sm text-muted">Directivas agronómicas y recomendaciones para agricultores de la Región Pasco.</p>
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="showRecommendationModal()">
+          + Nueva Recomendación Técnica
+        </button>
+      </div>
+
+      ${recs.length > 0 ? `
+        <div style="display: grid; gap: 14px;">
+          ${recs.map(r => `
+            <div class="card" style="border-left: 4px solid var(--${priorityColors[r.priority] || 'blue'}-500);">
+              <div class="flex items-center justify-between mb-sm" style="flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                  <span>${categoryIcons[r.category] || '📋'}</span>
+                  <span>${r.title}</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <span class="badge badge-${priorityColors[r.priority] || 'blue'}" style="text-transform: capitalize;">
+                    ${r.priority}
+                  </span>
+                  <span class="badge badge-purple" style="text-transform: capitalize;">
+                    ${r.category}
+                  </span>
+                </div>
+              </div>
+
+              <div style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin: 8px 0;">
+                ${r.recommendation}
+              </div>
+
+              <div style="display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;">
+                <span>👤 Emitido por: <strong>${r.advisor_name || 'Asesor Técnico'}</strong></span>
+                ${r.created_at ? `<span>📅 Fecha: ${new Date(r.created_at).toLocaleDateString('es-PE')}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <div class="empty-state-title">No hay recomendaciones registradas</div>
+          <div class="empty-state-text">Emite recomendaciones fitosanitarias o agronómicas para los agricultores.</div>
+          <button class="btn btn-primary btn-lg" onclick="showRecommendationModal()">+ Nueva Recomendación Técnica</button>
+        </div>
+      `}
+    </div>
+  `;
+}
+
