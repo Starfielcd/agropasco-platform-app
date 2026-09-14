@@ -33,8 +33,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// ===== SERVIR FRONTEND (archivos estáticos) =====
+// ===== SERVIR FRONTEND Y ARCHIVOS ESTÁTICOS =====
 app.use(express.static(path.join(__dirname, '..')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ===== RUTAS API =====
 app.use('/api/auth', require('./routes/auth'));
@@ -47,6 +48,7 @@ app.use('/api/parcels', require('./routes/parcels'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/advisor', require('./routes/advisor'));
 app.use('/api/pest-reports', require('./routes/pestReports'));
+app.use('/api/upload', require('./routes/upload'));
 
 // ===== CONFIGURACIÓN DE MAPAS (público, para frontend) =====
 app.get('/api/config/maps', (req, res) => {

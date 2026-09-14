@@ -63,15 +63,21 @@ async function renderPestReportsPage() {
                 ${r.description || 'Sin descripción detallada.'}
               </div>
 
-              <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px;">
+              <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; align-items: center;">
                 ${r.parcel_name ? `<span>🗺️ <strong>Parcela:</strong> ${r.parcel_name}</span>` : ''}
                 ${r.altitude_masl ? `<span>🏔️ <strong>Altitud:</strong> ${r.altitude_masl} msnm</span>` : ''}
                 <span>📅 <strong>Fecha:</strong> ${new Date(r.created_at).toLocaleDateString('es-PE')}</span>
+                <span class="badge badge-${r.severity === 'critico' || r.severity === 'grave' ? 'red' : r.severity === 'moderado' ? 'amber' : 'green'}" style="font-size: 11px;">
+                  ${r.severity === 'critico' ? '🔴 Catástrofe / Crítico' : r.severity === 'grave' ? '🟠 Grave' : r.severity === 'moderado' ? '🟡 Moderado' : '🟢 Leve'}
+                </span>
               </div>
 
               ${r.photo_url ? `
-                <div style="margin: 10px 0;">
-                  <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 140px; border-radius: 6px; border: 1px solid var(--border); object-fit: cover;">
+                <div style="margin: 10px 0; max-width: 320px;">
+                  <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 180px; width: 100%; border-radius: 8px; border: 1.5px solid var(--border); object-fit: cover; cursor: pointer; display: block;"
+                       onclick="AgroMediaUploader.previewEnlarged('${r.photo_url}', 'Foto Plaga: ${r.pest_name.replace(/'/g, "\\'")}')"
+                       title="Clic para ampliar fotografía">
+                  <span class="text-xs text-muted" style="display: block; margin-top: 4px;">🔍 Clic en la foto para ver en tamaño completo</span>
                 </div>
               ` : ''}
 
@@ -184,18 +190,13 @@ async function showFarmerPestReportModal() {
           <textarea class="form-textarea" id="pr-description" rows="3" placeholder="Describe qué partes de la planta están dañadas (hojas, tallo, tubérculo), coloración, presencia de larvas o insectos..." required></textarea>
         </div>
 
-        <!-- Foto URL -->
+        <!-- Fotografía en Vivo (Cámara) o Subir Imagen -->
         <div class="form-group">
-          <label class="form-label">Fotografía de la Plaga (URL opcional)</label>
-          <input type="url" class="form-input" id="pr-photo" placeholder="https://ejemplo.com/foto-plaga.jpg">
-          <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 3px 8px;" onclick="document.getElementById('pr-photo').value='https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80'">
-              📷 Foto de muestra 1
-            </button>
-            <button type="button" class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 3px 8px;" onclick="document.getElementById('pr-photo').value='https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=800&q=80'">
-              📷 Foto de muestra 2
-            </button>
-          </div>
+          ${AgroMediaUploader.render({
+            id: 'pr-photo',
+            folder: 'pests',
+            label: 'Fotografía de la Plaga (Cámara en Vivo o Subir Imagen)'
+          })}
         </div>
 
         <button type="submit" class="btn btn-primary btn-block btn-lg" style="margin-top: 16px;">
@@ -227,12 +228,15 @@ async function handleCreatePestReport(e) {
   const parcelId = document.getElementById('pr-parcel').value;
   const latVal = parseFloat(document.getElementById('pr-lat').value) || null;
   const lngVal = parseFloat(document.getElementById('pr-lng').value) || null;
+  const photoUrl = document.getElementById('pr-photo-value')?.value || null;
+  const severityVal = document.getElementById('pr-severity')?.value || 'moderado';
 
   const result = await api.createPestReport({
     pest_name: document.getElementById('pr-pest-name').value,
+    severity: severityVal,
     parcel_id: parcelId ? parseInt(parcelId) : null,
     description: document.getElementById('pr-description').value,
-    photo_url: document.getElementById('pr-photo').value || null,
+    photo_url: photoUrl,
     location_lat: latVal,
     location_lng: lngVal
   });
@@ -391,10 +395,22 @@ function renderAdvisorReportCard(r, type) {
         </div>
 
         ${r.photo_url ? `
-          <div style="margin-bottom: 12px;">
-            <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 140px; border-radius: 6px; border: 1px solid var(--border); object-fit: cover;">
+          <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1.5px solid var(--border); max-width: 460px; background: #000;">
+            <div style="background: rgba(15,23,42,0.9); padding: 6px 12px; font-size: 12px; color: #4ade80; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+              <span>📸 Evidencia fotográfica enviada por el agricultor</span>
+              <button type="button" class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 2px 8px;"
+                      onclick="AgroMediaUploader.previewEnlarged('${r.photo_url}', 'Foto Plaga: ${r.pest_name.replace(/'/g, "\\'")}')">
+                🔍 Ver Completa
+              </button>
+            </div>
+            <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 220px; width: 100%; object-fit: contain; cursor: pointer; display: block;"
+                 onclick="AgroMediaUploader.previewEnlarged('${r.photo_url}', 'Foto Plaga: ${r.pest_name.replace(/'/g, "\\'")}')">
           </div>
-        ` : ''}
+        ` : `
+          <div style="margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+            📷 Sin fotografía adjunta en el reporte.
+          </div>
+        `}
 
         ${r.advisor_response ? `
           <div style="margin-bottom: 12px; padding: 12px; background: rgba(34,197,94,0.12); border-radius: 6px; border-left: 3px solid #22c55e;">
@@ -461,7 +477,16 @@ async function loadPestReportsOnMap() {
   reports.forEach(r => {
     let layer = null;
     const isPending = r.status === 'pendiente' || r.status === 'en_revision';
-    const color = isPending ? '#ef4444' : '#22c55e';
+    
+    // Semáforo según nivel de daño / severidad
+    let color = '#22c55e'; // 🟢 Leve por defecto
+    if (r.severity === 'critico' || r.severity === 'grave') {
+      color = '#ef4444'; // 🔴 Grave / Catástrofe
+    } else if (r.severity === 'moderado') {
+      color = '#eab308'; // 🟡 Moderado
+    } else if (isPending) {
+      color = '#ef4444';
+    }
 
     if (r.geo_json) {
       try {
@@ -472,7 +497,7 @@ async function loadPestReportsOnMap() {
             color: color,
             weight: isPending ? 3 : 2,
             fillColor: color,
-            fillOpacity: isPending ? 0.35 : 0.2
+            fillOpacity: isPending ? 0.4 : 0.2
           });
           bounds.push(...coords);
         }
@@ -482,7 +507,7 @@ async function loadPestReportsOnMap() {
     if (!layer && r.location_lat && r.location_lng) {
       layer = L.marker([r.location_lat, r.location_lng], {
         icon: L.divIcon({
-          html: `<div style="font-size: 26px; filter: drop-shadow(0 0 6px ${color});">🐛</div>`,
+          html: `<div style="font-size: 26px; filter: drop-shadow(0 0 8px ${color});">🐛</div>`,
           className: 'custom-marker-container',
           iconSize: [32, 32],
           iconAnchor: [16, 32]
@@ -493,15 +518,26 @@ async function loadPestReportsOnMap() {
 
     if (layer) {
       layer.bindPopup(`
-        <div style="font-family: Inter, sans-serif; min-width: 200px;">
+        <div style="font-family: Inter, sans-serif; min-width: 220px;">
           <strong style="font-size: 14px; color: ${color};">🐛 ${r.pest_name}</strong><br>
-          <div style="font-size: 12px; margin: 4px 0;">
+          <div style="margin: 4px 0;">
+            <span class="badge badge-${r.severity === 'critico' || r.severity === 'grave' ? 'red' : r.severity === 'moderado' ? 'amber' : 'green'}" style="font-size: 11px;">
+              ${r.severity === 'critico' ? '🔴 Catástrofe' : r.severity === 'grave' ? '🟠 Grave' : r.severity === 'moderado' ? '🟡 Moderado' : '🟢 Leve'}
+            </span>
+          </div>
+          <div style="font-size: 12px; margin: 6px 0;">
             👨‍🌾 <strong>${r.farmer_name || 'Agricultor'}</strong><br>
             🗺️ Parcela: <strong>${r.parcel_name || 'Sin nombre'}</strong><br>
             🌱 Cultivo: <strong>${r.parcel_crop || 'No especificado'}</strong><br>
             🏔️ Altitud: <strong>${r.altitude_masl || 4380} msnm</strong><br>
             <em>Estado: ${isPending ? '🔴 No Resuelta' : '✅ Completa'}</em>
           </div>
+          ${r.photo_url ? `
+            <div style="margin: 8px 0; text-align: center;">
+              <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 100px; max-width: 100%; border-radius: 4px; object-fit: cover; cursor: pointer;"
+                   onclick="AgroMediaUploader.previewEnlarged('${r.photo_url}', 'Foto Plaga: ${r.pest_name.replace(/'/g, "\\'")}')">
+            </div>
+          ` : ''}
           ${isPending ? `
             <button class="btn btn-sm btn-primary btn-block" style="margin-top: 6px;" onclick="showRespondModal(${r.id}, '${r.pest_name.replace(/'/g, "\\'")}', '')">
               📋 Responder Plaga

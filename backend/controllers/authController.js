@@ -65,6 +65,13 @@ async function login(req, res) {
       return res.status(401).json({ success: false, error: 'Credenciales incorrectas.' });
     }
 
+    if (user.is_blocked || user.status === 'blocked') {
+      return res.status(403).json({
+        success: false,
+        error: 'Tu cuenta ha sido bloqueada temporalmente por el Administrador de AgroPasco. Contacta a Soporte Técnico.'
+      });
+    }
+
     const token = generateToken(user);
 
     res.json({

@@ -138,9 +138,20 @@ const api = {
   // Admin
   getAdminUsers: (params = '') => apiRequest(`/admin/users${params ? '?' + params : ''}`),
   updateUserRole: (id, data) => apiRequest(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify(data) }),
+  toggleUserStatus: (id, data) => apiRequest(`/admin/users/${id}/status`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetUserPassword: (id, data = {}) => apiRequest(`/admin/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(data) }),
+  getDuplicates: () => apiRequest('/admin/duplicates'),
   deleteUser: (id) => apiRequest(`/admin/users/${id}`, { method: 'DELETE' }),
   getAuditLog: (params = '') => apiRequest(`/admin/audit${params ? '?' + params : ''}`),
   getAdminStats: () => apiRequest('/admin/stats'),
+  getMetricDetail: (type) => apiRequest(`/admin/stats/metric-detail?type=${type}`),
+  getActivityReport: () => apiRequest('/admin/reports/activity'),
+  getModerationPhotos: () => apiRequest('/admin/moderation/photos'),
+  removeModerationPhoto: (data) => apiRequest('/admin/moderation/photos', { method: 'DELETE', body: JSON.stringify(data) }),
+  getAnomalies: () => apiRequest('/admin/moderation/anomalies'),
+  getSupportTickets: (params = '') => apiRequest(`/admin/support/tickets${params ? '?' + params : ''}`),
+  respondSupportTicket: (id, data) => apiRequest(`/admin/support/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify(data) }),
+  escalateSupportTicket: (id) => apiRequest(`/admin/support/tickets/${id}/escalate`, { method: 'POST' }),
 
   // Weather
   getCurrentWeather: () => apiRequest('/weather/current'),

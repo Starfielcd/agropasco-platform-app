@@ -8,18 +8,27 @@ const { dbRun, dbGet, dbAll } = require('../config/database');
 async function listParcels(req, res) {
   try {
     let parcels;
-    if (req.user.role === 'advisor') {
-      // Los asesores ven todas las parcelas de la región
+    const pestSubqueries = `
+      (SELECT pr.severity FROM pest_reports pr WHERE pr.parcel_id = p.id AND pr.status != 'resuelto' ORDER BY CASE pr.severity WHEN 'critico' THEN 1 WHEN 'grave' THEN 2 WHEN 'moderado' THEN 3 WHEN 'leve' THEN 4 ELSE 5 END LIMIT 1) as pest_severity,
+      (SELECT pr.pest_name FROM pest_reports pr WHERE pr.parcel_id = p.id AND pr.status != 'resuelto' ORDER BY CASE pr.severity WHEN 'critico' THEN 1 WHEN 'grave' THEN 2 WHEN 'moderado' THEN 3 WHEN 'leve' THEN 4 ELSE 5 END LIMIT 1) as active_pest_name,
+      (SELECT pr.photo_url FROM pest_reports pr WHERE pr.parcel_id = p.id AND pr.status != 'resuelto' ORDER BY CASE pr.severity WHEN 'critico' THEN 1 WHEN 'grave' THEN 2 WHEN 'moderado' THEN 3 WHEN 'leve' THEN 4 ELSE 5 END LIMIT 1) as active_pest_photo
+    `;
+
+    if (req.user.role === 'advisor' || req.user.role === 'admin') {
+      // Los asesores y admins ven todas las parcelas de la región
       parcels = await dbAll(
-        `SELECT p.*, u.name as farmer_name, u.location as farmer_location
+        `SELECT p.*, u.name as farmer_name, u.location as farmer_location,
+                ${pestSubqueries}
          FROM parcels p
          LEFT JOIN users u ON p.user_id = u.id
          ORDER BY p.updated_at DESC`
       );
     } else {
-      // Los agricultores solo ven sus parcelas
+      // Los agricultores ven sus parcelas con el estado fitosanitario integrado
       parcels = await dbAll(
-        `SELECT * FROM parcels WHERE user_id = ? ORDER BY updated_at DESC`,
+        `SELECT p.*,
+                ${pestSubqueries}
+         FROM parcels p WHERE p.user_id = ? ORDER BY p.updated_at DESC`,
         [req.user.id]
       );
     }

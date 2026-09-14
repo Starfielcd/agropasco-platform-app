@@ -38,8 +38,16 @@ async function renderParcelsPage() {
         </div>
       </div>
 
-      <!-- Mapa Principal -->
-      <div class="card mb-lg" style="padding: 0; overflow: hidden;">
+      <!-- Mapa Principal con Leyenda de Severidad -->
+      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1.5px solid var(--border);">
+        <div style="padding: 10px 16px; background: rgba(15,23,42,0.95); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
+          <strong style="color: #ffffff; font-size: 13.5px;">🛰️ Mapa Interactivo de Parcelas Registradas</strong>
+          <div style="display: flex; gap: 10px; align-items: center; font-size: 12px;">
+            <span style="color: #4ade80;">🟢 Leve / Sano</span>
+            <span style="color: #facc15;">🟡 Moderado</span>
+            <span style="color: #f87171;">🔴 Grave / Catástrofe</span>
+          </div>
+        </div>
         <div id="parcel-map" class="map-container" style="height: 500px; width: 100%;"></div>
       </div>
 
@@ -129,8 +137,15 @@ function renderParcelCard(parcel) {
         </div>
         <div class="crop-card-icon">🗺️</div>
       </div>
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 4px;">
         <span class="badge badge-${statusColors[parcel.status] || 'green'}">${parcel.status}</span>
+        ${parcel.pest_severity ? `
+          <span class="badge badge-${parcel.pest_severity === 'critico' || parcel.pest_severity === 'grave' ? 'red' : parcel.pest_severity === 'moderado' ? 'amber' : 'green'}" style="font-size: 11px;">
+            ${parcel.pest_severity === 'critico' ? '🔴 Catástrofe' : parcel.pest_severity === 'grave' ? '🟠 Plaga Grave' : '🟡 Moderado'}: ${parcel.active_pest_name || ''}
+          </span>
+        ` : `
+          <span class="badge badge-green" style="font-size: 11px;">🟢 Sano</span>
+        `}
         ${parcel.planting_date ? `<span class="text-sm text-muted">📅 ${parcel.planting_date}</span>` : ''}
       </div>
       <div class="crop-card-stats">
@@ -239,21 +254,62 @@ async function loadParcelsOnMap() {
       const geoJson = JSON.parse(p.geo_json);
       const coords = geoJson.geometry?.coordinates?.[0]?.map(c => [c[1], c[0]]) || [];
       if (coords.length > 0) {
-        const color = MapsConfig.getPolygonColor(p.status === 'activa' ? (p.crop_type ? 'sembrado' : 'planificado') : 'default');
+        // Semáforo de severidad fitosanitaria
+        let color = '#22c55e'; // 🟢 Leve / Sano
+        let fillOpacity = 0.25;
+        let weight = 2;
+
+        if (p.pest_severity === 'critico' || p.pest_severity === 'grave') {
+          color = '#ef4444'; // 🔴 Grave / Catástrofe
+          fillOpacity = 0.45;
+          weight = 4;
+        } else if (p.pest_severity === 'moderado') {
+          color = '#eab308'; // 🟡 Moderado
+          fillOpacity = 0.35;
+          weight = 3;
+        }
+
         parcelMap.addPolygon(coords, {
           color: color,
-          tooltip: `${p.name}${p.crop_type ? ' — ' + p.crop_type : ''}`,
+          weight: weight,
+          fillColor: color,
+          fillOpacity: fillOpacity,
+          tooltip: `${p.name}${p.crop_type ? ' — ' + p.crop_type : ''} ${p.pest_severity ? '(' + p.pest_severity.toUpperCase() + ')' : ''}`,
           popup: `
-            <div style="font-family: Inter, sans-serif; min-width: 190px;">
-              <strong style="font-size: 14px; color: #22c55e;">${p.name}</strong><br>
-              ${p.crop_type ? '🌱 Cultivo: <strong>' + p.crop_type + '</strong><br>' : '📍 Sin cultivo<br>'}
-              📐 Área: <strong>${p.area_hectares} ha</strong><br>
-              🏔️ Altitud: <strong style="color: #4ade80;">${p.altitude_masl || 4380} msnm</strong><br>
-              <em>Estado: ${p.status}</em>
-              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);">
-                <button class="btn btn-sm btn-primary btn-block" onclick="showEditParcelModal(${p.id})">
-                  ✏️ Editar Datos de Parcela
+            <div style="font-family: Inter, sans-serif; min-width: 220px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <strong style="font-size: 14px; color: ${color};">${p.name}</strong>
+                <span class="badge badge-${color === '#ef4444' ? 'red' : color === '#eab308' ? 'amber' : 'green'}" style="font-size: 10px;">
+                  ${p.pest_severity ? (p.pest_severity === 'critico' ? '🔴 Catástrofe' : p.pest_severity === 'grave' ? '🟠 Grave' : '🟡 Moderado') : '🟢 Sano'}
+                </span>
+              </div>
+
+              ${p.active_pest_name ? `
+                <div style="background: rgba(239,68,68,0.12); border-left: 3px solid ${color}; padding: 6px 8px; border-radius: 4px; margin: 6px 0;">
+                  <strong style="font-size: 12px; color: ${color};">🐛 Plaga: ${p.active_pest_name}</strong>
+                  ${p.active_pest_photo ? `
+                    <div style="margin-top: 6px; text-align: center;">
+                      <img src="${p.active_pest_photo}" style="max-height: 80px; max-width: 100%; border-radius: 4px; object-fit: cover; cursor: pointer;"
+                           onclick="AgroMediaUploader.previewEnlarged('${p.active_pest_photo}', 'Plaga en ${p.name}')" title="Clic para ampliar">
+                    </div>
+                  ` : ''}
+                </div>
+              ` : ''}
+
+              <div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">
+                ${p.crop_type ? '🌱 Cultivo: <strong>' + p.crop_type + '</strong><br>' : '📍 Sin cultivo<br>'}
+                📐 Área: <strong>${p.area_hectares} ha</strong><br>
+                🏔️ Altitud: <strong style="color: #4ade80;">${p.altitude_masl || 4380} msnm</strong><br>
+                <em>Estado: ${p.status}</em>
+              </div>
+
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); display: flex; gap: 6px;">
+                <button class="btn btn-sm btn-primary" style="flex: 1;" onclick="showEditParcelModal(${p.id})">
+                  ✏️ Editar
                 </button>
+                <a href="#/pest-reports" class="btn btn-sm btn-secondary" style="font-size: 11px;">
+                  🐛 Plagas
+                </a>
               </div>
             </div>
           `

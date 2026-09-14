@@ -549,10 +549,13 @@ async function showPublishModal() {
           <div id="price-estimate-text" class="text-muted mt-xs"></div>
         </div>
 
+        <!-- Fotografía en Vivo (Cámara) o Subir Imagen -->
         <div class="form-group">
-          <label class="form-label">URL de Foto del Producto (opcional)</label>
-          <input type="url" class="form-input" id="pub-photo" placeholder="https://ejemplo.com/foto-cosecha.jpg">
-          <span class="text-xs text-muted">Ingresa un enlace a la foto de tu cosecha o déjalo vacío para usar el icono oficial.</span>
+          ${AgroMediaUploader.render({
+            id: 'pub-photo',
+            folder: 'products',
+            label: 'Fotografía del Producto / Cosecha (Cámara en Vivo o Subir Imagen)'
+          })}
         </div>
 
         <div class="form-group">
@@ -611,7 +614,7 @@ async function handlePublishProduct(e) {
   const origin = document.getElementById('pub-origin').value.trim();
   const stock_kg = parseFloat(document.getElementById('pub-stock').value);
   const price_per_kg = parseFloat(document.getElementById('pub-price').value);
-  const photo_url = document.getElementById('pub-photo').value.trim() || null;
+  const photo_url = document.getElementById('pub-photo-value')?.value || null;
   const description = document.getElementById('pub-description').value.trim();
 
   const result = await api.publishProduct({
@@ -714,6 +717,25 @@ async function renderValidateProductsPage() {
                       <strong style="color: var(--green-400); font-size: 13px;">S/ ${naturalPrice} / kg</strong>
                     </div>
                   </div>
+
+                  <!-- FOTOGRAFÍA DEL PRODUCTO SUBIDA POR EL AGRICULTOR -->
+                  ${p.photo_url ? `
+                    <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1.5px solid var(--border); max-width: 440px; background: #000;">
+                      <div style="background: rgba(15,23,42,0.9); padding: 5px 10px; font-size: 11.5px; color: #4ade80; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+                        <span>📸 Fotografía de la Cosecha enviada por el Agricultor</span>
+                        <button type="button" class="btn btn-sm btn-secondary" style="font-size: 10.5px; padding: 2px 8px;"
+                                onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                          🔍 Ver Tamaño Completo
+                        </button>
+                      </div>
+                      <img src="${p.photo_url}" alt="${p.name}" style="max-height: 220px; width: 100%; object-fit: contain; cursor: pointer; display: block;"
+                           onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                    </div>
+                  ` : `
+                    <div style="margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                      📷 Sin fotografía adjunta por el agricultor.
+                    </div>
+                  `}
 
                   <!-- REVISIÓN DEL HISTORIAL DE PRÁCTICAS DEL AGRICULTOR -->
                   <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">

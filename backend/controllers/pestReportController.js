@@ -8,11 +8,13 @@ const { dbRun, dbGet, dbAll } = require('../config/database');
 // Agricultor crea reporte de plaga
 async function createReport(req, res) {
   try {
-    const { parcel_id, pest_name, description, photo_url, location_lat, location_lng } = req.body;
+    const { parcel_id, pest_name, severity, description, photo_url, location_lat, location_lng } = req.body;
 
     if (!pest_name) {
       return res.status(400).json({ success: false, error: 'El nombre de la plaga es obligatorio.' });
     }
+
+    const validSeverity = ['leve', 'moderado', 'grave', 'critico'].includes(severity) ? severity : 'moderado';
 
     // Si se asocia parcela, verificar que pertenece al farmer
     if (parcel_id) {
@@ -23,9 +25,9 @@ async function createReport(req, res) {
     }
 
     const result = await dbRun(
-      `INSERT INTO pest_reports (farmer_id, parcel_id, pest_name, description, photo_url, location_lat, location_lng)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, parcel_id || null, pest_name, description || '', photo_url || null, location_lat || null, location_lng || null]
+      `INSERT INTO pest_reports (farmer_id, parcel_id, pest_name, severity, description, photo_url, location_lat, location_lng)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, parcel_id || null, pest_name, validSeverity, description || '', photo_url || null, location_lat || null, location_lng || null]
     );
 
     // Notificar a todos los asesores

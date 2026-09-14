@@ -260,6 +260,25 @@ async function initializeDatabase() {
     )
   `);
 
+  // ===== TABLA: support_tickets (soporte técnico y consultas) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      user_name TEXT,
+      user_email TEXT,
+      category TEXT NOT NULL DEFAULT 'general',
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'abierto' CHECK(status IN ('abierto', 'en_atencion', 'resuelto')),
+      response TEXT,
+      escalated_to_dev INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // ===== MIGRACIÓN: columnas de validación en products =====
   const productMigrations = [
     "ALTER TABLE products ADD COLUMN validation_status TEXT DEFAULT 'approved'",
@@ -274,6 +293,16 @@ async function initializeDatabase() {
     try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
   }
 
+  // ===== MIGRACIÓN: columnas adicionales en pest_reports y users =====
+  const additionalMigrations = [
+    "ALTER TABLE pest_reports ADD COLUMN severity TEXT DEFAULT 'moderado'",
+    "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'",
+    "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0"
+  ];
+  for (const sql of additionalMigrations) {
+    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
   // ===== SEED DATA =====
   await seedData();
 
@@ -284,11 +313,12 @@ async function seedData() {
   const bcrypt = require('bcryptjs');
   const defaultHash = await bcrypt.hash('123456', 10);
 
-  // Ensure demo users exist for each core role
+  // Ensure demo users exist for each core role (including Admin)
   const demoUsers = [
     { name: 'Agricultor de Pasco', email: 'agricultor@agropasco.pe', role: 'farmer', location: 'Yanahuanca, Pasco', phone: '963987638' },
     { name: 'Ing. Asesor Agrícola', email: 'asesor@agropasco.pe', role: 'advisor', location: 'Cerro de Pasco', phone: '963112233' },
-    { name: 'Supermercado Central Pasco', email: 'supermercado@agropasco.pe', role: 'supermarket', location: 'Chaupimarca, Pasco', phone: '963445566' }
+    { name: 'Supermercado Central Pasco', email: 'supermercado@agropasco.pe', role: 'supermarket', location: 'Chaupimarca, Pasco', phone: '963445566' },
+    { name: 'Administrador Central AgroPasco', email: 'admin@agropasco.pe', role: 'admin', location: 'Cerro de Pasco', phone: '963000001' }
   ];
 
   for (const u of demoUsers) {
@@ -299,6 +329,18 @@ async function seedData() {
         [u.name, u.email, defaultHash, u.role, u.location, u.phone]
       );
     }
+  }
+
+  // Seed sample support tickets if table empty
+  const existingTickets = await dbGet('SELECT COUNT(*) as count FROM support_tickets');
+  if (!existingTickets || existingTickets.count === 0) {
+    await dbRun(`
+      INSERT INTO support_tickets (user_name, user_email, category, subject, message, status, response, created_at)
+      VALUES
+      ('Pedro Villegas', 'pedro.villegas@gmail.com', 'login', 'Problema para recordar contraseña', 'Olvidé mi contraseña de agricultor y necesito ingresar para ver mis parcelas.', 'en_atencion', 'Se ha generado una clave provisional y notificado al agricultor.', datetime('now', '-2 hours')),
+      ('Rosa Mendoza', 'rosa.m@agro.pe', 'registro', 'Duda sobre registro de parcela en Yanahuanca', '¿Cómo puedo asociar la altitud automáticamente al dibujar mi parcela?', 'resuelto', 'El sistema detecta automáticamente la altitud mediante GPS y Open-Elevation al seleccionar el punto.', datetime('now', '-1 day')),
+      ('Juan Ramos', 'juan.ramos.pasco@gmail.com', 'tecnico', 'Error al cargar fotografía de papa con gorgojo', 'La conexión en campo es lenta y quisiera saber si la foto se guardó correctamente.', 'abierto', NULL, datetime('now', '-30 minutes'))
+    `);
   }
 
   // Check if advisory tips already seeded

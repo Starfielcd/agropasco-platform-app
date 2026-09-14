@@ -1,29 +1,33 @@
 /**
- * AgroPasco — Controlador de Administración
- * Gestión de usuarios, auditoría y estadísticas
+ * AgroPasco — Controlador de Administración y Soporte Técnico
+ * Gestión de usuarios, duplicados, bloqueos, contraseñas, auditoría,
+ * reportes institucionales, moderación y tickets de soporte.
  */
 
+const bcrypt = require('bcryptjs');
 const { dbRun, dbGet, dbAll } = require('../config/database');
+
+// ===== 1. GESTIÓN DE USUARIOS =====
 
 async function listUsers(req, res) {
   try {
-    const { role, search } = req.query;
+    const { role, search, status } = req.query;
 
-    let sql = 'SELECT id, name, email, role, location, phone, created_at, updated_at FROM users WHERE 1=1';
+    let sql = 'SELECT id, name, email, role, location, phone, status, is_blocked, created_at, updated_at FROM users WHERE 1=1';
     const params = [];
 
     if (role) { sql += ' AND role = ?'; params.push(role); }
-    if (search) { sql += ' AND (name LIKE ? OR email LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    if (status) { sql += ' AND status = ?'; params.push(status); }
+    if (search) { sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
 
     sql += ' ORDER BY created_at DESC';
 
     const users = await dbAll(sql, params);
-
-    // Estadísticas por rol
     const stats = await dbAll('SELECT role, COUNT(*) as count FROM users GROUP BY role');
 
     res.json({ success: true, data: users, total: users.length, stats });
   } catch (err) {
+    console.error('Error al listar usuarios:', err);
     res.status(500).json({ success: false, error: 'Error al obtener usuarios.' });
   }
 }
@@ -37,7 +41,6 @@ async function updateUserRole(req, res) {
       return res.status(400).json({ success: false, error: 'Rol inválido.' });
     }
 
-    // No permitir cambiar el rol del propio admin
     if (parseInt(userId) === req.user.id) {
       return res.status(400).json({ success: false, error: 'No puedes cambiar tu propio rol.' });
     }
@@ -49,7 +52,6 @@ async function updateUserRole(req, res) {
 
     await dbRun('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [role, userId]);
 
-    // Audit log
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
       [req.user.id, 'UPDATE_ROLE', 'user', userId, `Rol cambiado de "${user.role}" a "${role}" para ${user.name}`, req.ip]
@@ -57,7 +59,113 @@ async function updateUserRole(req, res) {
 
     res.json({ success: true, message: `Rol de ${user.name} actualizado a ${role}.` });
   } catch (err) {
+    console.error('Error al actualizar rol:', err);
     res.status(500).json({ success: false, error: 'Error al actualizar rol.' });
+  }
+}
+
+async function toggleUserStatus(req, res) {
+  try {
+    const userId = req.params.id;
+    const { is_blocked, reason } = req.body;
+
+    if (parseInt(userId) === req.user.id) {
+      return res.status(400).json({ success: false, error: 'No puedes bloquear tu propia cuenta de administrador.' });
+    }
+
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    const newBlockedState = is_blocked ? 1 : 0;
+    const newStatus = newBlockedState ? 'blocked' : 'active';
+
+    await dbRun('UPDATE users SET is_blocked = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newBlockedState, newStatus, userId]);
+
+    const actionText = newBlockedState ? 'BLOQUEAR_CUENTA' : 'DESBLOQUEAR_CUENTA';
+    const detailText = newBlockedState
+      ? `Cuenta de "${user.name}" (${user.email}) bloqueada. Motivo: ${reason || 'Sospecha o infracción de normas'}`
+      : `Cuenta de "${user.name}" reactivada por administración.`;
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, actionText, 'user', userId, detailText, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: `Cuenta de ${user.name} ${newBlockedState ? 'bloqueada' : 'habilitada'} exitosamente.`,
+      status: newStatus,
+      is_blocked: newBlockedState
+    });
+  } catch (err) {
+    console.error('Error al alternar estado del usuario:', err);
+    res.status(500).json({ success: false, error: 'Error al actualizar estado del usuario.' });
+  }
+}
+
+async function resetUserPassword(req, res) {
+  try {
+    const userId = req.params.id;
+    const { temp_password } = req.body;
+
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    const provisionalPassword = temp_password || 'AgroPasco2026!';
+    const passwordHash = await bcrypt.hash(provisionalPassword, 10);
+
+    await dbRun('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [passwordHash, userId]);
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'RESET_PASSWORD', 'user', userId, `Contraseña restablecida para ${user.name} (${user.email}). Clave temporal asignada.`, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: `Contraseña restablecida exitosamente para ${user.name}.`,
+      provisional_password: provisionalPassword
+    });
+  } catch (err) {
+    console.error('Error al resetear contraseña:', err);
+    res.status(500).json({ success: false, error: 'Error al restablecer contraseña.' });
+  }
+}
+
+async function detectDuplicates(req, res) {
+  try {
+    // Buscar usuarios con nombres idénticos o teléfonos repetidos o emails con prefijos idénticos
+    const allUsers = await dbAll('SELECT id, name, email, role, location, phone, created_at FROM users ORDER BY name ASC');
+    const duplicates = [];
+
+    for (let i = 0; i < allUsers.length; i++) {
+      for (let j = i + 1; j < allUsers.length; j++) {
+        const u1 = allUsers[i];
+        const u2 = allUsers[j];
+
+        const sameName = u1.name.trim().toLowerCase() === u2.name.trim().toLowerCase();
+        const samePhone = u1.phone && u2.phone && u1.phone.trim() === u2.phone.trim();
+        const email1User = u1.email.split('@')[0].toLowerCase();
+        const email2User = u2.email.split('@')[0].toLowerCase();
+        const similarEmail = email1User === email2User;
+
+        if (sameName || samePhone || similarEmail) {
+          duplicates.push({
+            reason: sameName ? 'Nombre idéntico' : samePhone ? 'Teléfono compartido' : 'Prefijo de email idéntico',
+            accounts: [u1, u2]
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, data: duplicates, total: duplicates.length });
+  } catch (err) {
+    console.error('Error al detectar duplicados:', err);
+    res.status(500).json({ success: false, error: 'Error al escanear duplicados.' });
   }
 }
 
@@ -76,7 +184,6 @@ async function deleteUser(req, res) {
 
     await dbRun('DELETE FROM users WHERE id = ?', [userId]);
 
-    // Audit log
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
       [req.user.id, 'DELETE', 'user', userId, `Usuario "${user.name}" (${user.email}) eliminado`, req.ip]
@@ -87,6 +194,8 @@ async function deleteUser(req, res) {
     res.status(500).json({ success: false, error: 'Error al eliminar usuario.' });
   }
 }
+
+// ===== 2. AUDITORÍA, ESTADÍSTICAS Y REPORTES =====
 
 async function getAuditLog(req, res) {
   try {
@@ -117,17 +226,20 @@ async function getSystemStats(req, res) {
     const totalCrops = await dbGet('SELECT COUNT(*) as count FROM crops');
     const totalParcels = await dbGet('SELECT COUNT(*) as count FROM parcels');
     const totalProducts = await dbGet('SELECT COUNT(*) as count FROM products');
-    const totalMarkers = await dbGet('SELECT COUNT(*) as count FROM pest_markers WHERE resolved = 0');
-    const totalRecommendations = await dbGet('SELECT COUNT(*) as count FROM advisor_recommendations WHERE status = "pendiente"');
+    const activeProducts = await dbGet("SELECT COUNT(*) as count FROM products WHERE validation_status = 'approved'");
+    const totalPests = await dbGet('SELECT COUNT(*) as count FROM pest_reports');
+    const resolvedPests = await dbGet("SELECT COUNT(*) as count FROM pest_reports WHERE status = 'resuelto'");
+    const pendingPests = await dbGet("SELECT COUNT(*) as count FROM pest_reports WHERE status != 'resuelto'");
+    const totalTickets = await dbGet('SELECT COUNT(*) as count FROM support_tickets');
+
     const recentLogs = await dbAll(
       `SELECT al.*, u.name as user_name FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id ORDER BY al.created_at DESC LIMIT 10`
     );
 
-    // API status
     const apiStatus = {
       maps: { provider: process.env.MAPS_PROVIDER || 'leaflet', status: 'active' },
-      weather: { provider: 'Open-Meteo', status: process.env.WEATHER_API_KEY ? 'configured' : 'default' },
-      database: { provider: 'SQLite', status: 'active' }
+      weather: { provider: 'Open-Meteo', status: 'active' },
+      database: { provider: 'SQLite (WAL)', status: 'active' }
     };
 
     res.json({
@@ -136,9 +248,9 @@ async function getSystemStats(req, res) {
         users: { total: usersByRole.reduce((s, r) => s + r.count, 0), by_role: usersByRole },
         crops: { total: totalCrops?.count || 0 },
         parcels: { total: totalParcels?.count || 0 },
-        products: { total: totalProducts?.count || 0 },
-        pest_markers: { unresolved: totalMarkers?.count || 0 },
-        recommendations: { pending: totalRecommendations?.count || 0 },
+        products: { total: totalProducts?.count || 0, active: activeProducts?.count || 0 },
+        pest_reports: { total: totalPests?.count || 0, resolved: resolvedPests?.count || 0, pending: pendingPests?.count || 0 },
+        support_tickets: { total: totalTickets?.count || 0 },
         recent_activity: recentLogs,
         apis: apiStatus
       }
@@ -148,4 +260,265 @@ async function getSystemStats(req, res) {
   }
 }
 
-module.exports = { listUsers, updateUserRole, deleteUser, getAuditLog, getSystemStats };
+// Detalle modal al hacer clic en una métrica (drilldown)
+async function getMetricDetail(req, res) {
+  try {
+    const { type } = req.query; // 'farmers', 'advisors', 'supermarkets', 'products', 'pests', 'parcels'
+    let data = [];
+
+    switch (type) {
+      case 'farmers':
+        data = await dbAll(`
+          SELECT u.id, u.name, u.email, u.phone, u.location, u.created_at,
+                 (SELECT COUNT(*) FROM parcels p WHERE p.user_id = u.id) as parcel_count,
+                 (SELECT COUNT(*) FROM crops c WHERE c.user_id = u.id) as crop_count
+          FROM users u WHERE u.role = 'farmer' ORDER BY u.created_at DESC
+        `);
+        break;
+
+      case 'advisors':
+        data = await dbAll(`
+          SELECT u.id, u.name, u.email, u.phone, u.location, u.created_at,
+                 (SELECT COUNT(*) FROM pest_reports pr WHERE pr.advisor_id = u.id) as resolved_pests_count
+          FROM users u WHERE u.role = 'advisor' ORDER BY u.created_at DESC
+        `);
+        break;
+
+      case 'products':
+        data = await dbAll(`
+          SELECT p.id, p.name, p.crop_type, p.quality, p.price_per_kg, p.original_price,
+                 p.is_natural, p.validation_status, p.stock_kg, p.photo_url, u.name as farmer_name
+          FROM products p LEFT JOIN users u ON p.farmer_id = u.id ORDER BY p.created_at DESC
+        `);
+        break;
+
+      case 'pests':
+        data = await dbAll(`
+          SELECT pr.id, pr.pest_name, pr.severity, pr.status, pr.photo_url, pr.created_at,
+                 u.name as farmer_name, p.name as parcel_name
+          FROM pest_reports pr
+          LEFT JOIN users u ON pr.farmer_id = u.id
+          LEFT JOIN parcels p ON pr.parcel_id = p.id
+          ORDER BY pr.created_at DESC
+        `);
+        break;
+
+      case 'parcels':
+        data = await dbAll(`
+          SELECT p.id, p.name, p.crop_type, p.area_hectares, p.altitude_masl, p.status,
+                 u.name as farmer_name, u.location as farmer_location
+          FROM parcels p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC
+        `);
+        break;
+
+      default:
+        return res.status(400).json({ success: false, error: 'Tipo de métrica no soportado.' });
+    }
+
+    res.json({ success: true, type, data, total: data.length });
+  } catch (err) {
+    console.error('Error al obtener detalle de métrica:', err);
+    res.status(500).json({ success: false, error: 'Error al obtener desglose de métrica.' });
+  }
+}
+
+// Reporte exportable consolidado (para universidad / instituciones)
+async function getActivityReport(req, res) {
+  try {
+    const farmers = await dbAll("SELECT id, name, email, location, phone, created_at FROM users WHERE role = 'farmer'");
+    const advisors = await dbAll("SELECT id, name, email, location, phone, created_at FROM users WHERE role = 'advisor'");
+    const parcels = await dbAll("SELECT p.id, p.name, p.crop_type, p.area_hectares, p.altitude_masl, u.name as farmer_name FROM parcels p JOIN users u ON p.user_id = u.id");
+    const products = await dbAll("SELECT p.id, p.name, p.crop_type, p.stock_kg, p.price_per_kg, p.is_natural, p.validation_status, u.name as farmer_name FROM products p LEFT JOIN users u ON p.farmer_id = u.id");
+    const pests = await dbAll("SELECT pr.id, pr.pest_name, pr.severity, pr.status, pr.created_at, u.name as farmer_name FROM pest_reports pr JOIN users u ON pr.farmer_id = u.id");
+
+    const summary = {
+      institucion: 'Universidad Nacional Daniel Alcides Carrión (UNDAC) / Institución Evaluadora',
+      plataforma: 'AgroPasco Digital 2.0',
+      fecha_generacion: new Date().toISOString(),
+      region: 'Pasco, Perú (Provincias: Daniel A. Carrión, Pasco, Oxapampa)',
+      totales: {
+        agricultores_activos: farmers.length,
+        asesores_tecnicos: advisors.length,
+        parcelas_mapeadas: parcels.length,
+        area_total_hectareas: parcels.reduce((s, p) => s + (p.area_hectares || 0), 0).toFixed(2),
+        productos_registrados: products.length,
+        productos_validados_natural: products.filter(p => p.is_natural === 1).length,
+        plagas_reportadas: pests.length,
+        plagas_atendidas: pests.filter(p => p.status === 'resuelto').length
+      },
+      detalles: {
+        agricultores: farmers,
+        parcelas,
+        productos,
+        plagas
+      }
+    };
+
+    res.json({ success: true, report: summary });
+  } catch (err) {
+    console.error('Error al generar reporte institucional:', err);
+    res.status(500).json({ success: false, error: 'Error al generar reporte consolidado.' });
+  }
+}
+
+// ===== 3. MODERACIÓN DE CONTENIDO Y DETECCIÓN DE ANOMALÍAS =====
+
+async function getModerationPhotos(req, res) {
+  try {
+    const productPhotos = await dbAll(`
+      SELECT p.id, 'producto' as entity_type, p.name as title, p.photo_url, p.created_at,
+             u.name as uploader_name, u.role as uploader_role
+      FROM products p LEFT JOIN users u ON p.farmer_id = u.id
+      WHERE p.photo_url IS NOT NULL AND p.photo_url != ''
+    `);
+
+    const pestPhotos = await dbAll(`
+      SELECT pr.id, 'plaga' as entity_type, pr.pest_name as title, pr.photo_url, pr.created_at,
+             u.name as uploader_name, u.role as uploader_role
+      FROM pest_reports pr LEFT JOIN users u ON pr.farmer_id = u.id
+      WHERE pr.photo_url IS NOT NULL AND pr.photo_url != ''
+    `);
+
+    const allPhotos = [...productPhotos, ...pestPhotos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    res.json({ success: true, data: allPhotos, total: allPhotos.length });
+  } catch (err) {
+    console.error('Error al obtener fotos para moderación:', err);
+    res.status(500).json({ success: false, error: 'Error al cargar muro de fotos.' });
+  }
+}
+
+async function removeModerationPhoto(req, res) {
+  try {
+    const { entity_type, entity_id } = req.body;
+    if (!entity_type || !entity_id) {
+      return res.status(400).json({ success: false, error: 'entity_type y entity_id son obligatorios.' });
+    }
+
+    if (entity_type === 'producto') {
+      await dbRun('UPDATE products SET photo_url = NULL WHERE id = ?', [entity_id]);
+    } else if (entity_type === 'plaga') {
+      await dbRun('UPDATE pest_reports SET photo_url = NULL WHERE id = ?', [entity_id]);
+    }
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'MODERACION_FOTO_ELIMINADA', entity_type, entity_id, `Fotografía retirada por administrador por moderación`, req.ip]
+    );
+
+    res.json({ success: true, message: 'Fotografía retirada exitosamente.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error al retirar fotografía.' });
+  }
+}
+
+async function getAnomalies(req, res) {
+  try {
+    // 1. Precios absurdos (ej: menor a S/ 0.50 o mayor a S/ 250 por kg)
+    const priceAnomalies = await dbAll(`
+      SELECT p.id, p.name, p.price_per_kg, p.stock_kg, u.name as farmer_name
+      FROM products p LEFT JOIN users u ON p.farmer_id = u.id
+      WHERE p.price_per_kg > 250 OR p.price_per_kg < 0.5 OR p.stock_kg > 50000
+    `);
+
+    // 2. Coordenadas sospechosas en parcelas (fuera del rango aprox de Pasco: lat [-11.5, -9.5], lng [-77.0, -74.5])
+    const coordAnomalies = await dbAll(`
+      SELECT p.id, p.name, p.center_lat, p.center_lng, p.altitude_masl, u.name as farmer_name
+      FROM parcels p LEFT JOIN users u ON p.user_id = u.id
+      WHERE (p.center_lat IS NOT NULL AND (p.center_lat > -9.0 OR p.center_lat < -12.0))
+         OR (p.center_lng IS NOT NULL AND (p.center_lng > -74.0 OR p.center_lng < -77.5))
+         OR (p.altitude_masl IS NOT NULL AND (p.altitude_masl < 1000 OR p.altitude_masl > 5500))
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        price_anomalies: priceAnomalies,
+        coord_anomalies: coordAnomalies,
+        total: priceAnomalies.length + coordAnomalies.length
+      }
+    });
+  } catch (err) {
+    console.error('Error al detectar anomalías:', err);
+    res.status(500).json({ success: false, error: 'Error al escanear anomalías.' });
+  }
+}
+
+// ===== 4. SOPORTE TÉCNICO Y TICKETS =====
+
+async function getTickets(req, res) {
+  try {
+    const { status, category } = req.query;
+    let sql = 'SELECT * FROM support_tickets WHERE 1=1';
+    const params = [];
+
+    if (status) { sql += ' AND status = ?'; params.push(status); }
+    if (category) { sql += ' AND category = ?'; params.push(category); }
+
+    sql += ' ORDER BY created_at DESC';
+    const tickets = await dbAll(sql, params);
+
+    res.json({ success: true, data: tickets, total: tickets.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error al obtener tickets de soporte.' });
+  }
+}
+
+async function respondTicket(req, res) {
+  try {
+    const ticketId = req.params.id;
+    const { response } = req.body;
+
+    if (!response) {
+      return res.status(400).json({ success: false, error: 'La respuesta es obligatoria.' });
+    }
+
+    await dbRun(
+      `UPDATE support_tickets SET response = ?, status = 'resuelto', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [response, ticketId]
+    );
+
+    res.json({ success: true, message: 'Ticket respondido y marcado como resuelto.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error al responder ticket.' });
+  }
+}
+
+async function escalateTicket(req, res) {
+  try {
+    const ticketId = req.params.id;
+
+    await dbRun(
+      `UPDATE support_tickets SET escalated_to_dev = 1, status = 'en_atencion', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [ticketId]
+    );
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'ESCALAR_TICKET_DEV', 'support_ticket', ticketId, `Incidencia escalada a ingenieros de software / devops`, req.ip]
+    );
+
+    res.json({ success: true, message: 'Ticket escalado exitosamente a desarrolladores.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error al escalar ticket.' });
+  }
+}
+
+module.exports = {
+  listUsers,
+  updateUserRole,
+  toggleUserStatus,
+  resetUserPassword,
+  detectDuplicates,
+  deleteUser,
+  getAuditLog,
+  getSystemStats,
+  getMetricDetail,
+  getActivityReport,
+  getModerationPhotos,
+  removeModerationPhoto,
+  getAnomalies,
+  getTickets,
+  respondTicket,
+  escalateTicket
+};

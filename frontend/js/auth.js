@@ -36,15 +36,18 @@ function renderLoginPage() {
                 <div style="font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; font-weight: 700; margin-bottom: 10px; text-align: center;">
                   ⚡ Acceso Rápido de Prueba (Demo)
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                  <button type="button" class="btn btn-sm" style="background: rgba(34,197,94,0.18); border: 1px solid #22c55e; color: #4ade80; font-size: 11px; padding: 7px 4px;" onclick="quickLogin('agricultor@agropasco.pe')">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
+                  <button type="button" class="btn btn-sm" style="background: rgba(34,197,94,0.18); border: 1px solid #22c55e; color: #4ade80; font-size: 11px; padding: 7px 3px;" onclick="quickLogin('agricultor@agropasco.pe')">
                     🌱 Agricultor
                   </button>
-                  <button type="button" class="btn btn-sm" style="background: rgba(59,130,246,0.18); border: 1px solid #3b82f6; color: #60a5fa; font-size: 11px; padding: 7px 4px;" onclick="quickLogin('asesor@agropasco.pe')">
+                  <button type="button" class="btn btn-sm" style="background: rgba(59,130,246,0.18); border: 1px solid #3b82f6; color: #60a5fa; font-size: 11px; padding: 7px 3px;" onclick="quickLogin('asesor@agropasco.pe')">
                     📋 Asesor
                   </button>
-                  <button type="button" class="btn btn-sm" style="background: rgba(168,85,247,0.18); border: 1px solid #a855f7; color: #c084fc; font-size: 11px; padding: 7px 4px;" onclick="quickLogin('supermercado@agropasco.pe')">
-                    🏪 Supermercado
+                  <button type="button" class="btn btn-sm" style="background: rgba(168,85,247,0.18); border: 1px solid #a855f7; color: #c084fc; font-size: 11px; padding: 7px 3px;" onclick="quickLogin('supermercado@agropasco.pe')">
+                    🏪 Super
+                  </button>
+                  <button type="button" class="btn btn-sm" style="background: rgba(239,68,68,0.18); border: 1px solid #ef4444; color: #f87171; font-size: 11px; padding: 7px 3px;" onclick="quickLogin('admin@agropasco.pe')">
+                    🔐 Admin
                   </button>
                 </div>
               </div>

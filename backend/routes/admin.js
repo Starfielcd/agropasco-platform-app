@@ -1,24 +1,54 @@
 /**
- * AgroPasco — Rutas de Administración
+ * AgroPasco — Rutas de Administración y Soporte Integral
  */
 
 const router = require('express').Router();
-const { listUsers, updateUserRole, deleteUser, getAuditLog, getSystemStats } = require('../controllers/adminController');
+const {
+  listUsers,
+  updateUserRole,
+  toggleUserStatus,
+  resetUserPassword,
+  detectDuplicates,
+  deleteUser,
+  getAuditLog,
+  getSystemStats,
+  getMetricDetail,
+  getActivityReport,
+  getModerationPhotos,
+  removeModerationPhoto,
+  getAnomalies,
+  getTickets,
+  respondTicket,
+  escalateTicket
+} = require('../controllers/adminController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// Todas las rutas requieren admin
+// Todas las rutas requieren autenticación y rol de admin
 router.use(authenticateToken);
 router.use(requireRole('admin'));
 
-// Gestión de usuarios
+// ===== 1. GESTIÓN DE USUARIOS =====
 router.get('/users', listUsers);
 router.put('/users/:id/role', updateUserRole);
+router.put('/users/:id/status', toggleUserStatus);
+router.post('/users/:id/reset-password', resetUserPassword);
+router.get('/duplicates', detectDuplicates);
 router.delete('/users/:id', deleteUser);
 
-// Auditoría
+// ===== 2. AUDITORÍA, ESTADÍSTICAS Y REPORTES =====
 router.get('/audit', getAuditLog);
-
-// Estadísticas del sistema
 router.get('/stats', getSystemStats);
+router.get('/stats/metric-detail', getMetricDetail);
+router.get('/reports/activity', getActivityReport);
+
+// ===== 3. MODERACIÓN DE CONTENIDO =====
+router.get('/moderation/photos', getModerationPhotos);
+router.delete('/moderation/photos', removeModerationPhoto);
+router.get('/moderation/anomalies', getAnomalies);
+
+// ===== 4. SOPORTE TÉCNICO Y TICKETS =====
+router.get('/support/tickets', getTickets);
+router.post('/support/tickets/:id/reply', respondTicket);
+router.post('/support/tickets/:id/escalate', escalateTicket);
 
 module.exports = router;
