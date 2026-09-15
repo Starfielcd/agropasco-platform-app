@@ -101,11 +101,18 @@ async function renderParcelsPage() {
             <label class="form-label">Notas</label>
             <textarea class="form-textarea" id="parcel-notes" placeholder="Observaciones sobre la parcela..."></textarea>
           </div>
+          <div class="form-group" style="padding: 12px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
+            ${AgroMediaUploader.render({
+              id: 'parcel-photo',
+              folder: 'parcels',
+              label: 'Fotografía de la Parcela / Terreno — OBLIGATORIA *'
+            })}
+          </div>
           <input type="hidden" id="parcel-geojson">
           <input type="hidden" id="parcel-center-lat">
           <input type="hidden" id="parcel-center-lng">
           <input type="hidden" id="parcel-area-ha">
-          <button type="submit" class="btn btn-primary btn-block btn-lg">🌾 Registrar Parcela</button>
+          <button type="submit" class="btn btn-primary btn-block btn-lg">🌾 Registrar Parcela con Fotografía</button>
         </form>
       </div>
 
@@ -397,6 +404,12 @@ async function handlePolygonCreated(data) {
 async function handleCreateParcel(e) {
   e.preventDefault();
 
+  const photoUrl = document.getElementById('parcel-photo-value')?.value;
+  if (!photoUrl || photoUrl.trim() === '') {
+    showToast('⚠️ La fotografía de la parcela o del terreno es obligatoria.', 'error');
+    return;
+  }
+
   const geoJson = document.getElementById('parcel-geojson').value;
   if (!geoJson) {
     showToast('Primero dibuja un polígono en el mapa', 'warning');
@@ -412,11 +425,12 @@ async function handleCreateParcel(e) {
     crop_type: document.getElementById('parcel-crop-type').value || null,
     planting_date: document.getElementById('parcel-planting-date').value || null,
     altitude_masl: parseInt(document.getElementById('parcel-altitude').value) || 4380,
-    notes: document.getElementById('parcel-notes').value || null
+    notes: document.getElementById('parcel-notes').value || null,
+    photo_url: photoUrl.trim()
   });
 
   if (result.success) {
-    showToast('¡Parcela registrada exitosamente con altitud calculada!', 'success');
+    showToast('¡Parcela registrada exitosamente con fotografía y altitud!', 'success');
     cancelParcelDraw();
     navigateTo('/parcels');
   } else {

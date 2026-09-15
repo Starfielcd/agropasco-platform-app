@@ -314,6 +314,39 @@ async function initializeDatabase() {
     try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
   }
 
+  // ===== MIGRACIÓN: Fotos obligatorias y seguimiento de plagas =====
+  const pestAndPhotoMigrations = [
+    "ALTER TABLE parcels ADD COLUMN photo_url TEXT",
+    "ALTER TABLE crops ADD COLUMN photo_url TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN control_status TEXT DEFAULT 'pendiente'",
+    "ALTER TABLE pest_reports ADD COLUMN attachment_video_url TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN attachment_doc_url TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN attachment_doc_name TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN feedback_status TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN feedback_notes TEXT",
+    "ALTER TABLE pest_reports ADD COLUMN feedback_at DATETIME"
+  ];
+  for (const sql of pestAndPhotoMigrations) {
+    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
+  // ===== TABLA: pest_report_responses (historial de respuestas del asesor y materiales) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS pest_report_responses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pest_report_id INTEGER NOT NULL,
+      advisor_id INTEGER NOT NULL,
+      response_text TEXT NOT NULL,
+      control_status TEXT NOT NULL DEFAULT 'en_proceso',
+      attachment_video_url TEXT,
+      attachment_doc_url TEXT,
+      attachment_doc_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (pest_report_id) REFERENCES pest_reports(id) ON DELETE CASCADE,
+      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // ===== SEED DATA =====
   await seedData();
 

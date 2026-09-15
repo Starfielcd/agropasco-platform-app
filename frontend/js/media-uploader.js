@@ -237,28 +237,39 @@ const AgroMediaUploader = (function() {
   }
 
   /**
-   * Maneja la selección de un archivo desde la galería o explorador local
+   * Maneja la selección de un archivo desde la galería, explorador o gestor de archivos
    */
   async function handleFileSelected(targetId, file) {
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      showToast('Por favor selecciona un archivo de imagen válido (JPG, PNG, WEBP).', 'warning');
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+    const isVideo = file.type.startsWith('video/') || file.name.toLowerCase().endsWith('.mp4') || file.name.toLowerCase().endsWith('.webm');
+
+    if (!isImage && !isPdf && !isVideo) {
+      showToast('Formato no compatible. Por favor sube una imagen (JPG/PNG), documento PDF o video MP4.', 'warning');
       return;
     }
 
     const container = document.getElementById(`${targetId}-container`);
     const folder = container ? (container.getAttribute('data-folder') || 'general') : 'general';
 
-    // Mostrar previsualización instantánea local
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-      const dataUrl = e.target.result;
-      showPreview(targetId, dataUrl, `${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
-      // Subir archivo al backend
+    if (isImage) {
+      // Mostrar previsualización instantánea local de imagen
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        const dataUrl = e.target.result;
+        showPreview(targetId, dataUrl, `${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+        await uploadMultipartToServer(targetId, file, folder);
+      };
+      reader.readAsDataURL(file);
+    } else if (isPdf) {
+      showDocPreview(targetId, '📄 ' + file.name, `PDF · ${(file.size / 1024).toFixed(1)} KB`);
       await uploadMultipartToServer(targetId, file, folder);
-    };
-    reader.readAsDataURL(file);
+    } else if (isVideo) {
+      showVideoPreview(targetId, URL.createObjectURL(file), `Video · ${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+      await uploadMultipartToServer(targetId, file, folder);
+    }
   }
 
   /**
@@ -342,11 +353,103 @@ const AgroMediaUploader = (function() {
 
     if (previewBox && previewImg) {
       previewImg.src = src;
+      previewImg.style.display = 'block';
+      const videoEl = document.getElementById(`${targetId}-preview-video`);
+      if (videoEl) videoEl.style.display = 'none';
       previewBox.style.display = 'block';
     }
     if (metaBox && metaText) {
       metaBox.textContent = `✓ ${metaText}`;
     }
+  }
+
+  function showDocPreview(targetId, docTitle, metaText = '') {
+    const previewBox = document.getElementById(`${targetId}-preview-box`);
+    const previewImg = document.getElementById(`${targetId}-preview-img`);
+    const metaBox = document.getElementById(`${targetId}-file-meta`);
+
+    if (previewBox) {
+      if (previewImg) previewImg.style.display = 'none';
+      let docIcon = document.getElementById(`${targetId}-doc-icon`);
+      if (!docIcon) {
+        docIcon = document.createElement('div');
+        docIcon.id = `${targetId}-doc-icon`;
+        docIcon.style.padding = '24px';
+        docIcon.style.fontSize = '32px';
+        previewBox.prepend(docIcon);
+      }
+      docIcon.innerHTML = `📄 <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-top: 6px;">${docTitle}</div>`;
+      docIcon.style.display = 'block';
+      previewBox.style.display = 'block';
+    }
+    if (metaBox && metaText) {
+      metaBox.textContent = `✓ ${metaText}`;
+    }
+  }
+
+  function showVideoPreview(targetId, videoSrc, metaText = '') {
+    const previewBox = document.getElementById(`${targetId}-preview-box`);
+    const previewImg = document.getElementById(`${targetId}-preview-img`);
+    const metaBox = document.getElementById(`${targetId}-file-meta`);
+
+    if (previewBox) {
+      if (previewImg) previewImg.style.display = 'none';
+      let videoEl = document.getElementById(`${targetId}-preview-video`);
+      if (!videoEl) {
+        videoEl = document.createElement('video');
+        videoEl.id = `${targetId}-preview-video`;
+        videoEl.controls = true;
+        videoEl.style.maxHeight = '200px';
+        videoEl.style.maxWidth = '100%';
+        previewBox.prepend(videoEl);
+      }
+      videoEl.src = videoSrc;
+      videoEl.style.display = 'block';
+      previewBox.style.display = 'block';
+    }
+    if (metaBox && metaText) {
+      metaBox.textContent = `✓ ${metaText}`;
+    }
+  }
+
+  /**
+   * Componente para adjuntar materiales educativos y guías técnicas (PDFs y Videos)
+   */
+  function renderAttachmentUploader(options) {
+    const { id, folder = 'documents', label = 'Guía Técnica PDF o Video Explicativo', existingUrl = '' } = options;
+    return `
+      <div class="agro-media-uploader" id="${id}-container" data-folder="${folder}">
+        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>📎 ${label}</span>
+          <span class="badge badge-blue text-xs" id="${id}-status-badge" style="display: ${existingUrl ? 'inline-block' : 'none'};">
+            ${existingUrl ? '✓ Archivo adjunto' : ''}
+          </span>
+        </label>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button type="button" class="btn btn-secondary btn-sm" style="display: flex; align-items: center; gap: 6px;"
+                  onclick="document.getElementById('${id}-file-input').click()">
+            <span>📁</span>
+            <strong>Seleccionar Archivo (PDF / Video)</strong>
+          </button>
+        </div>
+
+        <input type="file" id="${id}-file-input" accept=".pdf,video/mp4,video/webm" style="display: none;"
+               onchange="AgroMediaUploader.handleFileSelected('${id}', this.files[0])">
+        <input type="hidden" id="${id}-value" value="${existingUrl || ''}">
+
+        <div id="${id}-preview-box" style="display: ${existingUrl ? 'block' : 'none'}; padding: 10px; border-radius: 6px; border: 1px dashed var(--border); background: rgba(0,0,0,0.25);">
+          <div id="${id}-file-meta" style="font-size: 12px; color: #38bdf8;">
+            ${existingUrl ? '✓ Archivo cargado: ' + existingUrl : ''}
+          </div>
+          <button type="button" class="btn btn-sm btn-danger mt-xs" style="font-size: 10px; padding: 2px 6px;" onclick="AgroMediaUploader.removePhoto('${id}')">Quitar adjunto</button>
+        </div>
+
+        <div id="${id}-loading" style="display: none; padding: 8px; text-align: center; font-size: 12px; color: var(--blue-400);">
+          ⏳ Subiendo material al servidor...
+        </div>
+      </div>
+    `;
   }
 
   function removePhoto(targetId) {
@@ -359,7 +462,7 @@ const AgroMediaUploader = (function() {
     if (fileInput) fileInput.value = '';
 
     updateBadge(targetId, false);
-    showToast('Fotografía retirada.', 'info');
+    showToast('Archivo retirado.', 'info');
   }
 
   function showLoading(targetId, isLoading) {
@@ -411,6 +514,7 @@ const AgroMediaUploader = (function() {
 
   return {
     render,
+    renderAttachmentUploader,
     openCamera,
     captureFrame,
     closeCameraModal,

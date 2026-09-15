@@ -41,25 +41,29 @@ async function listParcels(req, res) {
 
 async function createParcel(req, res) {
   try {
-    const { name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, altitude_masl, notes } = req.body;
+    const { name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, altitude_masl, notes, photo_url } = req.body;
 
     if (!name || !geo_json) {
       return res.status(400).json({ success: false, error: 'Nombre y polígono GeoJSON son obligatorios.' });
     }
 
+    if (!photo_url || typeof photo_url !== 'string' || photo_url.trim() === '') {
+      return res.status(400).json({ success: false, error: 'La fotografía de la parcela o del terreno es obligatoria.' });
+    }
+
     const geoJsonStr = typeof geo_json === 'string' ? geo_json : JSON.stringify(geo_json);
 
     const result = await dbRun(
-      `INSERT INTO parcels (user_id, name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, altitude_masl, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO parcels (user_id, name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, altitude_masl, notes, photo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user.id, name, geoJsonStr, area_hectares || 0, center_lat || null, center_lng || null,
-       crop_type || null, planting_date || null, altitude_masl || 4380, notes || null]
+       crop_type || null, planting_date || null, altitude_masl || 4380, notes || null, photo_url.trim()]
     );
 
     // Audit log (non-blocking)
     dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, 'CREATE', 'parcel', result.lastID, `Parcela "${name}" creada`]
+      [req.user.id, 'CREATE', 'parcel', result.lastID, `Parcela "${name}" creada con fotografía`]
     ).catch(e => console.warn('Audit log error:', e.message));
 
     const parcel = await dbGet('SELECT * FROM parcels WHERE id = ?', [result.lastID]);

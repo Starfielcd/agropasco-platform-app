@@ -185,6 +185,8 @@ const api = {
   createPestReport: (data) => apiRequest('/pest-reports', { method: 'POST', body: JSON.stringify(data) }),
   getPestReports: (params = '') => apiRequest(`/pest-reports${params ? '?' + params : ''}`),
   respondPestReport: (id, data) => apiRequest(`/pest-reports/${id}/respond`, { method: 'PUT', body: JSON.stringify(data) }),
+  confirmPestFeedback: (id, data) => apiRequest(`/pest-reports/${id}/feedback`, { method: 'POST', body: JSON.stringify(data) }),
+  getPestReportResponses: (id) => apiRequest(`/pest-reports/${id}/responses`),
 
   // AI
   getRecommendationsAI: (cropId) => apiRequest(`/ai/recommend/${cropId}`),

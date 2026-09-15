@@ -167,6 +167,13 @@ async function publishProduct(req, res) {
       return res.status(400).json({ success: false, error: 'Nombre, tipo de cultivo y precio son obligatorios.' });
     }
 
+    if (!photo_url || typeof photo_url !== 'string' || photo_url.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'La fotografía del producto cosechado es obligatoria para la exhibición en el catálogo de supermercado.'
+      });
+    }
+
     const traceabilityCode = `AP-${crop_type.toUpperCase().substring(0, 4)}-${Date.now().toString(36).toUpperCase()}`;
 
     const user = await dbGet('SELECT location FROM users WHERE id = ?', [req.user.id]);
@@ -179,7 +186,7 @@ async function publishProduct(req, res) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, date('now'), ?, 'pending', ?)`,
       [req.user.id, name, crop_type, quality || 'primera', finalOrigin,
        stock_kg || 0, price_per_kg, unit || 'kg', description || '', traceabilityCode,
-       photo_url || null, price_per_kg]
+       photo_url.trim(), price_per_kg]
     );
 
     // Notificar a asesores sobre producto pendiente

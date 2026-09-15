@@ -23,23 +23,27 @@ async function listCrops(req, res) {
 
 async function createCrop(req, res) {
   try {
-    const { name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes } = req.body;
+    const { name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes, photo_url } = req.body;
 
     if (!name || !crop_type) {
       return res.status(400).json({ success: false, error: 'Nombre y tipo de cultivo son obligatorios.' });
     }
 
+    if (!photo_url || typeof photo_url !== 'string' || photo_url.trim() === '') {
+      return res.status(400).json({ success: false, error: 'La fotografía del cultivo o de la siembra es obligatoria.' });
+    }
+
     const result = await dbRun(
-      `INSERT INTO crops (user_id, name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO crops (user_id, name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes, photo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user.id, name, crop_type, variety || null, area_hectares || 0, planting_date || null,
-       status || 'planificado', location_detail || null, altitude_masl || 4380, notes || null]
+       status || 'planificado', location_detail || null, altitude_masl || 4380, notes || null, photo_url.trim()]
     );
 
     // Auto-create initial log entry
     await dbRun(
-      'INSERT INTO crop_logs (crop_id, action_type, description) VALUES (?, ?, ?)',
-      [result.lastID, 'siembra', `Cultivo "${name}" (${crop_type}) registrado en el sistema AgroPasco.`]
+      'INSERT INTO crop_logs (crop_id, action_type, description, photo_url) VALUES (?, ?, ?, ?)',
+      [result.lastID, 'siembra', `Cultivo "${name}" (${crop_type}) registrado en el sistema AgroPasco con fotografía.`, photo_url.trim()]
     );
 
     const crop = await dbGet('SELECT * FROM crops WHERE id = ?', [result.lastID]);

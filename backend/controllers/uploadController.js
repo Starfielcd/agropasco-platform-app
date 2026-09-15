@@ -10,8 +10,10 @@ const multer = require('multer');
 // Directorio raíz de uploads
 const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 
+const ALLOWED_FOLDERS = ['pests', 'products', 'crops', 'parcels', 'documents', 'videos', 'recommendations', 'general'];
+
 // Asegurar existencia de subcarpetas
-['pests', 'products', 'general'].forEach(sub => {
+ALLOWED_FOLDERS.forEach(sub => {
   const dir = path.join(UPLOADS_ROOT, sub);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -22,59 +24,71 @@ const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const folder = req.query.folder || req.body.folder || 'general';
-    const targetDir = path.join(UPLOADS_ROOT, ['pests', 'products'].includes(folder) ? folder : 'general');
+    const safeFolder = ALLOWED_FOLDERS.includes(folder) ? folder : 'general';
+    const targetDir = path.join(UPLOADS_ROOT, safeFolder);
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
     cb(null, targetDir);
   },
   filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || '.jpg';
+    const ext = path.extname(file.originalname).toLowerCase() || '.dat';
+    const safeBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30);
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${uniqueSuffix}${ext}`);
+    cb(null, `${safeBase}_${uniqueSuffix}${ext}`);
   }
 });
 
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  const allowedMimes = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'application/pdf',
+    'video/mp4', 'video/webm', 'video/quicktime'
+  ];
+
+  if (file.mimetype.startsWith('image/') || allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Solo se permiten archivos de imagen (JPG, PNG, WEBP).'), false);
+    cb(new Error('Formato no permitido. Solo se aceptan imágenes (JPG, PNG, WEBP), PDFs o videos (MP4, WEBM).'), false);
   }
 };
 
 const upload = multer({
   storage,
-  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB max
+  limits: { fileSize: 35 * 1024 * 1024 }, // 35 MB max para videos/documentos
   fileFilter
 });
 
-// Middleware multer para un archivo
-const uploadSingle = upload.single('image');
+// Middleware multer para aceptar cualquier campo de archivo ('image', 'file', 'attachment')
+const uploadAnySingle = upload.any();
 
 // Handler de carga multipart
 function handleFileUpload(req, res) {
-  uploadSingle(req, res, function (err) {
+  uploadAnySingle(req, res, function (err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ success: false, error: `Error de subida: ${err.message}` });
     } else if (err) {
       return res.status(400).json({ success: false, error: err.message });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No se envió ningún archivo de imagen.' });
+    const file = req.files && req.files.length > 0 ? req.files[0] : req.file;
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'No se envió ningún archivo.' });
     }
 
     const folder = req.query.folder || req.body.folder || 'general';
-    const safeFolder = ['pests', 'products'].includes(folder) ? folder : 'general';
-    const relativeUrl = `/uploads/${safeFolder}/${req.file.filename}`;
+    const safeFolder = ALLOWED_FOLDERS.includes(folder) ? folder : 'general';
+    const relativeUrl = `/uploads/${safeFolder}/${file.filename}`;
 
     res.json({
       success: true,
-      message: 'Imagen cargada exitosamente.',
+      message: 'Archivo cargado exitosamente.',
       url: relativeUrl,
-      filename: req.file.filename,
-      size: req.file.size
+      filename: file.filename,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
     });
   });
 }
