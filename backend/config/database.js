@@ -303,6 +303,17 @@ async function initializeDatabase() {
     try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
   }
 
+  // ===== MIGRACIÓN: columnas para flujo de aprobación de cuentas =====
+  const approvalMigrations = [
+    "ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN approved_by INTEGER",
+    "ALTER TABLE users ADD COLUMN rejection_reason TEXT",
+    "ALTER TABLE users ADD COLUMN approved_at DATETIME"
+  ];
+  for (const sql of approvalMigrations) {
+    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
   // ===== SEED DATA =====
   await seedData();
 
@@ -313,22 +324,25 @@ async function seedData() {
   const bcrypt = require('bcryptjs');
   const defaultHash = await bcrypt.hash('123456', 10);
 
-  // Ensure demo users exist for each core role (including Admin)
-  const demoUsers = [
-    { name: 'Agricultor de Pasco', email: 'agricultor@agropasco.pe', role: 'farmer', location: 'Yanahuanca, Pasco', phone: '963987638' },
-    { name: 'Ing. Asesor Agrícola', email: 'asesor@agropasco.pe', role: 'advisor', location: 'Cerro de Pasco', phone: '963112233' },
-    { name: 'Supermercado Central Pasco', email: 'supermercado@agropasco.pe', role: 'supermarket', location: 'Chaupimarca, Pasco', phone: '963445566' },
-    { name: 'Administrador Central AgroPasco', email: 'admin@agropasco.pe', role: 'admin', location: 'Cerro de Pasco', phone: '963000001' }
-  ];
+  // ===== Seed: Administrador único del sistema (se crea UNA sola vez) =====
+  const adminExists = await dbGet("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+  if (!adminExists) {
+    await dbRun(
+      `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
+       VALUES (?, ?, ?, 'admin', ?, ?, 'active', 0, 0)`,
+      ['Administrador Central AgroPasco', 'admin@agropasco.pe', defaultHash, 'Cerro de Pasco', '963000001']
+    );
+    console.log('🔐 Administrador del sistema creado: admin@agropasco.pe / 123456');
+  }
 
-  for (const u of demoUsers) {
-    const exists = await dbGet('SELECT id FROM users WHERE email = ?', [u.email]);
-    if (!exists) {
-      await dbRun(
-        `INSERT INTO users (name, email, password_hash, role, location, phone) VALUES (?, ?, ?, ?, ?, ?)`,
-        [u.name, u.email, defaultHash, u.role, u.location, u.phone]
-      );
-    }
+  // ===== Seed: Agricultor de referencia (para pruebas) =====
+  const farmerExists = await dbGet("SELECT id FROM users WHERE email = 'agricultor@agropasco.pe'");
+  if (!farmerExists) {
+    await dbRun(
+      `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
+       VALUES (?, ?, ?, 'farmer', ?, ?, 'active', 0, 0)`,
+      ['Agricultor de Pasco', 'agricultor@agropasco.pe', defaultHash, 'Yanahuanca, Pasco', '963987638']
+    );
   }
 
   // Seed sample support tickets if table empty

@@ -153,6 +153,14 @@ const api = {
   respondSupportTicket: (id, data) => apiRequest(`/admin/support/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify(data) }),
   escalateSupportTicket: (id) => apiRequest(`/admin/support/tickets/${id}/escalate`, { method: 'POST' }),
 
+  // Admin — Solicitudes de Cuenta (Aprobación / Rechazo)
+  getPendingAccounts: () => apiRequest('/admin/pending-accounts'),
+  approveAccount: (id) => apiRequest(`/admin/accounts/${id}/approve`, { method: 'PUT' }),
+  rejectAccount: (id, data) => apiRequest(`/admin/accounts/${id}/reject`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Auth — Cambio de Contraseña
+  changePassword: (data) => apiRequest('/auth/change-password', { method: 'PUT', body: JSON.stringify(data) }),
+
   // Weather
   getCurrentWeather: () => apiRequest('/weather/current'),
   getLiveWeather: getLiveWeatherData,

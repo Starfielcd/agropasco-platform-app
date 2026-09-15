@@ -1,10 +1,13 @@
 /**
  * AgroPasco — Controlador de Autenticación
+ * Login, registro con flujo de aprobación y cambio de contraseña
  */
 
 const bcrypt = require('bcryptjs');
-const { dbRun, dbGet } = require('../config/database');
+const { dbRun, dbGet, dbAll } = require('../config/database');
 const { generateToken } = require('../middleware/auth');
+const { createNotification } = require('../services/notificationService');
+const { sendNewAccountRequestEmail } = require('../services/emailService');
 
 async function register(req, res) {
   try {
@@ -18,6 +21,14 @@ async function register(req, res) {
       return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres.' });
     }
 
+    // ===== BLOQUEAR registro de Administrador desde la interfaz pública =====
+    if (role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'No es posible registrar una cuenta de Administrador. El administrador se configura internamente.'
+      });
+    }
+
     // Check if email already exists
     const existing = await dbGet('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
@@ -26,13 +37,44 @@ async function register(req, res) {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const validRole = ['farmer', 'advisor', 'supermarket'].includes(role) ? role : 'farmer';
-    // Admin role cannot be self-assigned via registration — must be assigned by another admin
+
+    // ===== ROLES SENSIBLES: advisor y supermarket requieren aprobación =====
+    const requiresApproval = ['advisor', 'supermarket'].includes(validRole);
+    const accountStatus = requiresApproval ? 'pending' : 'active';
 
     const result = await dbRun(
-      'INSERT INTO users (name, email, password_hash, role, location, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, email, passwordHash, validRole, location || 'Cerro de Pasco', phone || null]
+      `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+      [name, email, passwordHash, validRole, location || 'Cerro de Pasco', phone || null, accountStatus]
     );
 
+    if (requiresApproval) {
+      // Notificar a todos los administradores que hay una nueva solicitud
+      const admins = await dbAll("SELECT id, email FROM users WHERE role = 'admin' AND status = 'active'");
+      const roleLabel = validRole === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+
+      for (const admin of admins) {
+        // Notificación interna en la plataforma
+        await createNotification(
+          admin.id,
+          'sistema',
+          '📬 Nueva solicitud de cuenta',
+          `${name} (${email}) ha solicitado una cuenta como ${roleLabel}. Revisa la sección "Solicitudes de Cuenta" en el panel de administración.`,
+          'warning'
+        );
+
+        // Email al administrador
+        await sendNewAccountRequestEmail(admin.email, { name, email, role: validRole, location, phone });
+      }
+
+      return res.status(201).json({
+        success: true,
+        pending: true,
+        message: `¡Solicitud enviada! Tu cuenta como ${roleLabel} está pendiente de aprobación por el Administrador. Recibirás una notificación cuando sea revisada.`
+      });
+    }
+
+    // Registro inmediato para agricultores
     const user = { id: result.lastID, name, email, role: validRole };
     const token = generateToken(user);
 
@@ -65,6 +107,21 @@ async function login(req, res) {
       return res.status(401).json({ success: false, error: 'Credenciales incorrectas.' });
     }
 
+    // ===== Validar estado de cuenta =====
+    if (user.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        error: 'Tu cuenta está pendiente de aprobación por el Administrador. Recibirás una notificación cuando sea revisada.'
+      });
+    }
+
+    if (user.status === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        error: 'Tu solicitud de cuenta fue rechazada por el Administrador. Contacta a Soporte Técnico para más información.'
+      });
+    }
+
     if (user.is_blocked || user.status === 'blocked') {
       return res.status(403).json({
         success: false,
@@ -79,7 +136,8 @@ async function login(req, res) {
       message: '¡Bienvenido de vuelta!',
       data: {
         user: { id: user.id, name: user.name, email: user.email, role: user.role, location: user.location },
-        token
+        token,
+        mustChangePassword: user.must_change_password === 1
       }
     });
   } catch (err) {
@@ -91,7 +149,7 @@ async function login(req, res) {
 async function getProfile(req, res) {
   try {
     const user = await dbGet(
-      'SELECT id, name, email, role, location, phone, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, role, location, phone, status, must_change_password, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
     if (!user) {
@@ -103,4 +161,32 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { register, login, getProfile };
+async function changePassword(req, res) {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'La nueva contraseña debe tener al menos 6 caracteres.'
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await dbRun(
+      'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [passwordHash, req.user.id]
+    );
+
+    res.json({
+      success: true,
+      message: '¡Contraseña actualizada exitosamente! Ya puedes usar tu nueva contraseña.'
+    });
+  } catch (err) {
+    console.error('Error al cambiar contraseña:', err);
+    res.status(500).json({ success: false, error: 'Error al cambiar la contraseña.' });
+  }
+}
+
+module.exports = { register, login, getProfile, changePassword };

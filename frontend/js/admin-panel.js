@@ -40,6 +40,10 @@ async function renderAdminDashboard() {
       <!-- Barra de Pestañas / Módulos de Administración -->
       <div class="card mb-lg" style="padding: 6px; background: rgba(15,23,42,0.85); border: 1.5px solid var(--border);">
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn ${currentAdminTab === 'pending' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="pending" style="flex: 1; min-width: 160px; font-weight: 700; position: relative;"
+                  onclick="switchAdminTab('pending')">
+            📬 Solicitudes de Cuenta <span id="pending-accounts-badge" class="admin-pending-badge" style="display: none;">0</span>
+          </button>
           <button class="btn ${currentAdminTab === 'metrics' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="metrics" style="flex: 1; min-width: 160px; font-weight: 700;"
                   onclick="switchAdminTab('metrics')">
             📊 Métricas & Auditoría
@@ -84,6 +88,8 @@ async function switchAdminTab(tabName) {
 
 async function renderActiveAdminTabContent(stats) {
   switch (currentAdminTab) {
+    case 'pending':
+      return await renderPendingAccountsTab();
     case 'metrics':
       return renderMetricsTabContent(stats);
     case 'users':
@@ -93,7 +99,209 @@ async function renderActiveAdminTabContent(stats) {
     case 'moderation':
       return await renderModerationTabContent();
     default:
-      return renderMetricsTabContent(stats);
+      return await renderPendingAccountsTab();
+  }
+}
+
+// ==========================================
+// 0. PESTAÑA: SOLICITUDES DE CUENTA PENDIENTES
+// ==========================================
+
+async function renderPendingAccountsTab() {
+  const result = await api.getPendingAccounts();
+  const pending = result.data || [];
+
+  // Actualizar badge del tab
+  updatePendingBadge(pending.length);
+
+  if (pending.length === 0) {
+    return `
+      <div class="card" style="text-align: center; padding: 48px 24px;">
+        <div style="font-size: 64px; margin-bottom: 16px;">✅</div>
+        <h3 style="color: var(--text-primary); margin-bottom: 8px;">Sin Solicitudes Pendientes</h3>
+        <p class="text-muted">No hay solicitudes de cuenta de Asesores Técnicos o Supermercados pendientes de aprobación.</p>
+      </div>
+    `;
+  }
+
+  const roleLabels = { advisor: '📋 Asesor Técnico', supermarket: '🏪 Supermercado' };
+  const roleColors = { advisor: 'blue', supermarket: 'purple' };
+
+  const rows = pending.map(u => `
+    <div class="card mb-md pending-account-card" style="border-left: 4px solid var(--${roleColors[u.role] || 'blue'}-500);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, var(--${roleColors[u.role] || 'blue'}-500), var(--${roleColors[u.role] || 'blue'}-600, #1e40af)); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #fff;">
+              ${(u.name || 'U')[0].toUpperCase()}
+            </div>
+            <div>
+              <strong style="font-size: 15px; color: var(--text-primary);">${u.name}</strong>
+              <div class="text-xs text-muted">${u.email}</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+            <span class="badge badge-${roleColors[u.role] || 'blue'}">${roleLabels[u.role] || u.role}</span>
+            <span class="badge badge-yellow" style="animation: pulse-badge 2s infinite;">⏳ Pendiente</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--text-secondary);">
+            <div>📍 ${u.location || 'No especificada'}</div>
+            <div>📱 ${u.phone || 'Sin teléfono'}</div>
+            <div>📅 ${new Date(u.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+            <div>🕐 ${new Date(u.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn btn-sm" style="background: rgba(34,197,94,0.2); border: 1px solid #22c55e; color: #4ade80; font-weight: 700; padding: 10px 20px;"
+                  onclick="confirmApproveAccount(${u.id}, '${u.name.replace(/'/g, "\\'")}', '${u.email}', '${u.role}')">
+            ✅ Aprobar
+          </button>
+          <button class="btn btn-sm" style="background: rgba(239,68,68,0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700; padding: 10px 20px;"
+                  onclick="confirmRejectAccount(${u.id}, '${u.name.replace(/'/g, "\\'")}', '${u.email}', '${u.role}')">
+            ❌ Rechazar
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div>
+      <div class="card mb-lg" style="border-left: 4px solid var(--yellow-500); background: rgba(245,158,11,0.08);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">📬</span>
+          <div>
+            <strong style="color: var(--yellow-400);">${pending.length} solicitud${pending.length > 1 ? 'es' : ''} pendiente${pending.length > 1 ? 's' : ''} de aprobación</strong>
+            <div class="text-sm text-muted">Revisa los datos de cada solicitante y decide si apruebas o rechazas su cuenta.</div>
+          </div>
+        </div>
+      </div>
+      ${rows}
+    </div>
+  `;
+}
+
+function updatePendingBadge(count) {
+  const badge = document.getElementById('pending-accounts-badge');
+  if (badge) {
+    badge.style.display = count > 0 ? 'inline-flex' : 'none';
+    badge.textContent = count;
+  }
+}
+
+function confirmApproveAccount(userId, name, email, role) {
+  const roleLabel = role === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+
+  // Crear modal de confirmación
+  const existingModal = document.getElementById('admin-action-modal');
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'admin-action-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">✅</div>
+      <h2 style="color: var(--text-primary); margin-bottom: 8px;">Confirmar Aprobación</h2>
+      <p style="color: var(--text-secondary); line-height: 1.6;">
+        ¿Aprobar la cuenta de <strong style="color: #4ade80;">${name}</strong> como <strong>${roleLabel}</strong>?
+      </p>
+      <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; color: var(--text-secondary);">
+        <p style="margin: 0;">Al aprobar:</p>
+        <ul style="margin: 8px 0 0 16px; padding: 0;">
+          <li>Se generará una contraseña temporal segura</li>
+          <li>Se enviará un email de bienvenida con las credenciales</li>
+          <li>El usuario deberá cambiar su contraseña al primer login</li>
+        </ul>
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" style="flex: 1;" onclick="closeAdminActionModal()">Cancelar</button>
+        <button class="btn btn-primary" style="flex: 1; background: linear-gradient(135deg, #22c55e, #16a34a);" id="confirm-approve-btn" onclick="executeApproveAccount(${userId})">
+          ✅ Sí, Aprobar Cuenta
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+}
+
+function confirmRejectAccount(userId, name, email, role) {
+  const roleLabel = role === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+
+  const existingModal = document.getElementById('admin-action-modal');
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'admin-action-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header-icon" style="background: linear-gradient(135deg, #ef4444, #dc2626);">❌</div>
+      <h2 style="color: var(--text-primary); margin-bottom: 8px;">Rechazar Solicitud</h2>
+      <p style="color: var(--text-secondary); line-height: 1.6;">
+        ¿Rechazar la solicitud de <strong style="color: #f87171;">${name}</strong> como <strong>${roleLabel}</strong>?
+      </p>
+      <div class="form-group" style="margin-top: 16px;">
+        <label class="form-label">Motivo del rechazo (opcional)</label>
+        <textarea class="form-input" id="reject-reason" rows="3" placeholder="Ej: Datos insuficientes, no se pudo verificar la identidad..." style="resize: vertical;"></textarea>
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 16px;">
+        <button class="btn btn-secondary" style="flex: 1;" onclick="closeAdminActionModal()">Cancelar</button>
+        <button class="btn" style="flex: 1; background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; font-weight: 700;" id="confirm-reject-btn" onclick="executeRejectAccount(${userId})">
+          ❌ Sí, Rechazar
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+}
+
+async function executeApproveAccount(userId) {
+  const btn = document.getElementById('confirm-approve-btn');
+  if (btn) { btn.textContent = 'Aprobando...'; btn.disabled = true; }
+
+  const result = await api.approveAccount(userId);
+
+  closeAdminActionModal();
+
+  if (result.success) {
+    showToast(result.message, 'success');
+    if (result.tempPassword) {
+      showToast(`Contraseña temporal: ${result.tempPassword}`, 'info');
+    }
+    // Recargar la pestaña de pendientes
+    switchAdminTab('pending');
+  } else {
+    showToast(result.error || 'Error al aprobar la cuenta', 'error');
+  }
+}
+
+async function executeRejectAccount(userId) {
+  const btn = document.getElementById('confirm-reject-btn');
+  if (btn) { btn.textContent = 'Rechazando...'; btn.disabled = true; }
+
+  const reason = document.getElementById('reject-reason')?.value || '';
+  const result = await api.rejectAccount(userId, { reason });
+
+  closeAdminActionModal();
+
+  if (result.success) {
+    showToast(result.message, 'success');
+    switchAdminTab('pending');
+  } else {
+    showToast(result.error || 'Error al rechazar la cuenta', 'error');
+  }
+}
+
+function closeAdminActionModal() {
+  const modal = document.getElementById('admin-action-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.remove(), 300);
   }
 }
 
@@ -129,8 +337,22 @@ function renderMetricsTabContent(stats) {
           <div class="stat-card-label">Agricultores Activos (Ver Detalle →)</div>
         </div>
 
+        <!-- Asesores Técnicos -->
+        <div class="stat-card" style="--stat-color: var(--blue-500); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('advisors', 'Listado de Asesores Técnicos')" title="Clic para ver asesores">
+          <div class="stat-card-icon">📋</div>
+          <div class="stat-card-value">${advisorCount}</div>
+          <div class="stat-card-label">Asesores Técnicos (Ver Detalle →)</div>
+        </div>
+
+        <!-- Supermercados -->
+        <div class="stat-card" style="--stat-color: var(--purple-400); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('supermarkets', 'Listado de Supermercados')" title="Clic para ver supermercados">
+          <div class="stat-card-icon">🏪</div>
+          <div class="stat-card-value">${supermarketCount}</div>
+          <div class="stat-card-label">Supermercados (Ver Detalle →)</div>
+        </div>
+
         <!-- Productos en Supermercado -->
-        <div class="stat-card" style="--stat-color: var(--purple-400); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('products', 'Catálogo de Productos en Venta')" title="Clic para ver lista de productos">
+        <div class="stat-card" style="--stat-color: var(--yellow-500); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('products', 'Catálogo de Productos en Venta')" title="Clic para ver lista de productos">
           <div class="stat-card-icon">📦</div>
           <div class="stat-card-value">${stats.products?.total || 0}</div>
           <div class="stat-card-label">Productos en Venta (${stats.products?.active || 0} aprobados →)</div>
@@ -144,7 +366,7 @@ function renderMetricsTabContent(stats) {
         </div>
 
         <!-- Parcelas Georreferenciadas -->
-        <div class="stat-card" style="--stat-color: var(--blue-500); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('parcels', 'Parcelas Registradas en Pasco')" title="Clic para ver parcelas">
+        <div class="stat-card" style="--stat-color: var(--cyan-500); cursor: pointer; transition: transform 0.2s;" onclick="openMetricDetailModal('parcels', 'Parcelas Registradas en Pasco')" title="Clic para ver parcelas">
           <div class="stat-card-icon">🗺️</div>
           <div class="stat-card-value">${stats.parcels?.total || 0}</div>
           <div class="stat-card-label">Parcelas Mapeadas (Ver Detalle →)</div>

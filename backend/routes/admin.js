@@ -19,7 +19,10 @@ const {
   getAnomalies,
   getTickets,
   respondTicket,
-  escalateTicket
+  escalateTicket,
+  getPendingAccounts,
+  approveAccount,
+  rejectAccount
 } = require('../controllers/adminController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
@@ -50,5 +53,10 @@ router.get('/moderation/anomalies', getAnomalies);
 router.get('/support/tickets', getTickets);
 router.post('/support/tickets/:id/reply', respondTicket);
 router.post('/support/tickets/:id/escalate', escalateTicket);
+
+// ===== 5. GESTIÓN DE SOLICITUDES DE CUENTA =====
+router.get('/pending-accounts', getPendingAccounts);
+router.put('/accounts/:id/approve', approveAccount);
+router.put('/accounts/:id/reject', rejectAccount);
 
 module.exports = router;

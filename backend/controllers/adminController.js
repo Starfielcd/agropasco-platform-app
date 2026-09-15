@@ -5,7 +5,10 @@
  */
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../config/database');
+const { createNotification } = require('../services/notificationService');
+const { sendApprovalEmail, sendRejectionEmail } = require('../services/emailService');
 
 // ===== 1. GESTIÓN DE USUARIOS =====
 
@@ -278,9 +281,16 @@ async function getMetricDetail(req, res) {
 
       case 'advisors':
         data = await dbAll(`
-          SELECT u.id, u.name, u.email, u.phone, u.location, u.created_at,
+          SELECT u.id, u.name, u.email, u.phone, u.location, u.status, u.is_blocked, u.created_at,
                  (SELECT COUNT(*) FROM pest_reports pr WHERE pr.advisor_id = u.id) as resolved_pests_count
           FROM users u WHERE u.role = 'advisor' ORDER BY u.created_at DESC
+        `);
+        break;
+
+      case 'supermarkets':
+        data = await dbAll(`
+          SELECT u.id, u.name, u.email, u.phone, u.location, u.status, u.is_blocked, u.created_at
+          FROM users u WHERE u.role = 'supermarket' ORDER BY u.created_at DESC
         `);
         break;
 
@@ -504,6 +514,139 @@ async function escalateTicket(req, res) {
   }
 }
 
+// ===== 5. GESTIÓN DE SOLICITUDES DE CUENTA (APROBACIÓN / RECHAZO) =====
+
+async function getPendingAccounts(req, res) {
+  try {
+    const pending = await dbAll(
+      `SELECT id, name, email, role, location, phone, status, created_at
+       FROM users
+       WHERE status = 'pending' AND role IN ('advisor', 'supermarket')
+       ORDER BY created_at ASC`
+    );
+
+    res.json({ success: true, data: pending, total: pending.length });
+  } catch (err) {
+    console.error('Error al obtener solicitudes pendientes:', err);
+    res.status(500).json({ success: false, error: 'Error al obtener solicitudes pendientes.' });
+  }
+}
+
+async function approveAccount(req, res) {
+  try {
+    const userId = req.params.id;
+
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    if (user.status !== 'pending') {
+      return res.status(400).json({ success: false, error: 'Esta cuenta no está pendiente de aprobación.' });
+    }
+
+    // Generar contraseña temporal segura
+    const tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    // Activar cuenta con contraseña temporal y flag de cambio obligatorio
+    await dbRun(
+      `UPDATE users SET
+        status = 'active',
+        is_blocked = 0,
+        password_hash = ?,
+        must_change_password = 1,
+        approved_by = ?,
+        approved_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [passwordHash, req.user.id, userId]
+    );
+
+    // Notificación interna al usuario
+    const roleLabel = user.role === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+    await createNotification(
+      user.id,
+      'sistema',
+      '✅ Cuenta Aprobada',
+      `¡Bienvenido a AgroPasco Digital! Tu cuenta como ${roleLabel} ha sido aprobada por el Administrador. Inicia sesión con las credenciales enviadas a tu correo.`,
+      'info'
+    );
+
+    // Email con credenciales temporales
+    await sendApprovalEmail(user, tempPassword);
+
+    // Registro de auditoría
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'APROBAR_CUENTA', 'user', userId, `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Credenciales temporales enviadas.`, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: `Cuenta de ${user.name} aprobada exitosamente. Se ha enviado un email con las credenciales temporales.`,
+      tempPassword // Se muestra al admin por si el email falla
+    });
+  } catch (err) {
+    console.error('Error al aprobar cuenta:', err);
+    res.status(500).json({ success: false, error: 'Error al aprobar la cuenta.' });
+  }
+}
+
+async function rejectAccount(req, res) {
+  try {
+    const userId = req.params.id;
+    const { reason } = req.body;
+
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    if (user.status !== 'pending') {
+      return res.status(400).json({ success: false, error: 'Esta cuenta no está pendiente de aprobación.' });
+    }
+
+    // Rechazar y bloquear la cuenta
+    await dbRun(
+      `UPDATE users SET
+        status = 'rejected',
+        is_blocked = 1,
+        rejection_reason = ?,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [reason || 'Solicitud rechazada por el Administrador.', userId]
+    );
+
+    // Notificación interna al usuario
+    const roleLabel = user.role === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+    await createNotification(
+      user.id,
+      'sistema',
+      '❌ Solicitud de Cuenta Rechazada',
+      `Tu solicitud como ${roleLabel} ha sido rechazada. Motivo: ${reason || 'No especificado'}. Contacta a Soporte Técnico si tienes dudas.`,
+      'critical'
+    );
+
+    // Email de rechazo
+    await sendRejectionEmail(user, reason);
+
+    // Registro de auditoría
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'RECHAZAR_CUENTA', 'user', userId, `Cuenta de "${user.name}" (${user.email}) rechazada como ${roleLabel}. Motivo: ${reason || 'No especificado'}`, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: `Solicitud de ${user.name} rechazada. Se ha notificado al usuario.`
+    });
+  } catch (err) {
+    console.error('Error al rechazar cuenta:', err);
+    res.status(500).json({ success: false, error: 'Error al rechazar la cuenta.' });
+  }
+}
+
 module.exports = {
   listUsers,
   updateUserRole,
@@ -520,5 +663,8 @@ module.exports = {
   getAnomalies,
   getTickets,
   respondTicket,
-  escalateTicket
+  escalateTicket,
+  getPendingAccounts,
+  approveAccount,
+  rejectAccount
 };
