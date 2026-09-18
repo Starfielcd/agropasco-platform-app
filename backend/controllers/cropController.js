@@ -5,15 +5,40 @@
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { getCurrentWeather } = require('../services/weatherService');
 
+const DEFAULT_CROP_IMAGES = {
+  papa: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=800&q=80',
+  maca: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=800&q=80',
+  quinua: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
+  habas: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80',
+  cafe: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&w=800&q=80',
+  olluco: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+  mashua: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80',
+  oca: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+  cebada: 'https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80',
+  trigo: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80'
+};
+
 async function listCrops(req, res) {
   try {
-    const crops = await dbAll(
-      `SELECT c.*, 
-        (SELECT COUNT(*) FROM crop_logs WHERE crop_id = c.id) as total_logs,
-        (SELECT created_at FROM crop_logs WHERE crop_id = c.id ORDER BY created_at DESC LIMIT 1) as last_activity
-       FROM crops c WHERE c.user_id = ? ORDER BY c.updated_at DESC`,
-      [req.user.id]
-    );
+    let crops;
+    if (req.user.role === 'admin' || req.user.role === 'advisor') {
+      crops = await dbAll(
+        `SELECT c.*, u.name as farmer_name, u.location as farmer_location,
+          (SELECT COUNT(*) FROM crop_logs WHERE crop_id = c.id) as total_logs,
+          (SELECT created_at FROM crop_logs WHERE crop_id = c.id ORDER BY created_at DESC LIMIT 1) as last_activity
+         FROM crops c
+         LEFT JOIN users u ON c.user_id = u.id
+         ORDER BY c.updated_at DESC`
+      );
+    } else {
+      crops = await dbAll(
+        `SELECT c.*, 
+          (SELECT COUNT(*) FROM crop_logs WHERE crop_id = c.id) as total_logs,
+          (SELECT created_at FROM crop_logs WHERE crop_id = c.id ORDER BY created_at DESC LIMIT 1) as last_activity
+         FROM crops c WHERE c.user_id = ? ORDER BY c.updated_at DESC`,
+        [req.user.id]
+      );
+    }
     res.json({ success: true, data: crops, total: crops.length });
   } catch (err) {
     console.error('Error al listar cultivos:', err);
@@ -29,21 +54,22 @@ async function createCrop(req, res) {
       return res.status(400).json({ success: false, error: 'Nombre y tipo de cultivo son obligatorios.' });
     }
 
-    if (!photo_url || typeof photo_url !== 'string' || photo_url.trim() === '') {
-      return res.status(400).json({ success: false, error: 'La fotografía del cultivo o de la siembra es obligatoria.' });
-    }
+    // Si no se proporcionó foto en vivo, usar imagen ilustrativa de alta calidad según tipo de cultivo
+    const finalPhoto = (photo_url && typeof photo_url === 'string' && photo_url.trim() !== '')
+      ? photo_url.trim()
+      : (DEFAULT_CROP_IMAGES[crop_type] || DEFAULT_CROP_IMAGES.papa);
 
     const result = await dbRun(
       `INSERT INTO crops (user_id, name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes, photo_url)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user.id, name, crop_type, variety || null, area_hectares || 0, planting_date || null,
-       status || 'planificado', location_detail || null, altitude_masl || 4380, notes || null, photo_url.trim()]
+       status || 'planificado', location_detail || null, altitude_masl || 4380, notes || null, finalPhoto]
     );
 
     // Auto-create initial log entry
     await dbRun(
       'INSERT INTO crop_logs (crop_id, action_type, description, photo_url) VALUES (?, ?, ?, ?)',
-      [result.lastID, 'siembra', `Cultivo "${name}" (${crop_type}) registrado en el sistema AgroPasco con fotografía.`, photo_url.trim()]
+      [result.lastID, 'siembra', `Cultivo "${name}" (${crop_type}) registrado en el sistema AgroPasco con fotografía.`, finalPhoto]
     );
 
     const crop = await dbGet('SELECT * FROM crops WHERE id = ?', [result.lastID]);
@@ -56,7 +82,19 @@ async function createCrop(req, res) {
 
 async function getCrop(req, res) {
   try {
-    const crop = await dbGet('SELECT * FROM crops WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    let crop;
+    if (req.user.role === 'admin' || req.user.role === 'advisor') {
+      crop = await dbGet(
+        `SELECT c.*, u.name as farmer_name, u.location as farmer_location 
+         FROM crops c 
+         LEFT JOIN users u ON c.user_id = u.id 
+         WHERE c.id = ?`,
+        [req.params.id]
+      );
+    } else {
+      crop = await dbGet('SELECT * FROM crops WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    }
+
     if (!crop) {
       return res.status(404).json({ success: false, error: 'Cultivo no encontrado.' });
     }
@@ -76,19 +114,23 @@ async function updateCrop(req, res) {
   try {
     const { name, crop_type, variety, area_hectares, planting_date, expected_harvest_date, status, location_detail, altitude_masl, notes } = req.body;
 
-    const crop = await dbGet('SELECT * FROM crops WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    const isAdmin = req.user.role === 'admin';
+    const crop = isAdmin
+      ? await dbGet('SELECT * FROM crops WHERE id = ?', [req.params.id])
+      : await dbGet('SELECT * FROM crops WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+
     if (!crop) {
       return res.status(404).json({ success: false, error: 'Cultivo no encontrado.' });
     }
 
     await dbRun(
       `UPDATE crops SET name=?, crop_type=?, variety=?, area_hectares=?, planting_date=?, expected_harvest_date=?, 
-       status=?, location_detail=?, altitude_masl=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?`,
+       status=?, location_detail=?, altitude_masl=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
       [name || crop.name, crop_type || crop.crop_type, variety ?? crop.variety,
        area_hectares ?? crop.area_hectares, planting_date ?? crop.planting_date,
        expected_harvest_date ?? crop.expected_harvest_date, status || crop.status,
        location_detail ?? crop.location_detail, altitude_masl ?? crop.altitude_masl,
-       notes ?? crop.notes, req.params.id, req.user.id]
+       notes ?? crop.notes, req.params.id]
     );
 
     // Log status change

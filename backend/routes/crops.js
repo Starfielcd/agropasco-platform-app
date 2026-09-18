@@ -6,11 +6,11 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 router.use(authenticateToken);
 
 router.get('/', listCrops);
-router.post('/', requireRole('farmer', 'admin'), createCrop);
+router.post('/', requireRole('farmer', 'admin', 'advisor'), createCrop);
 router.get('/:id', getCrop);
-router.put('/:id', requireRole('farmer', 'admin'), updateCrop);
+router.put('/:id', requireRole('farmer', 'admin', 'advisor'), updateCrop);
 router.delete('/:id', requireRole('farmer', 'admin'), deleteCrop);
-router.post('/:id/logs', requireRole('farmer', 'admin'), addCropLog);
+router.post('/:id/logs', requireRole('farmer', 'admin', 'advisor'), addCropLog);
 router.get('/:id/traceability', getTraceability);
 
 module.exports = router;

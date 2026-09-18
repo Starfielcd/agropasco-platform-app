@@ -106,11 +106,18 @@ async function renderDashboard() {
         </div>
       </div>
 
-      <!-- Recent Crops -->
+      <!-- Recent Crops Section -->
       <div class="card mt-lg">
         <div class="card-header">
-          <div class="card-title"><span class="card-title-icon">🌿</span> Mis Cultivos</div>
-          <button class="btn btn-primary btn-sm" onclick="window.location.hash='#/crops'">+ Nuevo Cultivo</button>
+          <div class="card-title">
+            <span class="card-title-icon">🌿</span> 
+            ${user?.role === 'supermarket' ? 'Cultivos en Producción' : (user?.role === 'advisor' || user?.role === 'admin') ? 'Cultivos Registrados en la Región' : 'Mis Cultivos'}
+          </div>
+          ${user?.role === 'supermarket' ? `
+            <button class="btn btn-primary btn-sm" onclick="window.location.hash='#/supermarket'">Ver Catálogo</button>
+          ` : `
+            <button class="btn btn-primary btn-sm" onclick="window.location.hash='#/crops?action=new'">+ Nuevo Cultivo</button>
+          `}
         </div>
         ${crops.length > 0 ? `
           <div class="grid-3">
@@ -119,9 +126,13 @@ async function renderDashboard() {
         ` : `
           <div class="empty-state">
             <div class="empty-state-icon">🌱</div>
-            <div class="empty-state-title">No tienes cultivos registrados</div>
-            <div class="empty-state-text">Registra tu primer cultivo para recibir asesoría personalizada.</div>
-            <button class="btn btn-primary" onclick="window.location.hash='#/crops'">Registrar mi primer cultivo</button>
+            <div class="empty-state-title">No hay cultivos registrados</div>
+            <div class="empty-state-text">Registra cultivos para habilitar recomendaciones satelitales y trazabilidad digital.</div>
+            ${user?.role !== 'supermarket' ? `
+              <button class="btn btn-primary" onclick="window.location.hash='#/crops?action=new'">Registrar nuevo cultivo</button>
+            ` : `
+              <button class="btn btn-primary" onclick="window.location.hash='#/supermarket'">Explorar productos disponibles</button>
+            `}
           </div>
         `}
       </div>
@@ -139,6 +150,7 @@ function renderCropCard(crop) {
         <div>
           <div class="crop-card-name">${crop.name}</div>
           <div class="crop-card-type">${crop.crop_type}${crop.variety ? ' — ' + crop.variety : ''}</div>
+          ${crop.farmer_name ? `<div class="text-xs text-muted" style="margin-top: 2px;">👤 ${crop.farmer_name}</div>` : ''}
         </div>
         <div class="crop-card-icon">${icons[crop.crop_type] || '🌱'}</div>
       </div>

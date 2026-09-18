@@ -29,10 +29,10 @@ const AgroMediaUploader = (function() {
 
         <!-- Botones de Acción: Abrir Cámara y Subir Imagen -->
         <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
+          <button type="button" class="btn btn-primary" id="${id}-btn-camera" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
                   onclick="AgroMediaUploader.openCamera('${id}')">
             <span>📷</span>
-            <strong>Abrir Cámara</strong>
+            <strong id="${id}-btn-camera-text">Abrir Cámara</strong>
           </button>
 
           <button type="button" class="btn btn-secondary" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
@@ -42,8 +42,8 @@ const AgroMediaUploader = (function() {
           </button>
         </div>
 
-        <!-- Input de archivo nativo oculto -->
-        <input type="file" id="${id}-file-input" accept="image/*" style="display: none;"
+        <!-- Input de archivo nativo oculto (con capture para cámara directa en móviles) -->
+        <input type="file" id="${id}-file-input" accept="image/*" capture="environment" style="display: none;"
                onchange="AgroMediaUploader.handleFileSelected('${id}', this.files[0])">
 
         <!-- Input oculto que guarda la URL final para el formulario -->
@@ -82,11 +82,27 @@ const AgroMediaUploader = (function() {
 
   /**
    * Abre el modal con la cámara en vivo del dispositivo usando getUserMedia
+   * con timeout de seguridad y fallback fluido para evitar congelamientos.
    */
   async function openCamera(targetId) {
+    const btn = document.getElementById(`${targetId}-btn-camera`);
+    const btnText = document.getElementById(`${targetId}-btn-camera-text`);
+    if (btn) {
+      btn.disabled = true;
+      if (btnText) btnText.textContent = 'Conectando...';
+    }
+
+    const restoreBtn = () => {
+      if (btn) {
+        btn.disabled = false;
+        if (btnText) btnText.textContent = 'Abrir Cámara';
+      }
+    };
+
     // Verificar soporte de MediaDevices
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showToast('Tu navegador o dispositivo no soporta acceso directo a cámara. Usa "Subir Imagen".', 'warning');
+      restoreBtn();
+      showToast('Tu navegador no soporta WebRTC directo. Abriendo cámara/galería del sistema...', 'info');
       document.getElementById(`${targetId}-file-input`)?.click();
       return;
     }
@@ -108,18 +124,32 @@ const AgroMediaUploader = (function() {
             <span style="font-size: 18px;">📷</span>
             <strong style="color: #ffffff; font-size: 15px;">Captura en Vivo — AgroPasco</strong>
           </div>
-          <button class="modal-close" onclick="AgroMediaUploader.closeCameraModal()">✕</button>
+          <button class="modal-close" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">✕</button>
         </div>
 
         <!-- Visor de Video en Directo -->
         <div style="position: relative; width: 100%; height: 380px; background: #000000; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+          <!-- Pantalla de carga mientras se conecta la cámara -->
+          <div id="camera-loading-overlay" style="position: absolute; inset: 0; background: #0b1120; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5; gap: 12px; padding: 20px; text-align: center;">
+            <div style="font-size: 38px; animation: spin 1.2s infinite linear;">📷</div>
+            <strong style="color: #60a5fa; font-size: 15px;">Conectando con la cámara...</strong>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0; max-width: 340px;">
+              Si el navegador te solicita permisos de cámara, selecciona <strong>"Permitir"</strong>.
+            </p>
+            <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 8px;"
+                    onclick="AgroMediaUploader.closeCameraModal('${targetId}'); document.getElementById('${targetId}-file-input')?.click();">
+              📁 Tomar foto o elegir imagen del dispositivo
+            </button>
+          </div>
+
+          <!-- Video en directo -->
           <video id="camera-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
           <canvas id="camera-canvas" style="display: none;"></canvas>
 
           <!-- Guía visual de encuadre agrícola -->
           <div style="position: absolute; inset: 24px; border: 2px dashed rgba(34,197,94,0.65); border-radius: 12px; pointer-events: none; display: flex; align-items: center; justify-content: center;">
             <span style="background: rgba(0,0,0,0.6); color: #4ade80; font-size: 11.5px; padding: 3px 10px; border-radius: 20px;">
-              Encuadre: Hoja, fruto, plaga o producto
+              Encuadre: Parcela, cultivo, plaga o producto
             </span>
           </div>
 
@@ -128,37 +158,52 @@ const AgroMediaUploader = (function() {
         </div>
 
         <!-- Barra de Botones de Control de la Cámara -->
-        <div style="padding: 14px 18px; background: #0f172a; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-          <button type="button" class="btn btn-secondary" onclick="AgroMediaUploader.toggleCameraFacing('${targetId}')" title="Alternar cámara trasera / frontal">
-            🔄 Cambiar Cámara
-          </button>
+        <div style="padding: 14px 18px; background: #0f172a; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="AgroMediaUploader.toggleCameraFacing('${targetId}')" title="Alternar cámara trasera / frontal">
+              🔄 Girar Cámara
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="AgroMediaUploader.closeCameraModal('${targetId}'); document.getElementById('${targetId}-file-input')?.click();" title="Abrir cámara del sistema o galería">
+              📁 Galería / Cámara Nativa
+            </button>
+          </div>
 
-          <button type="button" class="btn btn-primary btn-lg" style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 10px 24px; font-weight: 700; box-shadow: 0 4px 16px rgba(34,197,94,0.4);"
-                  onclick="AgroMediaUploader.captureFrame('${targetId}')">
-            📸 Capturar Foto
-          </button>
-
-          <button type="button" class="btn btn-secondary" onclick="AgroMediaUploader.closeCameraModal()">
-            Cancelar
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-primary btn-lg" style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 10px 24px; font-weight: 700; box-shadow: 0 4px 16px rgba(34,197,94,0.4);"
+                    onclick="AgroMediaUploader.captureFrame('${targetId}')">
+              📸 Capturar Foto
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     `;
 
     document.body.appendChild(modal);
+    restoreBtn();
 
-    // Iniciar el stream de video
-    await startVideoStream(currentFacingMode);
+    // Iniciar el stream de video con protección de timeout
+    await startVideoStream(currentFacingMode, targetId);
   }
 
-  async function startVideoStream(facingMode) {
+  async function startVideoStream(facingMode, targetId) {
     const video = document.getElementById('camera-video');
+    const loadingOverlay = document.getElementById('camera-loading-overlay');
     if (!video) return;
 
     if (activeStream) {
       activeStream.getTracks().forEach(t => t.stop());
       activeStream = null;
     }
+
+    const getUserMediaWithTimeout = (constraints, ms = 4500) => {
+      return Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_CAMARA')), ms))
+      ]);
+    };
 
     try {
       const constraints = {
@@ -170,32 +215,66 @@ const AgroMediaUploader = (function() {
         audio: false
       };
 
-      activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+      activeStream = await getUserMediaWithTimeout(constraints, 4500);
       video.srcObject = activeStream;
+      await video.play().catch(() => {});
+      if (loadingOverlay) loadingOverlay.style.display = 'none';
     } catch (err) {
-      console.warn('Error al iniciar cámara:', err);
-      showToast('No se pudo acceder a la cámara seleccionada. Intentando configuración por defecto...', 'warning');
+      console.warn('Primer intento de cámara falló o tardó:', err.message);
+      // Fallback a configuración básica sin constraints de resolución
       try {
-        activeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        activeStream = await getUserMediaWithTimeout({ video: true, audio: false }, 3500);
         video.srcObject = activeStream;
+        await video.play().catch(() => {});
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
       } catch (fallbackErr) {
-        showToast('Error de permisos o cámara no disponible: ' + fallbackErr.message, 'error');
-        closeCameraModal();
+        console.warn('Fallback WebRTC falló:', fallbackErr.message);
+        if (loadingOverlay) {
+          loadingOverlay.innerHTML = `
+            <div style="font-size: 34px;">📷⚠️</div>
+            <strong style="color: #f87171; font-size: 14px;">No se pudo acceder a la cámara en vivo</strong>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0; max-width: 320px;">
+              ${fallbackErr.message === 'TIMEOUT_CAMARA' ? 'La cámara tardó demasiado en responder o está en uso por otra app.' : 'Tu navegador requiere permisos o no detectó cámara física disponible.'}
+            </p>
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn btn-primary" onclick="AgroMediaUploader.closeCameraModal('${targetId}'); document.getElementById('${targetId}-file-input')?.click();">
+                📸 Tomar foto con Cámara Nativa / Archivo
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">
+                Cerrar
+              </button>
+            </div>
+          `;
+        }
+        showToast('Puedes tomar foto o subir archivo directamente desde tu dispositivo.', 'info');
       }
     }
   }
 
   async function toggleCameraFacing(targetId) {
     currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-    await startVideoStream(currentFacingMode);
+    await startVideoStream(currentFacingMode, targetId);
   }
 
-  function closeCameraModal() {
+  function closeCameraModal(targetId) {
     if (activeStream) {
-      activeStream.getTracks().forEach(t => t.stop());
+      try {
+        activeStream.getTracks().forEach(t => t.stop());
+      } catch (e) {}
       activeStream = null;
     }
+    const video = document.getElementById('camera-video');
+    if (video) video.srcObject = null;
     document.getElementById('camera-modal')?.remove();
+
+    if (targetId) {
+      const btn = document.getElementById(`${targetId}-btn-camera`);
+      const btnText = document.getElementById(`${targetId}-btn-camera-text`);
+      if (btn) {
+        btn.disabled = false;
+        if (btnText) btnText.textContent = 'Abrir Cámara';
+      }
+    }
   }
 
   /**
@@ -226,7 +305,7 @@ const AgroMediaUploader = (function() {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
 
     // Detener la cámara y cerrar modal
-    closeCameraModal();
+    closeCameraModal(targetId);
 
     // Obtener la carpeta de destino desde el contenedor
     const container = document.getElementById(`${targetId}-container`);

@@ -10,26 +10,26 @@ const routes = {
 
   // Farmer routes
   '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas', icon: '📊', render: renderDashboard, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
-  '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer'] },
-  '/crops': { title: 'Mis Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer'] },
-  '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer'] },
-  '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer'] },
-  '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer'] },
-  '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer'] },
-  '/farmer/sales': { title: 'Mis Ventas', subtitle: 'Productos publicados y su estado de validación', icon: '📦', render: renderFarmerSalesPage, roles: ['farmer'] },
+  '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer', 'admin'] },
+  '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
+  '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
+  '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor'] },
+  '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
+  '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer', 'advisor', 'admin'] },
+  '/farmer/sales': { title: 'Mis Ventas', subtitle: 'Productos publicados y su estado de validación', icon: '📦', render: renderFarmerSalesPage, roles: ['farmer', 'admin'] },
 
   // Advisor routes
-  '/advisor/parcels': { title: 'Parcelas de la Región', subtitle: 'Visualiza y monitorea todas las parcelas de Pasco', icon: '🗺️', render: renderAdvisorParcelsPage, roles: ['advisor'] },
-  '/advisor/pest-reports': { title: 'Gestión de Plagas', subtitle: 'Reportes de plagas de agricultores', icon: '🐛', render: renderAdvisorPestReportsPage, roles: ['advisor'] },
-  '/advisor/validate-products': { title: 'Validar Productos', subtitle: 'Revisa y valida productos para el catálogo', icon: '✅', render: renderValidateProductsPage, roles: ['advisor'] },
-  '/advisor/recommendations': { title: 'Recomendaciones', subtitle: 'Emite recomendaciones técnicas personalizadas', icon: '📋', render: renderAdvisorRecommendationsPage, roles: ['advisor'] },
-  '/advisor/advisory': { title: 'Base de Conocimiento', subtitle: 'Asesoría técnica de referencia', icon: '📚', render: renderAdvisoryPage, roles: ['advisor'] },
+  '/advisor/parcels': { title: 'Parcelas de la Región', subtitle: 'Visualiza y monitorea todas las parcelas de Pasco', icon: '🗺️', render: renderAdvisorParcelsPage, roles: ['advisor', 'admin'] },
+  '/advisor/pest-reports': { title: 'Gestión de Plagas', subtitle: 'Reportes de plagas de agricultores', icon: '🐛', render: renderAdvisorPestReportsPage, roles: ['advisor', 'admin'] },
+  '/advisor/validate-products': { title: 'Validar Productos', subtitle: 'Revisa y valida productos para el catálogo', icon: '✅', render: renderValidateProductsPage, roles: ['advisor', 'admin'] },
+  '/advisor/recommendations': { title: 'Recomendaciones', subtitle: 'Emite recomendaciones técnicas personalizadas', icon: '📋', render: renderAdvisorRecommendationsPage, roles: ['advisor', 'admin'] },
+  '/advisor/advisory': { title: 'Base de Conocimiento', subtitle: 'Asesoría técnica de referencia', icon: '📚', render: renderAdvisoryPage, roles: ['advisor', 'admin'] },
 
   // Supermarket routes
-  '/supermarket': { title: 'Catálogo de Productos', subtitle: 'Productos certificados con trazabilidad digital', icon: '🏪', render: renderSupermarketPage, roles: ['supermarket'] },
-  '/supermarket/traceability': { title: 'Trazabilidad', subtitle: 'Consulta el origen exacto de cada producto', icon: '📋', render: renderTraceabilityPage, roles: ['supermarket'] },
-  '/supermarket/logistics': { title: 'Rutas de Recogida', subtitle: 'Optimiza las rutas desde campos hasta distribución', icon: '🚛', render: renderLogisticsPage, roles: ['supermarket'] },
-  '/supermarket/inventory': { title: 'Inventario', subtitle: 'Gestión de stock y ofertas', icon: '📦', render: renderInventoryPage, roles: ['supermarket'] },
+  '/supermarket': { title: 'Catálogo de Productos', subtitle: 'Productos certificados con trazabilidad digital', icon: '🏪', render: renderSupermarketPage, roles: ['supermarket', 'admin'] },
+  '/supermarket/traceability': { title: 'Trazabilidad', subtitle: 'Consulta el origen exacto de cada producto', icon: '📋', render: renderTraceabilityPage, roles: ['supermarket', 'admin'] },
+  '/supermarket/logistics': { title: 'Rutas de Recogida', subtitle: 'Optimiza las rutas desde campos hasta distribución', icon: '🚛', render: renderLogisticsPage, roles: ['supermarket', 'admin'] },
+  '/supermarket/inventory': { title: 'Inventario', subtitle: 'Gestión de stock y ofertas', icon: '📦', render: renderInventoryPage, roles: ['supermarket', 'admin'] },
 
   // Admin routes
   '/admin': { title: 'Panel Admin', subtitle: 'Supervisión del sistema AgroPasco', icon: '🔐', render: renderAdminDashboard, roles: ['admin'] },
@@ -51,14 +51,17 @@ async function navigateTo(path) {
   const token = getToken();
   const user = getUser();
 
+  // Extraer ruta base sin query params (ej: /crops?action=new -> /crops)
+  const basePath = path.split('?')[0];
+
   // Auth guard
-  if (!token && path !== '/login') {
+  if (!token && basePath !== '/login') {
     window.location.hash = '#/login';
     return;
   }
 
   // Redirect authenticated users away from login
-  if (token && path === '/login') {
+  if (token && basePath === '/login') {
     window.location.hash = '#' + (defaultRoutes[user?.role] || '/dashboard');
     return;
   }
@@ -67,20 +70,20 @@ async function navigateTo(path) {
   let routeConfig, routeParams;
 
   // /crops/:id
-  const cropDetailMatch = path.match(/^\/crops\/(\d+)$/);
+  const cropDetailMatch = basePath.match(/^\/crops\/(\d+)$/);
   if (cropDetailMatch) {
-    routeConfig = { title: 'Detalle del Cultivo', subtitle: 'Información y actividades del cultivo', icon: '🌿', render: () => renderCropDetail(cropDetailMatch[1]), roles: ['farmer'] };
+    routeConfig = { title: 'Detalle del Cultivo', subtitle: 'Información y actividades del cultivo', icon: '🌿', render: () => renderCropDetail(cropDetailMatch[1]), roles: ['farmer', 'advisor', 'admin'] };
     routeParams = cropDetailMatch[1];
   }
 
   // /traceability/:id
-  const traceMatch = path.match(/^\/traceability\/(\d+)$/);
+  const traceMatch = basePath.match(/^\/traceability\/(\d+)$/);
   if (traceMatch) {
-    routeConfig = { title: 'Trazabilidad', subtitle: 'Reporte de trazabilidad digital', icon: '📋', render: () => renderTraceabilityPage(traceMatch[1]), roles: ['farmer', 'supermarket'] };
+    routeConfig = { title: 'Trazabilidad', subtitle: 'Reporte de trazabilidad digital', icon: '📋', render: () => renderTraceabilityPage(traceMatch[1]), roles: ['farmer', 'supermarket', 'admin'] };
     routeParams = traceMatch[1];
   }
 
-  if (!routeConfig) routeConfig = routes[path];
+  if (!routeConfig) routeConfig = routes[basePath];
 
   // If route not found, go to role-based default
   if (!routeConfig) {
@@ -274,6 +277,9 @@ function getNavItemsForRole(role) {
       <div class="nav-item" data-route="/advisor/parcels" onclick="window.location.hash='#/advisor/parcels'">
         <span class="nav-item-icon">🗺️</span> Parcelas de la Región
       </div>
+      <div class="nav-item" data-route="/crops" onclick="window.location.hash='#/crops'">
+        <span class="nav-item-icon">🌿</span> Cultivos Regionales
+      </div>
 
       <div class="nav-section-title">Gestión</div>
       <div class="nav-item" data-route="/advisor/pest-reports" onclick="window.location.hash='#/advisor/pest-reports'">
@@ -329,6 +335,9 @@ function getNavItemsForRole(role) {
       </div>
       <div class="nav-item" data-route="/admin/users" onclick="window.location.hash='#/admin/users'">
         <span class="nav-item-icon">👥</span> Usuarios & Roles
+      </div>
+      <div class="nav-item" data-route="/crops" onclick="window.location.hash='#/crops'">
+        <span class="nav-item-icon">🌿</span> Gestión de Cultivos
       </div>
       <div class="nav-item" data-route="/admin/audit" onclick="window.location.hash='#/admin/audit'">
         <span class="nav-item-icon">📋</span> Auditoría

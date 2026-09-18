@@ -3,15 +3,29 @@
  */
 
 async function renderCropsPage() {
+  const user = getUser();
   const result = await api.getCrops();
   const crops = result.data || [];
 
+  const isSupervisor = user?.role === 'admin' || user?.role === 'advisor';
+  const pageTitle = isSupervisor ? `Cultivos de la Región Pasco (${crops.length})` : `Mis Cultivos (${crops.length})`;
+  const pageSubtitle = isSupervisor ? 'Supervisa y monitorea los cultivos registrados en las provincias de Pasco.' : 'Gestiona tus cultivos y registra actividades de cuidado.';
+
+  // Auto-abrir modal si la URL solicita nuevo cultivo
+  if (window.location.hash.includes('action=new') || window.location.hash.includes('new=true')) {
+    setTimeout(() => {
+      if (!document.getElementById('crop-modal')) {
+        showNewCropModal();
+      }
+    }, 150);
+  }
+
   return `
     <div class="page-content">
-      <div class="flex items-center justify-between mb-lg">
+      <div class="flex items-center justify-between mb-lg" style="flex-wrap: wrap; gap: 12px;">
         <div>
-          <h3 style="font-size: 18px; font-weight: 700;">Mis Cultivos (${crops.length})</h3>
-          <p class="text-sm text-muted">Gestiona tus cultivos y registra actividades de cuidado.</p>
+          <h3 style="font-size: 18px; font-weight: 700;">${pageTitle}</h3>
+          <p class="text-sm text-muted">${pageSubtitle}</p>
         </div>
         <button class="btn btn-primary" onclick="showNewCropModal()">+ Registrar Cultivo</button>
       </div>
@@ -23,9 +37,9 @@ async function renderCropsPage() {
       ` : `
         <div class="empty-state">
           <div class="empty-state-icon">🌱</div>
-          <div class="empty-state-title">No tienes cultivos registrados</div>
+          <div class="empty-state-title">No hay cultivos registrados</div>
           <div class="empty-state-text">Registra tu primer cultivo para comenzar con la asesoría personalizada y trazabilidad digital.</div>
-          <button class="btn btn-primary btn-lg" onclick="showNewCropModal()">🌾 Registrar mi primer cultivo</button>
+          <button class="btn btn-primary btn-lg" onclick="showNewCropModal()">🌾 Registrar cultivo ahora</button>
         </div>
       `}
     </div>
@@ -188,6 +202,13 @@ let cropModalMap = null;
 let cropDrawnLayer = null;
 
 async function showNewCropModal() {
+  // Limpiar cualquier modal previo
+  const existing = document.getElementById('crop-modal');
+  if (existing) {
+    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
+    existing.remove();
+  }
+
   // Obtener parcelas del agricultor para auto-rellenado opcional
   let parcels = [];
   try {
@@ -198,6 +219,7 @@ async function showNewCropModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'crop-modal';
+  modal.style.zIndex = '9999';
   modal.onclick = (e) => {
     if (e.target === modal) {
       if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
@@ -211,14 +233,17 @@ async function showNewCropModal() {
     : '<option value="">No tienes parcelas registradas aún</option>';
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px;">
+    <div class="modal" style="max-width: 680px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3>🌱 Registrar Nuevo Cultivo</h3>
-        <button class="modal-close" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal').remove()">✕</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🌱</span>
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Registrar Nuevo Cultivo</h3>
+        </div>
+        <button type="button" class="modal-close" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()">✕</button>
       </div>
 
       <!-- Selector de parcela existente para auto-rellenado -->
-      <div class="form-group" style="background: rgba(34, 197, 94, 0.08); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(34, 197, 94, 0.25);">
+      <div class="form-group" style="background: rgba(34, 197, 94, 0.08); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(34, 197, 94, 0.25); margin-bottom: 16px;">
         <label class="form-label" style="color: #4ade80;">🗺️ Vincular con Parcela Existente (Auto-completa altitud y área):</label>
         <select class="form-select" id="crop-parcel-select" onchange="handleSelectExistingParcel(this)">
           ${parcelsOptions}
@@ -227,13 +252,13 @@ async function showNewCropModal() {
 
       <form onsubmit="handleCreateCrop(event)">
         <div class="form-group">
-          <label class="form-label">Nombre del Cultivo</label>
+          <label class="form-label">Nombre del Cultivo *</label>
           <input type="text" class="form-input" id="crop-name" placeholder="Ej: Papa Nativa Huayro - Parcela San Juan" required>
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Tipo de Cultivo</label>
+            <label class="form-label">Tipo de Cultivo *</label>
             <select class="form-select" id="crop-type" required>
               <option value="papa">🥔 Papa</option>
               <option value="maca">🌿 Maca</option>
@@ -253,11 +278,20 @@ async function showNewCropModal() {
           </div>
         </div>
 
+        <!-- SECCIÓN DE FOTOGRAFÍA EN VIVO / ARCHIVO CON AGROMEDIAUPLOADER -->
+        <div class="form-group" style="padding: 12px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); margin: 16px 0;">
+          ${typeof AgroMediaUploader !== 'undefined' ? AgroMediaUploader.render({
+            id: 'crop-photo',
+            folder: 'crops',
+            label: 'Fotografía del Cultivo o de la Siembra (en vivo o galería)'
+          }) : ''}
+        </div>
+
         <!-- SECCIÓN DE MAPA PARA DIBUJAR PARCELA Y OBTENER ALTITUD -->
         <div class="form-group" style="margin: 16px 0;">
-          <div class="flex items-center justify-between mb-sm">
+          <div class="flex items-center justify-between mb-sm" style="flex-wrap: wrap; gap: 8px;">
             <label class="form-label" style="margin-bottom: 0; font-weight: 700; color: var(--text-primary);">
-              📍 Dibujar o Ubicar Parcela en el Mapa (Auto-calcula Altitud msnm)
+              📍 Ubicar o Dibujar en el Mapa (Auto-calcula Altitud msnm)
             </label>
             <button type="button" class="btn btn-sm btn-secondary" onclick="toggleCropModalMap()">
               🗺️ <span id="btn-toggle-crop-map-text">Abrir Mapa</span>
@@ -266,10 +300,10 @@ async function showNewCropModal() {
 
           <div id="crop-map-container" style="display: none; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-top: 8px; position: relative;">
             <div style="background: rgba(15, 23, 42, 0.9); padding: 8px 12px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; justify-content: space-between;">
-              <span>✏️ Haz clic para marcar o usa la herramienta para dibujar tu parcela</span>
+              <span>✏️ Haz clic para marcar o usa la herramienta para delimitar</span>
               <span id="crop-map-status" style="color: #4ade80; font-weight: 600;">Listo</span>
             </div>
-            <div id="crop-modal-map" style="height: 260px; width: 100%;"></div>
+            <div id="crop-modal-map" style="height: 240px; width: 100%;"></div>
           </div>
         </div>
 
@@ -314,9 +348,14 @@ async function showNewCropModal() {
           <textarea class="form-textarea" id="crop-notes" placeholder="Observaciones de suelo, manejo tradicional o características climáticas..."></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block btn-lg" style="margin-top: 16px;">
-          🌾 Registrar Cultivo con Altitud
-        </button>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()" style="flex: 0.35;">
+            Cancelar
+          </button>
+          <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
+            🌾 Registrar Cultivo con Altitud
+          </button>
+        </div>
       </form>
     </div>
   `;
@@ -542,6 +581,7 @@ async function applyCropElevation(lat, lng) {
 async function handleCreateCrop(e) {
   e.preventDefault();
   const altValue = parseInt(document.getElementById('crop-altitude').value) || 4380;
+  const photoUrl = document.getElementById('crop-photo-value')?.value || '';
 
   const result = await api.createCrop({
     name: document.getElementById('crop-name').value,
@@ -552,7 +592,8 @@ async function handleCreateCrop(e) {
     location_detail: document.getElementById('crop-location').value || null,
     planting_date: document.getElementById('crop-planting-date').value || null,
     status: document.getElementById('crop-status').value,
-    notes: document.getElementById('crop-notes').value
+    notes: document.getElementById('crop-notes').value,
+    photo_url: photoUrl.trim()
   });
 
   if (result.success) {
