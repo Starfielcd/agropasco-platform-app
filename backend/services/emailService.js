@@ -169,10 +169,60 @@ async function sendNewAccountRequestEmail(adminEmail, applicant) {
   return sendMail(adminEmail, subject, html);
 }
 
+/**
+ * Email de transferencia de administración — enviado al nuevo Administrador
+ */
+async function sendAdminTransferEmail(data) {
+  const { name, email, tempPassword, transferrerName, loginUrl = '' } = data;
+  const subject = '👑 Notificación de Transferencia de Administración — AgroPasco Digital';
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 16px; overflow: hidden; border: 1.5px solid #3b82f6;">
+      <div style="background: linear-gradient(135deg, #1e3a8a, #3b82f6); padding: 32px; text-align: center;">
+        <div style="font-size: 48px;">👑</div>
+        <h1 style="color: #ffffff; margin: 12px 0 4px; font-size: 24px;">AgroPasco Digital</h1>
+        <p style="color: rgba(255,255,255,0.85); margin: 0; font-size: 14px;">Transferencia Oficial de Administración del Sistema</p>
+      </div>
+      <div style="padding: 32px;">
+        <h2 style="color: #60a5fa; font-size: 20px; margin-bottom: 16px;">Estimado/a ${name},</h2>
+        <p style="color: #cbd5e1; line-height: 1.6;">
+          Le informamos que el actual administrador (<strong style="color: #ffffff;">${transferrerName || 'Administrador Central'}</strong>) le ha transferido oficialmente la <strong>Administración Central de AgroPasco Digital</strong>.
+        </p>
+        <p style="color: #cbd5e1; line-height: 1.6;">
+          A partir de este momento, usted es el único responsable con permisos totales sobre la plataforma (gestión de usuarios, auditoría, moderación y parámetros del sistema).
+        </p>
+
+        <div style="background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.35); border-radius: 12px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px; color: #93c5fd; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Credenciales de Acceso Administrativo</p>
+          <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo de Acceso:</strong> ${email}</p>
+          <p style="margin: 4px 0; color: #e2e8f0;"><strong>Contraseña Provisional:</strong> <code style="background: rgba(59,130,246,0.25); padding: 2px 8px; border-radius: 4px; color: #93c5fd; font-weight: bold;">${tempPassword}</code></p>
+          <p style="margin: 12px 0 0; color: #f59e0b; font-size: 13px; font-weight: 600;">
+            ⚠️ <strong>Requisito de Seguridad:</strong> Al iniciar sesión por primera vez, el sistema le exigirá cambiar su contraseña obligatoriamente.
+          </p>
+        </div>
+
+        ${loginUrl ? `
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px;">
+              🔐 Iniciar Sesión como Administrador
+            </a>
+          </div>
+        ` : ''}
+
+        <p style="color: #64748b; font-size: 12px; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+          Este cambio ha quedado registrado con fecha, hora e IP en el libro de auditoría inmutable de AgroPasco Digital.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return sendMail(email, subject, html);
+}
+
 module.exports = {
   sendMail,
   sendApprovalEmail,
   sendRejectionEmail,
   sendNewAccountRequestEmail,
+  sendAdminTransferEmail,
   isSmtpConfigured
 };

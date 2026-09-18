@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { createNotification } = require('../services/notificationService');
-const { sendApprovalEmail, sendRejectionEmail } = require('../services/emailService');
+const { sendApprovalEmail, sendRejectionEmail, sendAdminTransferEmail } = require('../services/emailService');
 
 // ===== 1. GESTIÓN DE USUARIOS =====
 
@@ -40,8 +40,11 @@ async function updateUserRole(req, res) {
     const { role } = req.body;
     const userId = req.params.id;
 
-    if (!role || !['farmer', 'advisor', 'supermarket', 'admin'].includes(role)) {
-      return res.status(400).json({ success: false, error: 'Rol inválido.' });
+    if (role === 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'No se puede asignar el rol de Administrador directamente. Debe utilizar la opción "Transferir Administración" para garantizar que exista un único administrador activo.'
+      });
     }
 
     if (parseInt(userId) === req.user.id) {
@@ -53,11 +56,19 @@ async function updateUserRole(req, res) {
       return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
     }
 
+    if (user.role === 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'No se puede modificar el rol de una cuenta de Administrador desde esta opción.'
+      });
+    }
+
     await dbRun('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [role, userId]);
 
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, 'UPDATE_ROLE', 'user', userId, `Rol cambiado de "${user.role}" a "${role}" para ${user.name}`, req.ip]
+      [req.user.id, 'UPDATE_ROLE', 'user', userId, `Rol cambiado de "${user.role}" a "${role}" para ${user.name}`, clientIp]
     );
 
     res.json({ success: true, message: `Rol de ${user.name} actualizado a ${role}.` });
@@ -183,6 +194,13 @@ async function deleteUser(req, res) {
     const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) {
       return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    if (user.role === 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'No se puede eliminar una cuenta de Administrador. Si desea relevar sus funciones, utilice "Transferir Administración".'
+      });
     }
 
     await dbRun('DELETE FROM users WHERE id = ?', [userId]);
@@ -647,6 +665,141 @@ async function rejectAccount(req, res) {
   }
 }
 
+// ===== 6. TRANSFERENCIA DE ADMINISTRACIÓN ÚNICA =====
+async function transferAdministration(req, res) {
+  try {
+    const { currentPassword, newAdminName, newAdminEmail, newAdminPassword, newAdminPhone, newAdminLocation } = req.body;
+
+    if (!currentPassword || !newAdminName || !newAdminEmail) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tu contraseña actual de administrador, el nombre y el correo del nuevo administrador son obligatorios.'
+      });
+    }
+
+    // 1. Obtener datos del administrador actual
+    const currentAdmin = await dbGet('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!currentAdmin || currentAdmin.role !== 'admin' || currentAdmin.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        error: 'Solo el Administrador Central activo puede transferir la administración del sistema.'
+      });
+    }
+
+    // 2. Validar contraseña del administrador actual
+    const validCurrent = await bcrypt.compare(currentPassword, currentAdmin.password_hash);
+    if (!validCurrent) {
+      return res.status(401).json({
+        success: false,
+        error: 'Contraseña de confirmación incorrecta. No se autorizó la transferencia de administración.'
+      });
+    }
+
+    const cleanNewEmail = newAdminEmail.trim().toLowerCase();
+    if (cleanNewEmail === currentAdmin.email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        error: 'El correo del nuevo administrador debe ser diferente a tu correo actual.'
+      });
+    }
+
+    // 3. Generar contraseña temporal segura para el nuevo administrador
+    const tempPassword = newAdminPassword && newAdminPassword.length >= 6
+      ? newAdminPassword
+      : 'AP-ADM-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
+    const newPasswordHash = await bcrypt.hash(tempPassword, 12);
+
+    // 4. Verificar si el usuario ya existe en la base de datos (sin borrar usuarios existentes)
+    const existingUser = await dbGet('SELECT * FROM users WHERE email = ?', [cleanNewEmail]);
+    let newAdminId;
+
+    if (existingUser) {
+      // Promover usuario existente a Administrador único activo
+      await dbRun(
+        `UPDATE users SET
+          name = ?,
+          role = 'admin',
+          password_hash = ?,
+          status = 'active',
+          is_blocked = 0,
+          must_change_password = 1,
+          approved_by = ?,
+          approved_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [newAdminName.trim(), newPasswordHash, currentAdmin.id, existingUser.id]
+      );
+      newAdminId = existingUser.id;
+    } else {
+      // Crear nuevo usuario como Administrador
+      const insertRes = await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password, approved_by, approved_at)
+         VALUES (?, ?, ?, 'admin', ?, ?, 'active', 0, 1, ?, CURRENT_TIMESTAMP)`,
+        [newAdminName.trim(), cleanNewEmail, newPasswordHash, newAdminLocation || 'Cerro de Pasco', newAdminPhone || null, currentAdmin.id]
+      );
+      newAdminId = insertRes.lastID;
+    }
+
+    // 5. Deshabilitar al administrador anterior para asegurar que NO exista más de un admin activo a la vez
+    await dbRun(
+      `UPDATE users SET
+        status = 'disabled',
+        is_blocked = 1,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [currentAdmin.id]
+    );
+
+    // Asegurar que ningún otro usuario tenga rol admin y status active
+    await dbRun(
+      `UPDATE users SET status = 'disabled', is_blocked = 1 WHERE role = 'admin' AND id != ?`,
+      [newAdminId]
+    );
+
+    // 6. Registrar en el libro de auditoría inmutable
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        currentAdmin.id,
+        'TRANSFERENCIA_ADMINISTRACION',
+        'user',
+        newAdminId,
+        `Administración Central transferida por "${currentAdmin.name}" (${currentAdmin.email}) hacia "${newAdminName}" (${cleanNewEmail}). Cuenta previa deshabilitada.`,
+        clientIp
+      ]
+    );
+
+    // 7. Notificación interna y correo automático con credenciales temporales
+    await createNotification(
+      newAdminId,
+      'sistema',
+      '👑 Transferencia de Administración',
+      `¡Has sido designado como el nuevo Administrador Central de AgroPasco Digital! Por seguridad, debes cambiar tu contraseña obligatoriamente al iniciar sesión.`,
+      'info'
+    );
+
+    const loginUrl = `${req.protocol}://${req.get('host')}/#/login`;
+    await sendAdminTransferEmail({
+      name: newAdminName.trim(),
+      email: cleanNewEmail,
+      tempPassword,
+      transferrerName: currentAdmin.name,
+      loginUrl
+    });
+
+    res.json({
+      success: true,
+      message: `¡Administración transferida exitosamente a ${newAdminName} (${cleanNewEmail})! Tu sesión actual ha sido deshabilitada por seguridad.`,
+      tempPassword, // Se devuelve en el payload para visualización de respaldo
+      newAdminId
+    });
+  } catch (err) {
+    console.error('Error al transferir administración:', err);
+    res.status(500).json({ success: false, error: 'Error al procesar la transferencia de administración.' });
+  }
+}
+
 module.exports = {
   listUsers,
   updateUserRole,
@@ -666,5 +819,6 @@ module.exports = {
   escalateTicket,
   getPendingAccounts,
   approveAccount,
-  rejectAccount
+  rejectAccount,
+  transferAdministration
 };

@@ -356,16 +356,50 @@ async function initializeDatabase() {
 async function seedData() {
   const bcrypt = require('bcryptjs');
   const defaultHash = await bcrypt.hash('123456', 10);
+  const adminInitialPasswordHash = await bcrypt.hash('123456789', 12);
 
-  // ===== Seed: Administrador único del sistema (se crea UNA sola vez) =====
-  const adminExists = await dbGet("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-  if (!adminExists) {
-    await dbRun(
+  // ===== Seed: Administrador Inicial Único Oficial (Requerimiento AgroPasco) =====
+  // Correo: garciatorrescristian39@gmail.com | Clave: 123456789
+  const officialAdminEmail = 'garciatorrescristian39@gmail.com';
+  const existingOfficialAdmin = await dbGet('SELECT * FROM users WHERE email = ?', [officialAdminEmail]);
+  const activeAdmin = await dbGet("SELECT * FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1");
+  const transferPerformed = await dbGet("SELECT id FROM audit_logs WHERE action = 'TRANSFERENCIA_ADMINISTRACION' LIMIT 1");
+
+  if (!existingOfficialAdmin && !activeAdmin) {
+    // 1. Primer arranque: Crear Administrador Inicial Único Oficial
+    await dbRun("UPDATE users SET status = 'disabled', is_blocked = 1 WHERE role = 'admin'");
+
+    const adminResult = await dbRun(
       `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
        VALUES (?, ?, ?, 'admin', ?, ?, 'active', 0, 0)`,
-      ['Administrador Central AgroPasco', 'admin@agropasco.pe', defaultHash, 'Cerro de Pasco', '963000001']
+      ['Cristian Garcia Torres', officialAdminEmail, adminInitialPasswordHash, 'Cerro de Pasco, Pasco', '963000001']
     );
-    console.log('🔐 Administrador del sistema creado: admin@agropasco.pe / 123456');
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [adminResult.lastID, 'REGISTRO_ADMINISTRADOR_INICIAL', 'user', adminResult.lastID, `Administrador Central Inicial Oficial "${officialAdminEmail}" registrado con éxito.`, '127.0.0.1']
+    );
+
+    console.log(`🔐 Administrador único inicial configurado: ${officialAdminEmail} / 123456789`);
+  } else if (existingOfficialAdmin && !transferPerformed && !activeAdmin) {
+    // 2. El usuario existe y no ha habido transferencia ni otro admin activo: activarlo como admin inicial
+    await dbRun(
+      `UPDATE users SET
+        role = 'admin',
+        password_hash = COALESCE(password_hash, ?),
+        status = 'active',
+        is_blocked = 0
+       WHERE email = ?`,
+      [adminInitialPasswordHash, officialAdminEmail]
+    );
+    await dbRun("UPDATE users SET status = 'disabled', is_blocked = 1 WHERE role = 'admin' AND email != ?", [officialAdminEmail]);
+    console.log(`🔐 Administrador único inicial activado: ${officialAdminEmail}`);
+  } else if (existingOfficialAdmin && !transferPerformed && activeAdmin?.id === existingOfficialAdmin.id) {
+    // 3. El admin oficial ya es el administrador activo (preservar su contraseña si la cambió)
+    console.log(`🔐 Administrador único activo confirmado: ${officialAdminEmail}`);
+  } else if (transferPerformed && activeAdmin) {
+    // 4. Se ha transferido la administración con éxito: respetar al nuevo administrador activo
+    console.log(`👑 Sucesión administrativa activa. Administrador en funciones: ${activeAdmin.email}`);
   }
 
   // ===== Seed: Agricultor de referencia (para pruebas) =====

@@ -158,7 +158,12 @@ const api = {
   approveAccount: (id) => apiRequest(`/admin/accounts/${id}/approve`, { method: 'PUT' }),
   rejectAccount: (id, data) => apiRequest(`/admin/accounts/${id}/reject`, { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Auth — Cambio de Contraseña
+  // Admin — Transferencia de Administración Única
+  transferAdministration: (data) => apiRequest('/admin/transfer', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Auth — Setup Inicial y Cambio de Contraseña
+  getSetupStatus: () => apiRequest('/auth/setup-status'),
+  setupInitialAdmin: (data) => apiRequest('/auth/setup-admin', { method: 'POST', body: JSON.stringify(data) }),
   changePassword: (data) => apiRequest('/auth/change-password', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Weather

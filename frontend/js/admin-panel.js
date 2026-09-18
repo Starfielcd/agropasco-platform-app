@@ -29,10 +29,16 @@ async function renderAdminDashboard() {
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-secondary" onclick="exportUniversityReport()" style="display: flex; align-items: center; gap: 6px;">
-            <span>📥</span> <strong>Exportar Reporte Universitario</strong>
+            <span>📥</span> <strong>Exportar Reporte</strong>
           </button>
-          <button class="btn btn-primary" onclick="scanDuplicatesModal()" style="display: flex; align-items: center; gap: 6px;">
+          <button class="btn btn-secondary" onclick="scanDuplicatesModal()" style="display: flex; align-items: center; gap: 6px;">
             <span>🔍</span> <strong>Detectar Duplicados</strong>
+          </button>
+          <button class="btn btn-secondary" onclick="showAdminChangePasswordModal()" style="display: flex; align-items: center; gap: 6px; border: 1px solid #3b82f6;">
+            <span>🔑</span> <strong>Cambiar Contraseña</strong>
+          </button>
+          <button class="btn btn-warning" onclick="showTransferAdminModal()" style="display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #d97706, #b45309); color: #ffffff; border: none; font-weight: 700;">
+            <span>👑</span> <strong>Transferir Administración</strong>
           </button>
         </div>
       </div>
@@ -461,6 +467,30 @@ async function renderUsersTabContent() {
     const roleLabels = { farmer: '🌱 Agricultor', advisor: '📋 Asesor', supermarket: '🏪 Supermercado', admin: '🔐 Admin' };
 
     return `
+      <!-- Tarjeta Destacada: Transferencia de Administración Única -->
+      <div class="card mb-md" style="background: linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(15, 23, 42, 0.95)); border: 1.5px solid rgba(245, 158, 11, 0.4); box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+          <div style="flex: 1; min-width: 260px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <span style="font-size: 20px;">👑</span>
+              <strong style="color: #fbbf24; font-size: 15px;">Gestión de Sucesión y Transferencia del Administrador</strong>
+              <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 10px;">Seguridad Estricta</span>
+            </div>
+            <p class="text-sm text-muted" style="margin: 0; line-height: 1.4;">
+              Transfiere la administración del ecosistema AgroPasco de forma segura. El nuevo administrador recibirá credenciales provisionales por correo con cambio de contraseña obligatorio, y tu cuenta actual quedará deshabilitada inmediatamente sin eliminar usuarios ni registros del sistema.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="showAdminChangePasswordModal()" style="display: flex; align-items: center; gap: 8px; border: 1px solid #3b82f6; color: #60a5fa; font-weight: 700; padding: 10px 16px;">
+              <span>🔑</span> <span>Cambiar Mi Contraseña</span>
+            </button>
+            <button class="btn btn-warning" onclick="showTransferAdminModal()" style="display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #d97706, #b45309); color: #ffffff; border: none; font-weight: 700; padding: 10px 18px; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);">
+              <span>👑</span> <span>Transferir Administración</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="card mb-md">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
           <div style="display: flex; gap: 8px; flex: 1; min-width: 250px;">
@@ -1110,4 +1140,283 @@ async function renderAdminAuditPage() {
       </div>
     </div>
   `;
+}
+
+// ==========================================
+// 7. MODAL DE TRANSFERENCIA DE ADMINISTRACIÓN
+// ==========================================
+
+function showTransferAdminModal() {
+  const existing = document.getElementById('transfer-admin-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'transfer-admin-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 580px; border: 1.5px solid rgba(245, 158, 11, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #d97706, #b45309); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff;">
+            👑
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; color: #ffffff; font-weight: 800;">Transferir Administración Central</h3>
+            <p class="text-xs text-muted" style="margin: 0;">Ecosistema AgroPasco Digital — Región Pasco</p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="closeTransferAdminModal()" style="padding: 4px 8px; font-size: 16px;">✕</button>
+      </div>
+
+      <!-- Alerta de Seguridad -->
+      <div style="background: rgba(245, 158, 11, 0.12); border-left: 4px solid #f59e0b; padding: 12px 14px; border-radius: 6px; margin-bottom: 18px; font-size: 13px; line-height: 1.45;">
+        <strong style="color: #fbbf24; display: block; margin-bottom: 4px;">⚠️ Acción de Alta Seguridad</strong>
+        Esta acción otorgará el control total de AgroPasco al nuevo administrador.
+        Tu cuenta actual quedará <strong>deshabilitada</strong> de inmediato. Se enviará un correo con credenciales de acceso y cambio obligatorio de clave.
+      </div>
+
+      <form id="transfer-admin-form" onsubmit="handleTransferAdminSubmit(event)">
+        <!-- Paso 1: Autenticación del Administrador Actual -->
+        <div style="background: var(--bg-glass); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+          <div style="font-weight: 700; font-size: 13px; color: #ffffff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>🔒</span> Validación de Identidad del Administrador Actual
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 12px;">Tu Contraseña Actual (Confirmación requerida)</label>
+            <input type="password" id="transfer-current-password" class="form-input" placeholder="••••••••••••" required autofocus>
+          </div>
+        </div>
+
+        <!-- Paso 2: Datos del Nuevo Administrador -->
+        <div style="background: var(--bg-glass); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 18px;">
+          <div style="font-weight: 700; font-size: 13px; color: #ffffff; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>👤</span> Credenciales del Nuevo Administrador
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">Nombre Completo del Nuevo Administrador</label>
+            <input type="text" id="transfer-new-name" class="form-input" placeholder="Ej: Ing. Marco Antonio Quispe" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">Correo Electrónico (Para envío de acceso)</label>
+            <input type="email" id="transfer-new-email" class="form-input" placeholder="nuevo.admin@agropasco.pe" required>
+            <span class="text-xs text-muted">Si el correo ya existe en el sistema, será promovido a Administrador sin perder sus registros previos.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">Contraseña Temporal Inicial (Opcional - mínimo 6 car.)</label>
+            <input type="text" id="transfer-new-password" class="form-input" placeholder="Dejar en blanco para autogenerar una clave segura">
+          </div>
+          <div class="grid-2">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 12px;">Teléfono (Opcional)</label>
+              <input type="tel" id="transfer-new-phone" class="form-input" placeholder="963 000 000">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 12px;">Ubicación / Sede</label>
+              <input type="text" id="transfer-new-location" class="form-input" value="Cerro de Pasco, Pasco">
+            </div>
+          </div>
+        </div>
+
+        <div id="transfer-admin-error" class="form-error hidden" style="margin-bottom: 14px; padding: 10px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; font-size: 13px;"></div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeTransferAdminModal()">Cancelar</button>
+          <button type="submit" id="transfer-submit-btn" class="btn btn-warning" style="background: linear-gradient(135deg, #d97706, #b45309); color: #ffffff; border: none; font-weight: 700;">
+            👑 Confirmar y Transferir Administración
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+}
+
+function closeTransferAdminModal() {
+  const modal = document.getElementById('transfer-admin-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.remove(), 300);
+  }
+}
+
+async function handleTransferAdminSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('transfer-submit-btn');
+  const errorEl = document.getElementById('transfer-admin-error');
+  
+  const currentPassword = document.getElementById('transfer-current-password').value;
+  const newAdminName = document.getElementById('transfer-new-name').value;
+  const newAdminEmail = document.getElementById('transfer-new-email').value;
+  const newAdminPassword = document.getElementById('transfer-new-password').value;
+  const newAdminPhone = document.getElementById('transfer-new-phone').value;
+  const newAdminLocation = document.getElementById('transfer-new-location').value;
+
+  errorEl.classList.add('hidden');
+  btn.textContent = 'Procesando Transferencia...';
+  btn.disabled = true;
+
+  const result = await api.transferAdministration({
+    currentPassword,
+    newAdminName,
+    newAdminEmail,
+    newAdminPassword: newAdminPassword || undefined,
+    newAdminPhone,
+    newAdminLocation
+  });
+
+  if (result.success) {
+    // Mostrar pantalla de confirmación exitosa con las credenciales temporales generadas
+    const modal = document.getElementById('transfer-admin-modal');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="modal-card" style="max-width: 540px; text-align: center; border: 2px solid #10b981; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+          <div style="font-size: 56px; margin-bottom: 12px;">🎉</div>
+          <h2 style="color: #34d399; margin-bottom: 8px; font-size: 22px; font-weight: 800;">¡Transferencia Exitosa!</h2>
+          <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px;">
+            La administración central de AgroPasco ha sido transferida a <strong>${newAdminName}</strong>.
+            Tu cuenta actual ha sido deshabilitada en el sistema.
+          </p>
+
+          <div style="background: rgba(15, 23, 42, 0.9); border: 1.5px dashed #10b981; border-radius: 8px; padding: 16px; margin-bottom: 20px; text-align: left;">
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">CORREO DEL NUEVO ADMINISTRADOR:</div>
+            <div style="font-weight: 700; color: #ffffff; font-size: 15px; margin-bottom: 12px;">${newAdminEmail}</div>
+
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">CONTRASEÑA TEMPORAL GENERADA:</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px;">
+              <code style="font-size: 16px; color: #34d399; font-weight: 800;" id="temp-admin-pwd-text">${result.tempPassword}</code>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText('${result.tempPassword}'); showToast('Contraseña copiada', 'success');">
+                📋 Copiar
+              </button>
+            </div>
+            <div style="font-size: 11px; color: #f59e0b; margin-top: 8px;">
+              ⚡ El nuevo administrador deberá cambiar esta contraseña obligatoriamente en su primer inicio de sesión.
+            </div>
+          </div>
+
+          <div style="font-size: 12px; color: #94a3b8; margin-bottom: 20px;">
+            📧 Se ha enviado un correo electrónico institucional a <strong>${newAdminEmail}</strong> con las instrucciones y el enlace de acceso.
+          </div>
+
+          <button class="btn btn-primary btn-block btn-lg" onclick="handleLogout()" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: 800;">
+            🔒 Cerrar Mi Sesión Ahora
+          </button>
+        </div>
+      `;
+    }
+  } else {
+    errorEl.textContent = result.error || 'Error al procesar la transferencia de administración.';
+    errorEl.classList.remove('hidden');
+    btn.textContent = '👑 Confirmar y Transferir Administración';
+    btn.disabled = false;
+  }
+}
+
+// ==========================================
+// 8. MODAL DE CAMBIO DE CONTRASEÑA DEL ADMIN
+// ==========================================
+
+function showAdminChangePasswordModal() {
+  const existing = document.getElementById('admin-change-password-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'admin-change-password-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 480px; border: 1.5px solid rgba(59, 130, 246, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #2563eb, #1d4ed8); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff;">
+            🔑
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; color: #ffffff; font-weight: 800;">Cambiar Mi Contraseña</h3>
+            <p class="text-xs text-muted" style="margin: 0;">Administrador Central AgroPasco</p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="closeAdminChangePasswordModal()" style="padding: 4px 8px; font-size: 16px;">✕</button>
+      </div>
+
+      <div style="background: rgba(59, 130, 246, 0.12); border-left: 4px solid #3b82f6; padding: 12px 14px; border-radius: 6px; margin-bottom: 18px; font-size: 13px; line-height: 1.45;">
+        Por motivos de seguridad y auditoría institucional, ingresa tu contraseña actual para confirmar tu identidad antes de registrar la nueva clave.
+      </div>
+
+      <form id="admin-change-password-form" onsubmit="handleAdminChangePasswordSubmit(event)">
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Contraseña Actual</label>
+          <input type="password" id="admin-curr-pwd" class="form-input" placeholder="••••••••••••" required autofocus>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Nueva Contraseña (mínimo 6 caracteres)</label>
+          <input type="password" id="admin-new-pwd" class="form-input" placeholder="••••••••••••" required minlength="6">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Confirmar Nueva Contraseña</label>
+          <input type="password" id="admin-confirm-pwd" class="form-input" placeholder="••••••••••••" required minlength="6">
+        </div>
+
+        <div id="admin-change-pwd-error" class="form-error hidden" style="margin-bottom: 14px; padding: 10px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; font-size: 13px;"></div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeAdminChangePasswordModal()">Cancelar</button>
+          <button type="submit" id="admin-change-pwd-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700;">
+            💾 Guardar Nueva Contraseña
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+}
+
+function closeAdminChangePasswordModal() {
+  const modal = document.getElementById('admin-change-password-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.remove(), 300);
+  }
+}
+
+async function handleAdminChangePasswordSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('admin-change-pwd-btn');
+  const errorEl = document.getElementById('admin-change-pwd-error');
+
+  const currentPassword = document.getElementById('admin-curr-pwd').value;
+  const newPassword = document.getElementById('admin-new-pwd').value;
+  const confirmPassword = document.getElementById('admin-confirm-pwd').value;
+
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'Las nuevas contraseñas no coinciden.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    errorEl.textContent = 'La nueva contraseña debe tener al menos 6 caracteres.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  btn.textContent = 'Guardando...';
+  btn.disabled = true;
+
+  const result = await api.changePassword({ currentPassword, newPassword });
+
+  if (result.success) {
+    closeAdminChangePasswordModal();
+    showToast('¡Tu contraseña de administrador ha sido actualizada con éxito!', 'success');
+  } else {
+    errorEl.textContent = result.error || 'Error al actualizar la contraseña.';
+    errorEl.classList.remove('hidden');
+    btn.textContent = '💾 Guardar Nueva Contraseña';
+    btn.disabled = false;
+  }
 }

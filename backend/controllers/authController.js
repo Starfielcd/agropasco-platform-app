@@ -122,10 +122,13 @@ async function login(req, res) {
       });
     }
 
-    if (user.is_blocked || user.status === 'blocked') {
+    if (user.status === 'disabled' || user.is_blocked || user.status === 'blocked') {
+      const errorMsg = user.role === 'admin' && user.status === 'disabled'
+        ? 'Esta cuenta administrativa ha sido desactivada por transferencia de administración. Solo puede ingresar el Administrador Central activo.'
+        : 'Tu cuenta ha sido bloqueada o desactivada por el Administrador de AgroPasco. Contacta a Soporte Técnico.';
       return res.status(403).json({
         success: false,
-        error: 'Tu cuenta ha sido bloqueada temporalmente por el Administrador de AgroPasco. Contacta a Soporte Técnico.'
+        error: errorMsg
       });
     }
 
@@ -163,7 +166,7 @@ async function getProfile(req, res) {
 
 async function changePassword(req, res) {
   try {
-    const { newPassword } = req.body;
+    const { newPassword, currentPassword } = req.body;
 
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({
@@ -172,11 +175,46 @@ async function changePassword(req, res) {
       });
     }
 
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    // Si es cambio voluntario (no obligado por must_change_password) o si se provee currentPassword, validarla
+    if (currentPassword) {
+      const validCurrent = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!validCurrent) {
+        return res.status(401).json({
+          success: false,
+          error: 'La contraseña actual ingresada es incorrecta.'
+        });
+      }
+    } else if (user.must_change_password !== 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Debes ingresar tu contraseña actual para confirmar la actualización.'
+      });
+    }
+
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
     await dbRun(
       'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [passwordHash, req.user.id]
+    );
+
+    // Registrar en el libro de auditoría el cambio de credenciales
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        user.id,
+        'CAMBIO_CONTRASENA',
+        'user',
+        user.id,
+        `El usuario "${user.name}" (${user.email}) con rol [${user.role}] cambió satisfactoriamente su contraseña.`,
+        clientIp
+      ]
     );
 
     res.json({
@@ -189,4 +227,96 @@ async function changePassword(req, res) {
   }
 }
 
-module.exports = { register, login, getProfile, changePassword };
+// ===== CONSULTA DE ESTADO DE INICIALIZACIÓN DEL SISTEMA =====
+async function getSetupStatus(req, res) {
+  try {
+    const admin = await dbGet("SELECT id, name, email FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1");
+    res.json({
+      success: true,
+      hasActiveAdmin: !!admin,
+      adminEmail: admin ? admin.email : null
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Error al consultar estado de inicialización.' });
+  }
+}
+
+// ===== REGISTRO DEL ADMINISTRADOR INICIAL (PRIMER USO) =====
+async function setupInitialAdmin(req, res) {
+  try {
+    const { name, email, password, location, phone } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, error: 'Nombre, email y contraseña son obligatorios.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres.' });
+    }
+
+    // Comprobar si ya existe un administrador activo en el sistema
+    const existingAdmin = await dbGet("SELECT id, name, email FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1");
+    if (existingAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: `El sistema ya cuenta con un Administrador Central activo (${existingAdmin.email}). Para cambiar de administrador, el actual debe realizar una Transferencia de Administración desde su panel.`
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await dbGet('SELECT * FROM users WHERE email = ?', [cleanEmail]);
+    const passwordHash = await bcrypt.hash(password, 12);
+    let adminId;
+
+    if (existingUser) {
+      // Promover usuario existente a Administrador Central inicial
+      await dbRun(
+        `UPDATE users SET
+          name = ?,
+          role = 'admin',
+          password_hash = ?,
+          status = 'active',
+          is_blocked = 0,
+          must_change_password = 0,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [name.trim(), passwordHash, existingUser.id]
+      );
+      adminId = existingUser.id;
+    } else {
+      const result = await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
+         VALUES (?, ?, ?, 'admin', ?, ?, 'active', 0, 0)`,
+        [name.trim(), cleanEmail, passwordHash, location || 'Cerro de Pasco', phone || null]
+      );
+      adminId = result.lastID;
+    }
+
+    // Registrar en auditoría
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [adminId, 'REGISTRO_ADMINISTRADOR_INICIAL', 'user', adminId, `Administrador Central inicial "${name}" (${cleanEmail}) configurado en el sistema.`, req.ip]
+    );
+
+    const user = { id: adminId, name: name.trim(), email: cleanEmail, role: 'admin' };
+    const token = generateToken(user);
+
+    res.status(201).json({
+      success: true,
+      message: '¡Administrador Central registrado exitosamente!',
+      data: { user, token }
+    });
+  } catch (err) {
+    console.error('Error al registrar administrador inicial:', err);
+    res.status(500).json({ success: false, error: 'Error al registrar administrador inicial.' });
+  }
+}
+
+module.exports = {
+  register,
+  login,
+  getProfile,
+  changePassword,
+  getSetupStatus,
+  setupInitialAdmin
+};

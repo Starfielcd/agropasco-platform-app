@@ -22,7 +22,8 @@ const {
   escalateTicket,
   getPendingAccounts,
   approveAccount,
-  rejectAccount
+  rejectAccount,
+  transferAdministration
 } = require('../controllers/adminController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
@@ -58,5 +59,8 @@ router.post('/support/tickets/:id/escalate', escalateTicket);
 router.get('/pending-accounts', getPendingAccounts);
 router.put('/accounts/:id/approve', approveAccount);
 router.put('/accounts/:id/reject', rejectAccount);
+
+// ===== 6. TRANSFERENCIA DE ADMINISTRACIÓN ÚNICA =====
+router.post('/transfer', transferAdministration);
 
 module.exports = router;

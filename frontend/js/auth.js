@@ -15,6 +15,9 @@ function renderLoginPage() {
           <p>Plataforma Agrícola Inteligente — Región Pasco, Perú</p>
         </div>
         <div class="login-card">
+          <!-- Banner dinámico para configuración inicial del administrador si no existe -->
+          <div id="initial-setup-banner-container"></div>
+
           <div class="login-tabs">
             <button class="login-tab active" id="tab-login" onclick="switchAuthTab('login')">Iniciar Sesión</button>
             <button class="login-tab" id="tab-register" onclick="switchAuthTab('register')">Registrarse</button>
@@ -390,4 +393,167 @@ function handleLogout() {
   removeUser();
   showToast('Sesión cerrada', 'info');
   window.location.hash = '#/login';
+}
+
+// =======================================================
+// REGISTRO INICIAL DEL ADMINISTRADOR ÚNICO (PRIMER USO)
+// =======================================================
+
+async function checkSetupStatus() {
+  const container = document.getElementById('initial-setup-banner-container');
+  if (!container) return;
+
+  try {
+    const res = await api.getSetupStatus();
+    if (res && res.success && !res.hasActiveAdmin) {
+      container.innerHTML = `
+        <div style="background: linear-gradient(135deg, rgba(217, 119, 6, 0.2), rgba(15, 23, 42, 0.95)); border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; text-align: left; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <strong style="color: #fbbf24; font-size: 14px;">Primer Uso del Sistema Detectado</strong>
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 0; line-height: 1.4;">
+            No existe un Administrador Central activo en AgroPasco. Registra al administrador titular para iniciar la operación segura.
+          </p>
+          <button type="button" class="btn btn-warning btn-sm btn-block" onclick="showInitialAdminSetupModal()" style="background: linear-gradient(135deg, #d97706, #b45309); color: #ffffff; border: none; font-weight: 700;">
+            👑 Registrar Administrador Inicial
+          </button>
+        </div>
+      `;
+    } else {
+      container.innerHTML = '';
+    }
+  } catch (err) {
+    console.error('Error al comprobar setup status:', err);
+  }
+}
+
+// Ejecutar chequeo cuando se cargue el DOM o cambie la ruta
+window.addEventListener('hashchange', () => {
+  if (window.location.hash.startsWith('#/login') || !window.location.hash) {
+    setTimeout(checkSetupStatus, 150);
+  }
+});
+setTimeout(checkSetupStatus, 200);
+
+function showInitialAdminSetupModal() {
+  const existing = document.getElementById('setup-admin-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'setup-admin-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 500px; border: 1.5px solid #f59e0b; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #d97706, #b45309); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff;">
+            👑
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; color: #ffffff; font-weight: 800;">Registro Inicial del Administrador</h3>
+            <p class="text-xs text-muted" style="margin: 0;">Primer uso — AgroPasco Digital</p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="closeInitialAdminSetupModal()" style="padding: 4px 8px; font-size: 16px;">✕</button>
+      </div>
+
+      <div style="background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 4px; margin-bottom: 16px; font-size: 12px; color: var(--text-secondary); line-height: 1.4;">
+        Por políticas de seguridad, solo se permite registrar <strong>un único administrador</strong>. Toda creación posterior desde formularios públicos está bloqueada permanentemente.
+      </div>
+
+      <form id="setup-admin-form" onsubmit="handleSetupInitialAdmin(event)">
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Nombre Completo del Administrador</label>
+          <input type="text" id="setup-admin-name" class="form-input" placeholder="Ing. Carlos Mendoza" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Correo Electrónico Oficial</label>
+          <input type="email" id="setup-admin-email" class="form-input" placeholder="admin@agropasco.pe" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Contraseña Maestra (Mínimo 6 caracteres)</label>
+          <input type="password" id="setup-admin-password" class="form-input" placeholder="••••••••••••" required minlength="6">
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px;">Confirmar Contraseña</label>
+          <input type="password" id="setup-admin-confirm" class="form-input" placeholder="••••••••••••" required minlength="6">
+        </div>
+        <div class="grid-2">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 12px;">Teléfono de Contacto</label>
+            <input type="tel" id="setup-admin-phone" class="form-input" placeholder="963 123 456">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 12px;">Sede / Región</label>
+            <input type="text" id="setup-admin-location" class="form-input" value="Cerro de Pasco, Pasco">
+          </div>
+        </div>
+
+        <div id="setup-admin-error" class="form-error hidden" style="margin-top: 14px; padding: 10px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; font-size: 13px;"></div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;">
+          <button type="button" class="btn btn-secondary" onclick="closeInitialAdminSetupModal()">Cancelar</button>
+          <button type="submit" id="setup-admin-btn" class="btn btn-warning" style="background: linear-gradient(135deg, #d97706, #b45309); color: #ffffff; border: none; font-weight: 700;">
+            👑 Crear Administrador Maestro
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+}
+
+function closeInitialAdminSetupModal() {
+  const modal = document.getElementById('setup-admin-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.remove(), 300);
+  }
+}
+
+async function handleSetupInitialAdmin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('setup-admin-btn');
+  const errorEl = document.getElementById('setup-admin-error');
+
+  const name = document.getElementById('setup-admin-name').value;
+  const email = document.getElementById('setup-admin-email').value;
+  const password = document.getElementById('setup-admin-password').value;
+  const confirm = document.getElementById('setup-admin-confirm').value;
+  const phone = document.getElementById('setup-admin-phone').value;
+  const location = document.getElementById('setup-admin-location').value;
+
+  if (password !== confirm) {
+    errorEl.textContent = 'Las contraseñas no coinciden.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  btn.textContent = 'Guardando Administrador...';
+  btn.disabled = true;
+
+  const result = await api.setupInitialAdmin({
+    name,
+    email,
+    password,
+    phone,
+    location
+  });
+
+  if (result.success) {
+    closeInitialAdminSetupModal();
+    setToken(result.data.token);
+    setUser(result.data.user);
+    showToast('¡Administrador Maestro configurado exitosamente!', 'success');
+    window.location.hash = '#/admin';
+  } else {
+    errorEl.textContent = result.error || 'Error al configurar el administrador inicial.';
+    errorEl.classList.remove('hidden');
+    btn.textContent = '👑 Crear Administrador Maestro';
+    btn.disabled = false;
+  }
 }
