@@ -378,12 +378,27 @@ function showPestMarkerModal(lat, lng) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'pest-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'pest-modal-title');
+
+  const closePestModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closePestModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closePestModal(); };
+
   modal.innerHTML = `
-    <div class="modal">
+    <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3>🐛 Reportar Plaga / Enfermedad</h3>
-        <button class="modal-close" onclick="document.getElementById('pest-modal').remove()">✕</button>
+        <h3 id="pest-modal-title">🐛 Reportar Plaga / Enfermedad</h3>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('pest-modal')?.remove()">✕</button>
       </div>
       <form onsubmit="handleCreatePestMarker(event)">
         <div class="form-row">
@@ -431,7 +446,7 @@ function showPestMarkerModal(lat, lng) {
           <label class="form-label">URL de Foto (opcional)</label>
           <input type="url" class="form-input" id="pest-photo" placeholder="https://...">
         </div>
-        <button type="submit" class="btn btn-primary btn-block btn-lg">🐛 Registrar Marcador de Plaga</button>
+        <button type="submit" id="pest-submit-btn" class="btn btn-primary btn-block btn-lg">🐛 Registrar Marcador de Plaga</button>
       </form>
     </div>
   `;
@@ -440,22 +455,33 @@ function showPestMarkerModal(lat, lng) {
 
 async function handleCreatePestMarker(e) {
   e.preventDefault();
-  const result = await api.createPestMarker({
-    lat: parseFloat(document.getElementById('pest-lat').value),
-    lng: parseFloat(document.getElementById('pest-lng').value),
-    pest_type: document.getElementById('pest-type').value,
-    severity: document.getElementById('pest-severity').value,
-    title: document.getElementById('pest-title').value,
-    description: document.getElementById('pest-description').value,
-    photo_url: document.getElementById('pest-photo').value || null
-  });
+  const submitBtn = document.getElementById('pest-submit-btn') || e.target.querySelector('button[type="submit"]');
 
-  if (result.success) {
-    document.getElementById('pest-modal')?.remove();
-    showToast('Marcador de plaga registrado', 'success');
-    navigateTo('/advisor/parcels');
+  const executeCreate = async () => {
+    const result = await api.createPestMarker({
+      lat: parseFloat(document.getElementById('pest-lat').value),
+      lng: parseFloat(document.getElementById('pest-lng').value),
+      pest_type: document.getElementById('pest-type').value,
+      severity: document.getElementById('pest-severity').value,
+      title: document.getElementById('pest-title').value,
+      description: document.getElementById('pest-description').value,
+      photo_url: document.getElementById('pest-photo').value || null
+    });
+
+    if (result.success) {
+      document.getElementById('pest-modal')?.remove();
+      showToast('Marcador de plaga registrado', 'success');
+      navigateTo('/advisor/parcels');
+    } else {
+      showToast(result.error || 'Error al registrar', 'error');
+      // Modal stays open so coordinates and description are preserved
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, 'Registrando marcador...', executeCreate);
   } else {
-    showToast(result.error || 'Error al registrar', 'error');
+    await executeCreate();
   }
 }
 
@@ -474,12 +500,27 @@ function showRecommendationModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'rec-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'rec-modal-title');
+
+  const closeRecModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closeRecModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closeRecModal(); };
+
   modal.innerHTML = `
-    <div class="modal">
+    <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3>📋 Nueva Recomendación Técnica</h3>
-        <button class="modal-close" onclick="document.getElementById('rec-modal').remove()">✕</button>
+        <h3 id="rec-modal-title">📋 Nueva Recomendación Técnica</h3>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('rec-modal')?.remove()">✕</button>
       </div>
       <form onsubmit="handleCreateRecommendation(event)">
         <div class="form-row">
@@ -512,7 +553,7 @@ function showRecommendationModal() {
           <label class="form-label">Recomendación Detallada</label>
           <textarea class="form-textarea" id="rec-recommendation" rows="4" placeholder="Describe la recomendación técnica..." required></textarea>
         </div>
-        <button type="submit" class="btn btn-primary btn-block btn-lg">📋 Emitir Recomendación</button>
+        <button type="submit" id="rec-submit-btn" class="btn btn-primary btn-block btn-lg">📋 Emitir Recomendación</button>
       </form>
     </div>
   `;
@@ -521,19 +562,30 @@ function showRecommendationModal() {
 
 async function handleCreateRecommendation(e) {
   e.preventDefault();
-  const result = await api.createRecommendation({
-    category: document.getElementById('rec-category').value,
-    priority: document.getElementById('rec-priority').value,
-    title: document.getElementById('rec-title').value,
-    recommendation: document.getElementById('rec-recommendation').value
-  });
+  const submitBtn = document.getElementById('rec-submit-btn') || e.target.querySelector('button[type="submit"]');
 
-  if (result.success) {
-    document.getElementById('rec-modal')?.remove();
-    showToast('Recomendación emitida', 'success');
-    navigateTo('/advisor/recommendations');
+  const executeRec = async () => {
+    const result = await api.createRecommendation({
+      category: document.getElementById('rec-category').value,
+      priority: document.getElementById('rec-priority').value,
+      title: document.getElementById('rec-title').value,
+      recommendation: document.getElementById('rec-recommendation').value
+    });
+
+    if (result.success) {
+      document.getElementById('rec-modal')?.remove();
+      showToast('Recomendación emitida exitosamente', 'success');
+      navigateTo('/advisor/recommendations');
+    } else {
+      showToast(result.error || 'Error al emitir recomendación', 'error');
+      // Modal stays open so text is preserved
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, 'Emitiendo recomendación...', executeRec);
   } else {
-    showToast(result.error || 'Error', 'error');
+    await executeRec();
   }
 }
 

@@ -112,7 +112,7 @@ async function renderParcelsPage() {
           <input type="hidden" id="parcel-center-lat">
           <input type="hidden" id="parcel-center-lng">
           <input type="hidden" id="parcel-area-ha">
-          <button type="submit" class="btn btn-primary btn-block btn-lg">🌾 Registrar Parcela con Fotografía</button>
+          <button type="submit" id="parcel-submit-btn" class="btn btn-primary btn-block btn-lg">🌾 Registrar Parcela con Fotografía</button>
         </form>
       </div>
 
@@ -405,8 +405,15 @@ async function handleCreateParcel(e) {
   e.preventDefault();
 
   const photoUrl = document.getElementById('parcel-photo-value')?.value;
+  const photoContainer = document.getElementById('parcel-photo-container');
   if (!photoUrl || photoUrl.trim() === '') {
+    if (photoContainer) {
+      photoContainer.style.border = '2px solid #ef4444';
+      photoContainer.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.4)';
+      photoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     showToast('⚠️ La fotografía de la parcela o del terreno es obligatoria.', 'error');
+    if (window.AgroLogger) AgroLogger.warn('PARCEL', 'Intento de registro de parcela sin fotografía obligatoria');
     return;
   }
 
@@ -416,25 +423,40 @@ async function handleCreateParcel(e) {
     return;
   }
 
-  const result = await api.createParcel({
-    name: document.getElementById('parcel-name').value,
-    geo_json: geoJson,
-    area_hectares: parseFloat(document.getElementById('parcel-area-ha').value) || 0,
-    center_lat: parseFloat(document.getElementById('parcel-center-lat').value) || null,
-    center_lng: parseFloat(document.getElementById('parcel-center-lng').value) || null,
-    crop_type: document.getElementById('parcel-crop-type').value || null,
-    planting_date: document.getElementById('parcel-planting-date').value || null,
-    altitude_masl: parseInt(document.getElementById('parcel-altitude').value) || 4380,
-    notes: document.getElementById('parcel-notes').value || null,
-    photo_url: photoUrl.trim()
-  });
+  const submitBtn = document.getElementById('parcel-submit-btn') || e.target.querySelector('button[type="submit"]');
 
-  if (result.success) {
-    showToast('¡Parcela registrada exitosamente con fotografía y altitud!', 'success');
-    cancelParcelDraw();
-    navigateTo('/parcels');
+  const executeCreate = async () => {
+    if (window.AgroLogger) AgroLogger.action('PARCEL', 'Enviando registro de parcela delimitada');
+
+    const result = await api.createParcel({
+      name: document.getElementById('parcel-name').value,
+      geo_json: geoJson,
+      area_hectares: parseFloat(document.getElementById('parcel-area-ha').value) || 0,
+      center_lat: parseFloat(document.getElementById('parcel-center-lat').value) || null,
+      center_lng: parseFloat(document.getElementById('parcel-center-lng').value) || null,
+      crop_type: document.getElementById('parcel-crop-type').value || null,
+      planting_date: document.getElementById('parcel-planting-date').value || null,
+      altitude_masl: parseInt(document.getElementById('parcel-altitude').value) || 4380,
+      notes: document.getElementById('parcel-notes').value || null,
+      photo_url: photoUrl.trim()
+    });
+
+    if (result.success) {
+      if (window.AgroLogger) AgroLogger.info('PARCEL', 'Parcela registrada exitosamente con fotografía');
+      showToast('¡Parcela registrada exitosamente con fotografía y altitud!', 'success');
+      cancelParcelDraw();
+      navigateTo('/parcels');
+    } else {
+      const errorMsg = result.error || 'Error al registrar parcela';
+      if (window.AgroLogger) AgroLogger.error('PARCEL', 'Fallo al registrar parcela en el servidor', { error: errorMsg });
+      showToast(`Error al registrar parcela: ${errorMsg}`, 'error');
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, '🌾 Registrando Parcela...', executeCreate);
   } else {
-    showToast(result.error || 'Error al registrar parcela', 'error');
+    await executeCreate();
   }
 }
 
@@ -451,13 +473,27 @@ async function showEditParcelModal(parcelId) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'edit-parcel-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'edit-parcel-title');
+
+  const closeEditModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closeEditModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closeEditModal(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 600px;">
+    <div class="modal" style="max-width: 600px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3>✏️ Editar Parcela: ${p.name}</h3>
-        <button class="modal-close" onclick="document.getElementById('edit-parcel-modal').remove()">✕</button>
+        <h3 id="edit-parcel-title">✏️ Editar Parcela: ${p.name}</h3>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('edit-parcel-modal')?.remove()">✕</button>
       </div>
 
       <form onsubmit="handleUpdateParcel(event, ${p.id})">
@@ -526,10 +562,10 @@ async function showEditParcelModal(parcelId) {
         </div>
 
         <div style="display: flex; gap: 10px; margin-top: 20px;">
-          <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
+          <button type="submit" id="edit-parcel-submit-btn" class="btn btn-primary btn-lg" style="flex: 1;">
             💾 Guardar Cambios
           </button>
-          <button type="button" class="btn btn-secondary btn-lg" onclick="document.getElementById('edit-parcel-modal').remove()">
+          <button type="button" class="btn btn-secondary btn-lg" onclick="document.getElementById('edit-parcel-modal')?.remove()">
             Cancelar
           </button>
         </div>
@@ -560,23 +596,36 @@ async function recalcParcelElevation(lat, lng) {
 
 async function handleUpdateParcel(e, parcelId) {
   e.preventDefault();
+  const submitBtn = document.getElementById('edit-parcel-submit-btn') || e.target.querySelector('button[type="submit"]');
 
-  const result = await api.updateParcel(parcelId, {
-    name: document.getElementById('edit-parcel-name').value,
-    crop_type: document.getElementById('edit-parcel-crop').value || null,
-    status: document.getElementById('edit-parcel-status').value,
-    area_hectares: parseFloat(document.getElementById('edit-parcel-area').value) || 0,
-    altitude_masl: parseInt(document.getElementById('edit-parcel-altitude').value) || 4380,
-    planting_date: document.getElementById('edit-parcel-planting-date').value || null,
-    notes: document.getElementById('edit-parcel-notes').value || null
-  });
+  const executeUpdate = async () => {
+    const result = await api.updateParcel(parcelId, {
+      name: document.getElementById('edit-parcel-name').value,
+      crop_type: document.getElementById('edit-parcel-crop').value || null,
+      status: document.getElementById('edit-parcel-status').value,
+      area_hectares: parseFloat(document.getElementById('edit-parcel-area').value) || 0,
+      altitude_masl: parseInt(document.getElementById('edit-parcel-altitude').value) || 4380,
+      planting_date: document.getElementById('edit-parcel-planting-date').value || null,
+      notes: document.getElementById('edit-parcel-notes').value || null
+    });
 
-  if (result.success) {
-    document.getElementById('edit-parcel-modal')?.remove();
-    showToast('¡Parcela actualizada exitosamente!', 'success');
-    navigateTo('/parcels');
+    if (result.success) {
+      if (window.AgroLogger) AgroLogger.info('PARCEL', `Parcela #${parcelId} actualizada`);
+      document.getElementById('edit-parcel-modal')?.remove();
+      showToast('¡Parcela actualizada exitosamente!', 'success');
+      navigateTo('/parcels');
+    } else {
+      const errMsg = result.error || 'Error al actualizar parcela';
+      if (window.AgroLogger) AgroLogger.error('PARCEL', 'Fallo al actualizar parcela', { error: errMsg });
+      showToast(`Error al actualizar parcela: ${errMsg}`, 'error');
+      // Modal remains open so the user doesn't lose changes
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, '💾 Guardando Cambios...', executeUpdate);
   } else {
-    showToast(result.error || 'Error al actualizar parcela', 'error');
+    await executeUpdate();
   }
 }
 

@@ -182,19 +182,33 @@ async function showProductDetailModal(productId) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'product-detail-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'product-detail-title');
+
+  const closeDetailModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closeDetailModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closeDetailModal(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 28px;">${cropIcons[prod.crop_type] || '🌾'}</span>
           <div>
-            <h3 style="margin: 0; font-size: 20px;">${prod.name}</h3>
+            <h3 id="product-detail-title" style="margin: 0; font-size: 20px;">${prod.name}</h3>
             <span class="text-xs text-muted">Código Trazabilidad: ${prod.traceability_code || 'AP-PASCO-2026'}</span>
           </div>
         </div>
-        <button class="modal-close" onclick="document.getElementById('product-detail-modal').remove()">✕</button>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('product-detail-modal')?.remove()">✕</button>
       </div>
 
       <!-- Badges Superiores -->
@@ -461,15 +475,29 @@ async function showPublishModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'publish-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'publish-modal-title');
+
+  const closePublishModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closePublishModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closePublishModal(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 580px;">
+    <div class="modal" style="max-width: 580px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3 style="display: flex; align-items: center; gap: 8px;">
+        <h3 id="publish-modal-title" style="display: flex; align-items: center; gap: 8px;">
           <span>💰</span> Poner Producto en Venta al Supermercado
         </h3>
-        <button class="modal-close" onclick="document.getElementById('publish-modal').remove()">✕</button>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('publish-modal')?.remove()">✕</button>
       </div>
 
       <!-- Banner de Bonificación Natural -->
@@ -554,7 +582,7 @@ async function showPublishModal() {
           ${AgroMediaUploader.render({
             id: 'pub-photo',
             folder: 'products',
-            label: 'Fotografía del Producto / Cosecha (Cámara en Vivo o Subir Imagen)'
+            label: 'Fotografía del Producto / Cosecha (Cámara en Vivo o Subir Imagen) — OBLIGATORIA *'
           })}
         </div>
 
@@ -563,7 +591,7 @@ async function showPublishModal() {
           <textarea class="form-textarea" id="pub-description" rows="3" placeholder="Describe los métodos de siembra, si utilizaste abonos naturales (biol, compost), fecha aproximada de cosecha..."></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block btn-lg" style="box-shadow: 0 4px 14px rgba(16,185,129,0.3); font-weight: 700;">
+        <button type="submit" id="publish-submit-btn" class="btn btn-primary btn-block btn-lg" style="box-shadow: 0 4px 14px rgba(16,185,129,0.3); font-weight: 700;">
           🚀 Vender Producto al Supermercado (Enviar a Validación)
         </button>
       </form>
@@ -608,25 +636,54 @@ async function showPublishModal() {
 
 async function handlePublishProduct(e) {
   e.preventDefault();
-  const name = document.getElementById('pub-name').value.trim();
-  const crop_type = document.getElementById('pub-type').value;
-  const quality = document.getElementById('pub-quality').value;
-  const origin = document.getElementById('pub-origin').value.trim();
-  const stock_kg = parseFloat(document.getElementById('pub-stock').value);
-  const price_per_kg = parseFloat(document.getElementById('pub-price').value);
+  const name = document.getElementById('pub-name')?.value?.trim();
+  const crop_type = document.getElementById('pub-type')?.value;
+  const quality = document.getElementById('pub-quality')?.value;
+  const origin = document.getElementById('pub-origin')?.value?.trim();
+  const stock_kg = parseFloat(document.getElementById('pub-stock')?.value);
+  const price_per_kg = parseFloat(document.getElementById('pub-price')?.value);
   const photo_url = document.getElementById('pub-photo-value')?.value || null;
-  const description = document.getElementById('pub-description').value.trim();
+  const photoContainer = document.getElementById('pub-photo-container');
+  const description = document.getElementById('pub-description')?.value?.trim();
 
-  const result = await api.publishProduct({
-    name, crop_type, quality, origin, stock_kg, price_per_kg, photo_url, description
-  });
+  // Validación de fotografía obligatoria
+  if (!photo_url || photo_url.trim() === '') {
+    if (photoContainer) {
+      photoContainer.style.border = '2px solid #ef4444';
+      photoContainer.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.4)';
+      photoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    showToast('⚠️ La fotografía del producto o cosecha es obligatoria para certificar la trazabilidad.', 'error');
+    if (window.AgroLogger) AgroLogger.warn('SUPERMARKET', 'Intento de publicación sin fotografía obligatoria', { name });
+    return;
+  }
 
-  if (result.success) {
-    document.getElementById('publish-modal')?.remove();
-    showToast('¡Producto puesto en venta! Enviado al Asesor Técnico para validación.', 'success');
-    navigateTo('/farmer/sales');
+  const submitBtn = document.getElementById('publish-submit-btn') || e.target.querySelector('button[type="submit"]');
+
+  const executePublish = async () => {
+    if (window.AgroLogger) AgroLogger.action('SUPERMARKET', `Publicando producto "${name}"`);
+
+    const result = await api.publishProduct({
+      name, crop_type, quality, origin, stock_kg, price_per_kg, photo_url: photo_url.trim(), description
+    });
+
+    if (result.success) {
+      if (window.AgroLogger) AgroLogger.info('SUPERMARKET', `Producto "${name}" publicado exitosamente`);
+      document.getElementById('publish-modal')?.remove();
+      showToast('¡Producto puesto en venta! Enviado al Asesor Técnico para validación.', 'success');
+      navigateTo('/farmer/sales');
+    } else {
+      const errorMsg = result.error || 'Error al publicar producto';
+      if (window.AgroLogger) AgroLogger.error('SUPERMARKET', 'Fallo al publicar producto', { error: errorMsg });
+      showToast(`Error al publicar producto: ${errorMsg}`, 'error');
+      // El modal permanece abierto para que el usuario pueda corregir
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, '🚀 Publicando Producto...', executePublish);
   } else {
-    showToast(result.error || 'Error al publicar producto', 'error');
+    await executePublish();
   }
 }
 
@@ -870,12 +927,27 @@ function showRejectModal(productId) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'reject-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'reject-modal-title');
+
+  const closeRejectModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closeRejectModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closeRejectModal(); };
+
   modal.innerHTML = `
-    <div class="modal" style="max-width: 480px;">
+    <div class="modal" style="max-width: 480px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3 style="color: var(--red-400);">❌ Rechazar Producto</h3>
-        <button class="modal-close" onclick="document.getElementById('reject-modal').remove()">✕</button>
+        <h3 id="reject-modal-title" style="color: var(--red-400);">❌ Rechazar Producto</h3>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('reject-modal')?.remove()">✕</button>
       </div>
       <p class="text-sm text-muted mb-md">
         Indica el motivo técnico por el cual este producto no puede ser publicado en el catálogo del supermercado.
@@ -886,8 +958,8 @@ function showRejectModal(productId) {
           <textarea class="form-textarea" id="reject-notes" rows="4" placeholder="Ej: No cumple con los estándares mínimos de inocuidad o presenta residuos no autorizados..." required></textarea>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('reject-modal').remove()">Cancelar</button>
-          <button type="submit" class="btn btn-danger" style="flex: 1;">Confirmar Rechazo</button>
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('reject-modal')?.remove()">Cancelar</button>
+          <button type="submit" id="reject-submit-btn" class="btn btn-danger" style="flex: 1;">Confirmar Rechazo</button>
         </div>
       </form>
     </div>
@@ -897,20 +969,31 @@ function showRejectModal(productId) {
 
 async function handleRejectProduct(e, productId) {
   e.preventDefault();
-  const notes = document.getElementById('reject-notes').value.trim();
+  const notes = document.getElementById('reject-notes')?.value?.trim();
+  const submitBtn = document.getElementById('reject-submit-btn') || e.target.querySelector('button[type="submit"]');
 
-  const result = await api.validateProduct(productId, {
-    validation_status: 'rejected',
-    is_natural: false,
-    validation_notes: notes
-  });
+  const executeReject = async () => {
+    const result = await api.validateProduct(productId, {
+      validation_status: 'rejected',
+      is_natural: false,
+      validation_notes: notes
+    });
 
-  if (result.success) {
-    document.getElementById('reject-modal')?.remove();
-    showToast('Producto rechazado. Se notificó al agricultor con las observaciones técnicas.', 'warning');
-    navigateTo('/advisor/validate-products');
+    if (result.success) {
+      document.getElementById('reject-modal')?.remove();
+      showToast('Producto rechazado. Se notificó al agricultor con las observaciones técnicas.', 'warning');
+      navigateTo('/advisor/validate-products');
+    } else {
+      const errMsg = result.error || 'Error al rechazar producto';
+      showToast(`Error al rechazar producto: ${errMsg}`, 'error');
+      // Modal stays open so advisor does not lose typed notes
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, 'Rechazando...', executeReject);
   } else {
-    showToast(result.error || 'Error al rechazar producto', 'error');
+    await executeReject();
   }
 }
 
@@ -931,16 +1014,30 @@ async function viewProductTrace(productId) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'trace-modal';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'trace-modal-title');
+
+  const closeTraceModal = () => {
+    window.removeEventListener('keydown', handleEsc);
+    modal.remove();
+  };
+
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') closeTraceModal();
+  };
+  window.addEventListener('keydown', handleEsc);
+
+  modal.onclick = (e) => { if (e.target === modal) closeTraceModal(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div>
-          <h3 style="margin: 0; font-size: 18px;">📋 Certificado de Trazabilidad Digital</h3>
+          <h3 id="trace-modal-title" style="margin: 0; font-size: 18px;">📋 Certificado de Trazabilidad Digital</h3>
           <span class="text-xs text-muted">Hash Blockchain: ${trace.traceability_code}</span>
         </div>
-        <button class="modal-close" onclick="document.getElementById('trace-modal').remove()">✕</button>
+        <button class="modal-close" aria-label="Cerrar certificado" onclick="document.getElementById('trace-modal')?.remove()">✕</button>
       </div>
 
       <div style="margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap;">

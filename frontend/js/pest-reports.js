@@ -207,15 +207,43 @@ async function showFarmerPestReportModal() {
       parcels.map(p => `<option value="${p.id}" data-crop="${p.crop_type || ''}" data-lat="${p.center_lat || ''}" data-lng="${p.center_lng || ''}" data-alt="${p.altitude_masl || ''}">${p.name}${p.crop_type ? ' (' + p.crop_type + ')' : ''} · ${p.altitude_masl || 4380} msnm</option>`).join('')
     : '<option value="">No tienes parcelas registradas aún</option>';
 
+  const existing = document.getElementById('pest-report-modal');
+  if (existing) existing.remove();
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'pest-report-modal';
+  modal.style.zIndex = '9999';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Reportar Plaga o Síntoma con Fotografía Obligatoria');
+
+  const closePestModal = () => {
+    if (window._pestEscHandler) {
+      window.removeEventListener('keydown', window._pestEscHandler);
+      window._pestEscHandler = null;
+    }
+    document.getElementById('pest-report-modal')?.remove();
+  };
+
+  const handleEscKey = (e) => {
+    if (e.key === 'Escape') closePestModal();
+  };
+  window._pestEscHandler = handleEscKey;
+  window.addEventListener('keydown', handleEscKey);
+
+  modal.onclick = (e) => {
+    if (e.target === modal) closePestModal();
+  };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 640px;">
+    <div class="modal" style="max-width: 640px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <h3>🐛 Reportar Plaga o Síntoma con Fotografía Obligatoria</h3>
-        <button class="modal-close" onclick="document.getElementById('pest-report-modal').remove()">✕</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🐛</span>
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Reportar Plaga o Síntoma en Cultivo</h3>
+        </div>
+        <button type="button" class="modal-close" aria-label="Cerrar ventana" onclick="document.getElementById('pest-report-modal')?.remove()">✕</button>
       </div>
 
       <div style="padding: 10px 14px; background: rgba(59, 130, 246, 0.12); border-left: 4px solid #3b82f6; border-radius: 6px; margin-bottom: 14px; font-size: 12.5px; color: #93c5fd;">
@@ -271,7 +299,7 @@ async function showFarmerPestReportModal() {
 
         <!-- Descripción -->
         <div class="form-group">
-          <label class="form-label">Descripción Detallada del Síntoma</label>
+          <label class="form-label">Descripción Detallada del Síntoma *</label>
           <textarea class="form-textarea" id="pr-description" rows="3" placeholder="Describe qué partes de la planta están dañadas (hojas perforadas, tallo quebrado, tubérculo agusanado), coloración amarillenta o presencia de larvas..." required></textarea>
         </div>
 
@@ -287,9 +315,14 @@ async function showFarmerPestReportModal() {
           </div>
         </div>
 
-        <button type="submit" id="pr-submit-btn" class="btn btn-primary btn-block btn-lg" style="margin-top: 18px; font-weight: 800;">
-          🚀 Enviar Reporte con Evidencia al Asesor Técnico
-        </button>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('pest-report-modal')?.remove()" style="flex: 0.35;">
+            Cancelar
+          </button>
+          <button type="submit" id="pr-submit-btn" class="btn btn-primary btn-lg" style="flex: 1; font-weight: 800;">
+            🚀 Enviar Reporte con Evidencia al Asesor
+          </button>
+        </div>
       </form>
     </div>
   `;
@@ -314,46 +347,89 @@ function handlePestParcelSelect(select) {
 // Envío del reporte validando estrictamente la fotografía
 async function handleCreatePestReport(e) {
   e.preventDefault();
-  const photoUrl = document.getElementById('pr-photo-value')?.value;
+  const photoUrl = document.getElementById('pr-photo-value')?.value || '';
   const photoGroup = document.getElementById('pr-photo-group');
   const photoError = document.getElementById('pr-photo-error');
 
-  // Validación en frontend de fotografía obligatoria
-  if (!photoUrl || photoUrl.trim() === '') {
-    if (photoGroup) {
-      photoGroup.style.borderColor = '#ef4444';
-      photoGroup.style.boxShadow = '0 0 12px rgba(239,68,68,0.3)';
-    }
-    if (photoError) photoError.style.display = 'block';
-    showToast('⚠️ Debes adjuntar obligatoriamente al menos una fotografía de la plaga antes de enviar.', 'error');
+  const pestName = document.getElementById('pr-pest-name')?.value?.trim();
+  const description = document.getElementById('pr-description')?.value?.trim();
+  const parcelId = document.getElementById('pr-parcel')?.value;
+  const latVal = parseFloat(document.getElementById('pr-lat')?.value) || null;
+  const lngVal = parseFloat(document.getElementById('pr-lng')?.value) || null;
+  const severityVal = document.getElementById('pr-severity')?.value || 'moderado';
+
+  // 1. Validaciones requeridas de datos
+  if (!parcelId) {
+    showToast('⚠️ Debes seleccionar la parcela afectada.', 'warning');
+    document.getElementById('pr-parcel')?.focus();
     return;
   }
 
-  const parcelId = document.getElementById('pr-parcel').value;
-  const latVal = parseFloat(document.getElementById('pr-lat').value) || null;
-  const lngVal = parseFloat(document.getElementById('pr-lng').value) || null;
-  const severityVal = document.getElementById('pr-severity')?.value || 'moderado';
+  if (!pestName) {
+    showToast('⚠️ Ingresa el nombre o síntoma de la plaga.', 'warning');
+    document.getElementById('pr-pest-name')?.focus();
+    return;
+  }
+
+  if (!description || description.length < 5) {
+    showToast('⚠️ Por favor escribe una descripción detallada del síntoma.', 'warning');
+    document.getElementById('pr-description')?.focus();
+    return;
+  }
+
+  // 2. Bloquear reportes sin fotografía obligatoria
+  if (!photoUrl || photoUrl.trim() === '') {
+    if (photoGroup) {
+      photoGroup.style.borderColor = '#ef4444';
+      photoGroup.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.4)';
+      photoGroup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (photoError) photoError.style.display = 'block';
+    showToast('⚠️ Debes adjuntar obligatoriamente al menos una fotografía de la plaga antes de enviar.', 'error');
+    if (window.AgroLogger) AgroLogger.warn('PEST', 'Intento de reporte de plaga sin fotografía obligatoria', { pestName });
+    return;
+  }
 
   const btn = document.getElementById('pr-submit-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Enviando reporte con evidencia...'; }
 
-  const result = await api.createPestReport({
-    pest_name: document.getElementById('pr-pest-name').value,
-    severity: severityVal,
-    parcel_id: parcelId ? parseInt(parcelId) : null,
-    description: document.getElementById('pr-description').value,
-    photo_url: photoUrl.trim(),
-    location_lat: latVal,
-    location_lng: lngVal
-  });
+  const executeSendReport = async () => {
+    if (window.AgroLogger) AgroLogger.action('PEST', `Enviando reporte de plaga "${pestName}"`);
 
-  if (result.success) {
-    document.getElementById('pest-report-modal')?.remove();
-    showToast('¡Reporte con fotografía enviado exitosamente al Asesor Técnico!', 'success');
-    navigateTo('/pest-reports');
+    const result = await api.createPestReport({
+      pest_name: pestName,
+      severity: severityVal,
+      parcel_id: parseInt(parcelId),
+      description: description,
+      photo_url: photoUrl.trim(),
+      location_lat: latVal,
+      location_lng: lngVal
+    });
+
+    if (result.success) {
+      if (window.AgroLogger) AgroLogger.info('PEST', `Reporte de plaga "${pestName}" registrado exitosamente`);
+      document.getElementById('pest-report-modal')?.remove();
+      showToast('Reporte enviado exitosamente al Asesor Técnico', 'success');
+      navigateTo('/pest-reports');
+    } else {
+      const errMsg = result.error || 'Error al enviar reporte';
+      if (window.AgroLogger) AgroLogger.error('PEST', 'Fallo al enviar reporte de plaga', { error: errMsg });
+      showToast(`Error al enviar reporte: ${errMsg}`, 'error');
+      // El modal permanece abierto para que el usuario no pierda el texto escrito
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(btn, 'Enviando reporte con evidencia...', executeSendReport);
   } else {
-    if (btn) { btn.disabled = false; btn.textContent = '🚀 Enviar Reporte al Asesor Técnico'; }
-    showToast(result.error || 'Error al enviar reporte', 'error');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando reporte con evidencia...'; }
+    try {
+      await executeSendReport();
+    } finally {
+      if (btn && document.body.contains(btn)) {
+        btn.disabled = false;
+        btn.textContent = '🚀 Enviar Reporte con Evidencia al Asesor';
+      }
+    }
   }
 }
 

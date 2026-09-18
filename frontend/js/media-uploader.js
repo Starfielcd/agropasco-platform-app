@@ -107,7 +107,7 @@ const AgroMediaUploader = (function() {
       return;
     }
 
-    // Modal de la cámara
+    // Modal de la cámara con accesibilidad WCAG
     const existingModal = document.getElementById('camera-modal');
     if (existingModal) existingModal.remove();
 
@@ -115,16 +115,30 @@ const AgroMediaUploader = (function() {
     modal.className = 'modal-overlay';
     modal.id = 'camera-modal';
     modal.style.zIndex = '99999';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Captura de Cámara en Vivo — AgroPasco');
+
+    if (window.AgroLogger) AgroLogger.action('CAMERA', `Solicitando acceso a cámara para ${targetId}`);
+
+    // Soporte accesible tecla Escape
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') {
+        AgroMediaUploader.closeCameraModal(targetId);
+      }
+    };
+    window._cameraEscHandler = handleEscKey;
+    window.addEventListener('keydown', handleEscKey);
 
     modal.innerHTML = `
-      <div class="modal" style="max-width: 620px; padding: 0; overflow: hidden; background: #0b1120; border: 1.5px solid #3b82f6;">
+      <div class="modal" style="max-width: 620px; padding: 0; overflow: hidden; background: #0b1120; border: 1.5px solid #3b82f6;" onclick="event.stopPropagation()">
         <!-- Cabecera de la Cámara -->
         <div style="padding: 14px 18px; background: #0f172a; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 18px;">📷</span>
             <strong style="color: #ffffff; font-size: 15px;">Captura en Vivo — AgroPasco</strong>
           </div>
-          <button class="modal-close" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">✕</button>
+          <button type="button" class="modal-close" aria-label="Cerrar cámara" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">✕</button>
         </div>
 
         <!-- Visor de Video en Directo -->
@@ -219,6 +233,7 @@ const AgroMediaUploader = (function() {
       video.srcObject = activeStream;
       await video.play().catch(() => {});
       if (loadingOverlay) loadingOverlay.style.display = 'none';
+      if (window.AgroLogger) AgroLogger.info('CAMERA', `Stream de video conectado con éxito (${facingMode})`);
     } catch (err) {
       console.warn('Primer intento de cámara falló o tardó:', err.message);
       // Fallback a configuración básica sin constraints de resolución
@@ -227,26 +242,32 @@ const AgroMediaUploader = (function() {
         video.srcObject = activeStream;
         await video.play().catch(() => {});
         if (loadingOverlay) loadingOverlay.style.display = 'none';
+        if (window.AgroLogger) AgroLogger.info('CAMERA', 'Stream de video conectado con fallback básico');
       } catch (fallbackErr) {
         console.warn('Fallback WebRTC falló:', fallbackErr.message);
+        if (window.AgroLogger) AgroLogger.warn('CAMERA', 'No se pudo acceder a la cámara WebRTC', { error: fallbackErr.message });
+
         if (loadingOverlay) {
           loadingOverlay.innerHTML = `
             <div style="font-size: 34px;">📷⚠️</div>
-            <strong style="color: #f87171; font-size: 14px;">No se pudo acceder a la cámara en vivo</strong>
-            <p style="color: #94a3b8; font-size: 12px; margin: 0; max-width: 320px;">
-              ${fallbackErr.message === 'TIMEOUT_CAMARA' ? 'La cámara tardó demasiado en responder o está en uso por otra app.' : 'Tu navegador requiere permisos o no detectó cámara física disponible.'}
+            <strong style="color: #f87171; font-size: 15px;">No se pudo acceder a la cámara. Verifique permisos.</strong>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0; max-width: 340px;">
+              El navegador o dispositivo no concedió acceso a la cámara. Puedes reintentar o usar la cámara nativa de tu dispositivo mediante la subida de imagen.
             </p>
-            <div style="display: flex; gap: 8px; margin-top: 10px;">
-              <button type="button" class="btn btn-primary" onclick="AgroMediaUploader.closeCameraModal('${targetId}'); document.getElementById('${targetId}-file-input')?.click();">
-                📸 Tomar foto con Cámara Nativa / Archivo
+            <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="AgroMediaUploader.startVideoStream('${facingMode}', '${targetId}')">
+                🔄 Reintentar
               </button>
-              <button type="button" class="btn btn-secondary" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">
-                Cerrar
+              <button type="button" class="btn btn-primary btn-sm" onclick="AgroMediaUploader.closeCameraModal('${targetId}'); document.getElementById('${targetId}-file-input')?.click();">
+                📸 Usar Cámara Nativa / Archivo
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="AgroMediaUploader.closeCameraModal('${targetId}')">
+                ✕ Cerrar
               </button>
             </div>
           `;
         }
-        showToast('Puedes tomar foto o subir archivo directamente desde tu dispositivo.', 'info');
+        showToast('No se pudo acceder a la cámara. Verifique permisos.', 'warning');
       }
     }
   }
@@ -257,6 +278,10 @@ const AgroMediaUploader = (function() {
   }
 
   function closeCameraModal(targetId) {
+    if (window._cameraEscHandler) {
+      window.removeEventListener('keydown', window._cameraEscHandler);
+      window._cameraEscHandler = null;
+    }
     if (activeStream) {
       try {
         activeStream.getTracks().forEach(t => t.stop());

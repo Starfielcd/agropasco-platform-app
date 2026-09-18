@@ -220,10 +220,28 @@ async function showNewCropModal() {
   modal.className = 'modal-overlay';
   modal.id = 'crop-modal';
   modal.style.zIndex = '9999';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Registrar Nuevo Cultivo — AgroPasco');
+
+  const closeCropModal = () => {
+    if (window._cropEscHandler) {
+      window.removeEventListener('keydown', window._cropEscHandler);
+      window._cropEscHandler = null;
+    }
+    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
+    document.getElementById('crop-modal')?.remove();
+  };
+
+  const handleEscKey = (e) => {
+    if (e.key === 'Escape') closeCropModal();
+  };
+  window._cropEscHandler = handleEscKey;
+  window.addEventListener('keydown', handleEscKey);
+
   modal.onclick = (e) => {
     if (e.target === modal) {
-      if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
-      modal.remove();
+      closeCropModal();
     }
   };
 
@@ -239,7 +257,7 @@ async function showNewCropModal() {
           <span style="font-size: 20px;">🌱</span>
           <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Registrar Nuevo Cultivo</h3>
         </div>
-        <button type="button" class="modal-close" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()">✕</button>
+        <button type="button" class="modal-close" aria-label="Cerrar modal" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()">✕</button>
       </div>
 
       <!-- Selector de parcela existente para auto-rellenado -->
@@ -352,7 +370,7 @@ async function showNewCropModal() {
           <button type="button" class="btn btn-secondary" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()" style="flex: 0.35;">
             Cancelar
           </button>
-          <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
+          <button type="submit" id="crop-submit-btn" class="btn btn-primary btn-lg" style="flex: 1;">
             🌾 Registrar Cultivo con Altitud
           </button>
         </div>
@@ -580,45 +598,126 @@ async function applyCropElevation(lat, lng) {
 
 async function handleCreateCrop(e) {
   e.preventDefault();
-  const altValue = parseInt(document.getElementById('crop-altitude').value) || 4380;
+
+  const nameInput = document.getElementById('crop-name');
+  const typeInput = document.getElementById('crop-type');
+  const areaInput = document.getElementById('crop-area');
+  const altInput = document.getElementById('crop-altitude');
   const photoUrl = document.getElementById('crop-photo-value')?.value || '';
+  const photoContainer = document.getElementById('crop-photo-container');
 
-  const result = await api.createCrop({
-    name: document.getElementById('crop-name').value,
-    crop_type: document.getElementById('crop-type').value,
-    variety: document.getElementById('crop-variety').value,
-    area_hectares: parseFloat(document.getElementById('crop-area').value) || 0,
-    altitude_masl: altValue,
-    location_detail: document.getElementById('crop-location').value || null,
-    planting_date: document.getElementById('crop-planting-date').value || null,
-    status: document.getElementById('crop-status').value,
-    notes: document.getElementById('crop-notes').value,
-    photo_url: photoUrl.trim()
-  });
+  const nameVal = nameInput?.value?.trim();
+  const typeVal = typeInput?.value?.trim();
+  const areaVal = parseFloat(areaInput?.value);
+  const altVal = parseInt(altInput?.value);
 
-  if (result.success) {
-    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
-    document.getElementById('crop-modal')?.remove();
-    showToast(`¡Cultivo registrado exitosamente con ${altValue} msnm!`, 'success');
-    window.location.hash = '#/crops';
-    navigateTo('/crops');
+  // 1. Validaciones previas de campos requeridos
+  if (!nameVal) {
+    showToast('⚠️ El nombre del cultivo es obligatorio.', 'warning');
+    nameInput?.focus();
+    return;
+  }
+
+  if (!typeVal) {
+    showToast('⚠️ Debe seleccionar el tipo de cultivo.', 'warning');
+    typeInput?.focus();
+    return;
+  }
+
+  if (isNaN(areaVal) || areaVal <= 0) {
+    showToast('⚠️ Ingrese un área válida mayor a 0 hectáreas.', 'warning');
+    areaInput?.focus();
+    return;
+  }
+
+  if (isNaN(altVal) || altVal <= 0) {
+    showToast('⚠️ Ingrese una altitud válida en msnm.', 'warning');
+    altInput?.focus();
+    return;
+  }
+
+  // 2. Validación de fotografía obligatoria
+  if (!photoUrl || photoUrl.trim() === '') {
+    if (photoContainer) {
+      photoContainer.style.border = '2px solid #ef4444';
+      photoContainer.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.4)';
+      photoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    showToast('⚠️ La fotografía del cultivo o de la siembra es obligatoria antes de registrar.', 'error');
+    if (window.AgroLogger) AgroLogger.warn('CROP', 'Intento de registro sin fotografía obligatoria', { name: nameVal });
+    return;
+  }
+
+  const submitBtn = document.getElementById('crop-submit-btn');
+
+  const executeSubmit = async () => {
+    if (window.AgroLogger) AgroLogger.action('CROP', `Enviando registro de cultivo "${nameVal}"`);
+
+    const result = await api.createCrop({
+      name: nameVal,
+      crop_type: typeVal,
+      variety: document.getElementById('crop-variety')?.value?.trim() || null,
+      area_hectares: areaVal,
+      altitude_masl: altVal,
+      location_detail: document.getElementById('crop-location')?.value?.trim() || null,
+      planting_date: document.getElementById('crop-planting-date')?.value || null,
+      status: document.getElementById('crop-status')?.value || 'sembrado',
+      notes: document.getElementById('crop-notes')?.value?.trim() || null,
+      photo_url: photoUrl.trim()
+    });
+
+    if (result.success) {
+      if (window.AgroLogger) AgroLogger.info('CROP', `Cultivo "${nameVal}" registrado con éxito`);
+      if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
+      document.getElementById('crop-modal')?.remove();
+      showToast('¡Cultivo registrado exitosamente!', 'success');
+      window.location.hash = '#/crops';
+      navigateTo('/crops');
+    } else {
+      const errorMsg = result.error || 'Verifique que los datos sean correctos.';
+      if (window.AgroLogger) AgroLogger.error('CROP', 'Fallo al registrar cultivo en el servidor', { error: errorMsg });
+      showToast(`Error al registrar cultivo: ${errorMsg}`, 'error');
+      // El modal permanece abierto para que el usuario corrija sin perder sus datos
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, 'Guardando cultivo...', executeSubmit);
   } else {
-    showToast(result.error || 'Error al registrar cultivo', 'error');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span>⏳</span> Guardando cultivo...'; }
+    try {
+      await executeSubmit();
+    } finally {
+      if (submitBtn && document.body.contains(submitBtn)) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '🌾 Registrar Cultivo con Altitud';
+      }
+    }
   }
 }
 
 async function handleAddLog(e, cropId) {
   e.preventDefault();
-  const result = await api.addCropLog(cropId, {
-    action_type: document.getElementById('log-action').value,
-    description: document.getElementById('log-description').value
-  });
+  const submitBtn = e.target.querySelector('button[type="submit"]');
 
-  if (result.success) {
-    showToast('Actividad registrada con snapshot climático', 'success');
-    navigateTo(`/crops/${cropId}`);
+  const executeAddLog = async () => {
+    const result = await api.addCropLog(cropId, {
+      action_type: document.getElementById('log-action').value,
+      description: document.getElementById('log-description').value
+    });
+
+    if (result.success) {
+      showToast('Actividad registrada con snapshot climático', 'success');
+      navigateTo(`/crops/${cropId}`);
+    } else {
+      showToast(result.error || 'Error al registrar actividad', 'error');
+    }
+  };
+
+  if (window.AgroLogger && AgroLogger.wrapButtonAction) {
+    await AgroLogger.wrapButtonAction(submitBtn, 'Registrando actividad...', executeAddLog);
   } else {
-    showToast(result.error || 'Error al registrar actividad', 'error');
+    await executeAddLog();
   }
 }
 
