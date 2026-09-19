@@ -30,21 +30,21 @@ const AgroMediaUploader = (function () {
         <!-- Botones de Acción: Abrir Cámara y Subir Imagen -->
         <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
           <button type="button" class="btn btn-primary" id="${id}-btn-camera" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
-                  onclick="AgroMediaUploader.openCamera('${id}')">
+                  onclick="event.preventDefault(); event.stopPropagation(); AgroMediaUploader.openCamera('${id}', event)">
             <span>📷</span>
             <strong id="${id}-btn-camera-text">Abrir Cámara</strong>
           </button>
 
           <button type="button" class="btn btn-secondary" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
-                  onclick="document.getElementById('${id}-file-input').click()">
+                  onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('${id}-file-input').click()">
             <span>📁</span>
             <strong>Subir Imagen</strong>
           </button>
         </div>
 
         <!-- Input de archivo nativo oculto (con capture para cámara directa en móviles) -->
-        <input type="file" id="${id}-file-input" accept="image/*" capture="environment" style="display: none;"
-               onchange="AgroMediaUploader.handleFileSelected('${id}', this.files[0])">
+<input type="file" id="${id}-file-input" accept="image/*" style="display: none;"
+       onchange="AgroMediaUploader.handleFileSelected('${id}', this.files[0])">
 
         <!-- Input oculto que guarda la URL final para el formulario -->
         <input type="hidden" id="${id}-value" value="${existingUrl || ''}">
@@ -84,7 +84,12 @@ const AgroMediaUploader = (function () {
    * Abre el modal con la cámara en vivo del dispositivo usando getUserMedia
    * con timeout de seguridad y fallback fluido para evitar congelamientos.
    */
-  async function openCamera(targetId) {
+  async function openCamera(targetId, evt) {
+    if (evt) {
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+
     const btn = document.getElementById(`${targetId}-btn-camera`);
     const btnText = document.getElementById(`${targetId}-btn-camera-text`);
     if (btn) {
