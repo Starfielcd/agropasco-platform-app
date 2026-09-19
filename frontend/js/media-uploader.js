@@ -3,7 +3,7 @@
  * API de MediaDevices (getUserMedia) con captura en Canvas y subida al backend.
  */
 
-const AgroMediaUploader = (function() {
+const AgroMediaUploader = (function () {
   let activeStream = null;
   let currentFacingMode = 'environment'; // 'environment' (trasera) o 'user' (frontal)
 
@@ -212,13 +212,6 @@ const AgroMediaUploader = (function() {
       activeStream = null;
     }
 
-    const getUserMediaWithTimeout = (constraints, ms = 4500) => {
-      return Promise.race([
-        navigator.mediaDevices.getUserMedia(constraints),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_CAMARA')), ms))
-      ]);
-    };
-
     try {
       const constraints = {
         video: {
@@ -229,18 +222,19 @@ const AgroMediaUploader = (function() {
         audio: false
       };
 
-      activeStream = await getUserMediaWithTimeout(constraints, 4500);
+      // Solicitud directa sin timeout forzado
+      activeStream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = activeStream;
-      await video.play().catch(() => {});
+      await video.play().catch(() => { });
       if (loadingOverlay) loadingOverlay.style.display = 'none';
       if (window.AgroLogger) AgroLogger.info('CAMERA', `Stream de video conectado con éxito (${facingMode})`);
     } catch (err) {
-      console.warn('Primer intento de cámara falló o tardó:', err.message);
-      // Fallback a configuración básica sin constraints de resolución
+      console.warn('Primer intento de cámara falló:', err.message);
+      // Fallback a configuración básica sin restricciones de resolución
       try {
-        activeStream = await getUserMediaWithTimeout({ video: true, audio: false }, 3500);
+        activeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         video.srcObject = activeStream;
-        await video.play().catch(() => {});
+        await video.play().catch(() => { });
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         if (window.AgroLogger) AgroLogger.info('CAMERA', 'Stream de video conectado con fallback básico');
       } catch (fallbackErr) {
@@ -267,7 +261,9 @@ const AgroMediaUploader = (function() {
             </div>
           `;
         }
-        showToast('No se pudo acceder a la cámara. Verifique permisos.', 'warning');
+        if (typeof showToast === 'function') {
+          showToast('No se pudo acceder a la cámara. Verifique permisos.', 'warning');
+        }
       }
     }
   }
@@ -285,7 +281,7 @@ const AgroMediaUploader = (function() {
     if (activeStream) {
       try {
         activeStream.getTracks().forEach(t => t.stop());
-      } catch (e) {}
+      } catch (e) { }
       activeStream = null;
     }
     const video = document.getElementById('camera-video');
@@ -361,7 +357,7 @@ const AgroMediaUploader = (function() {
     if (isImage) {
       // Mostrar previsualización instantánea local de imagen
       const reader = new FileReader();
-      reader.onload = async function(e) {
+      reader.onload = async function (e) {
         const dataUrl = e.target.result;
         showPreview(targetId, dataUrl, `${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
         await uploadMultipartToServer(targetId, file, folder);
