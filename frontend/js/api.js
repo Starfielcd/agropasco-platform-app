@@ -44,7 +44,10 @@ function removeUser() { localStorage.removeItem('agropasco_user'); }
 
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_URL}${endpoint}`;
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = isFormData
+    ? { ...options.headers }
+    : { 'Content-Type': 'application/json', ...options.headers };
 
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -189,7 +192,13 @@ const api = {
   // Pest Reports (farmer → advisor)
   createPestReport: (data) => apiRequest('/pest-reports', { method: 'POST', body: JSON.stringify(data) }),
   getPestReports: (params = '') => apiRequest(`/pest-reports${params ? '?' + params : ''}`),
-  respondPestReport: (id, data) => apiRequest(`/pest-reports/${id}/respond`, { method: 'PUT', body: JSON.stringify(data) }),
+  respondPestReport: (id, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return apiRequest(`/pest-reports/${id}/respond`, {
+      method: 'PUT',
+      body: isFormData ? data : JSON.stringify(data)
+    });
+  },
   confirmPestFeedback: (id, data) => apiRequest(`/pest-reports/${id}/feedback`, { method: 'POST', body: JSON.stringify(data) }),
   getPestReportResponses: (id) => apiRequest(`/pest-reports/${id}/responses`),
 

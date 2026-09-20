@@ -1044,20 +1044,18 @@ function showRespondModal(reportId, pestName, existingResponse = '') {
   if (oldModal) oldModal.remove();
 
   const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
+  modal.className = 'modal-overlay active';
   modal.id = 'respond-modal';
-
-  // MODAL PERSISTENTE: NO se cierra por clics fuera (no modal.onclick con remove)
-  modal.style.zIndex = '99999';
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 99999; opacity: 1 !important; visibility: visible !important; padding: 16px; box-sizing: border-box;';
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px; background: #0b1120; border: 1.5px solid #22c55e;">
+    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto; background: #0b1120; border: 1.5px solid #22c55e;" onclick="event.stopPropagation()">
       <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px;">
         <div>
           <h3 style="margin: 0; font-size: 18px; color: #ffffff;">📋 Dictamen y Recomendación Técnica Fitosanitaria</h3>
           <span class="text-xs text-muted">Este formulario es persistente y no se cerrará hasta que confirmes el envío.</span>
         </div>
-        <button class="modal-close" onclick="AgroPestResponder.confirmCloseModal()">✕</button>
+        <button type="button" class="modal-close" onclick="event.preventDefault(); event.stopPropagation(); AgroPestResponder.confirmCloseModal()">✕</button>
       </div>
 
       <div style="padding: 12px; background: rgba(239,68,68,0.12); border-radius: 8px; border-left: 4px solid #ef4444; margin: 14px 0;">
@@ -1125,7 +1123,7 @@ function showRespondModal(reportId, pestName, existingResponse = '') {
 
         <!-- Botones de Confirmación y Cancelación -->
         <div style="display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
-          <button type="button" class="btn btn-secondary" onclick="AgroPestResponder.confirmCloseModal()">
+          <button type="button" class="btn btn-secondary" onclick="event.preventDefault(); event.stopPropagation(); AgroPestResponder.confirmCloseModal()">
             Cancelar
           </button>
           <button type="submit" id="respond-submit-btn" class="btn btn-primary btn-lg" style="font-weight: 800; background: linear-gradient(135deg, #22c55e, #16a34a);">
@@ -1151,30 +1149,104 @@ const AgroPestResponder = {
   },
 
   handleSubmit: async function(e, reportId) {
-    e.preventDefault();
-    const responseText = document.getElementById('respond-text').value;
-    const controlStatus = document.getElementById('respond-control-status').value;
-    const docUrl = document.getElementById('respond-doc-value')?.value || null;
-    const videoUrl = document.getElementById('respond-video-value')?.value || null;
+    if (e) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
 
     const btn = document.getElementById('respond-submit-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Enviando dictamen técnico...'; }
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Verificando materiales y enviando dictamen...';
+    }
 
-    const result = await api.respondPestReport(reportId, {
-      advisor_response: responseText,
-      control_status: controlStatus,
-      attachment_doc_url: docUrl,
-      attachment_video_url: videoUrl,
-      attachment_doc_name: docUrl ? 'Guía Técnica Fitosanitaria' : null
-    });
+    try {
+      // 1. Esperar si hay alguna subida activa en curso
+      let waitCount = 0;
+      while (waitCount < 60) {
+        const docLoading = document.getElementById('respond-doc-loading');
+        const videoLoading = document.getElementById('respond-video-loading');
+        const isUploading = (docLoading && docLoading.style.display !== 'none') ||
+                            (videoLoading && videoLoading.style.display !== 'none');
+        if (!isUploading) break;
+        if (btn) btn.innerHTML = '<span>⏳</span> Esperando carga de material adjunto (~11MB)...';
+        await new Promise(r => setTimeout(r, 500));
+        waitCount++;
+      }
 
-    if (result.success) {
-      document.getElementById('respond-modal')?.remove();
-      showToast('✅ Dictamen técnico y materiales enviados al agricultor exitosamente.', 'success');
-      navigateTo('/advisor/pest-reports');
-    } else {
-      if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar y Enviar Dictamen'; }
-      showToast(result.error || 'Error al responder reporte fitosanitario', 'error');
+      // 2. Si hay archivos seleccionados en el input de archivo pero no se completó la subida previa, subirlos ahora
+      const docInput = document.getElementById('respond-doc-file-input');
+      let docUrl = document.getElementById('respond-doc-value')?.value || null;
+      if (!docUrl && docInput && docInput.files && docInput.files[0]) {
+        if (btn) btn.innerHTML = '<span>⏳</span> Subiendo guía técnica PDF...';
+        const docRes = await AgroMediaUploader.uploadMultipartToServer('respond-doc', docInput.files[0], 'documents');
+        if (docRes && docRes.url) docUrl = docRes.url;
+      }
+
+      const videoInput = document.getElementById('respond-video-file-input');
+      let videoUrl = document.getElementById('respond-video-value')?.value || null;
+      if (!videoUrl && videoInput && videoInput.files && videoInput.files[0]) {
+        if (btn) btn.innerHTML = '<span>⏳</span> Subiendo video explicativo (~11MB)...';
+        const vidRes = await AgroMediaUploader.uploadMultipartToServer('respond-video', videoInput.files[0], 'videos');
+        if (vidRes && vidRes.url) videoUrl = vidRes.url;
+      }
+
+      const responseText = document.getElementById('respond-text')?.value?.trim();
+      const controlStatus = document.getElementById('respond-control-status')?.value || 'en_proceso';
+
+      if (!responseText) {
+        showToast('⚠️ Por favor ingresa el dictamen técnico o plan de manejo fitosanitario.', 'warning');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '✅ Confirmar y Enviar Dictamen al Agricultor';
+        }
+        return;
+      }
+
+      if (btn) btn.innerHTML = '<span>⏳</span> Registrando dictamen en el servidor...';
+
+      const payload = {
+        report_id: reportId,
+        advisor_response: responseText,
+        dictamen_texto: responseText,
+        control_status: controlStatus,
+        status: controlStatus,
+        attachment_doc_url: docUrl,
+        attachment_video_url: videoUrl,
+        attachment_doc_name: docUrl ? 'Guía Técnica Fitosanitaria' : null,
+        adjuntos: {
+          doc: docUrl,
+          video: videoUrl,
+          doc_name: docUrl ? 'Guía Técnica Fitosanitaria' : null
+        }
+      };
+
+      const result = await api.respondPestReport(reportId, payload);
+
+      if (result && result.success) {
+        // Cierre limpio e inmediato del modal
+        const modal = document.getElementById('respond-modal');
+        if (modal) modal.remove();
+        showToast('✅ Dictamen técnico y materiales enviados al agricultor exitosamente.', 'success');
+        if (typeof navigateTo === 'function') {
+          navigateTo('/advisor/pest-reports');
+        }
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '✅ Confirmar y Enviar Dictamen al Agricultor';
+        }
+        const errorMsg = result?.error || 'Error al responder reporte fitosanitario';
+        console.error('[PEST_RESPONSE_ERROR_FRONTEND]:', errorMsg);
+        showToast(`❌ ${errorMsg}`, 'error');
+      }
+    } catch (err) {
+      console.error('[PEST_RESPONSE_SUBMIT_EXCEPTION]:', err);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '✅ Confirmar y Enviar Dictamen al Agricultor';
+      }
+      showToast(`❌ Error de conexión al responder: ${err.message}`, 'error');
     }
   }
 };

@@ -42,11 +42,13 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedMimes = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-    'application/pdf',
-    'video/mp4', 'video/webm', 'video/quicktime'
+    'application/pdf', 'application/x-pdf',
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska'
   ];
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.mp4', '.webm', '.mov'];
 
-  if (file.mimetype.startsWith('image/') || allowedMimes.includes(file.mimetype)) {
+  if (file.mimetype.startsWith('image/') || allowedMimes.includes(file.mimetype) || allowedExts.includes(ext)) {
     cb(null, true);
   } else {
     cb(new Error('Formato no permitido. Solo se aceptan imágenes (JPG, PNG, WEBP), PDFs o videos (MP4, WEBM).'), false);
@@ -141,4 +143,4 @@ async function handleBase64Upload(req, res) {
   }
 }
 
-module.exports = { handleFileUpload, handleBase64Upload };
+module.exports = { upload, handleFileUpload, handleBase64Upload };

@@ -138,7 +138,68 @@ async function listReports(req, res) {
 // Asesor responde reporte con recomendación técnica, materiales (video/PDF) e historial
 async function respondReport(req, res) {
   try {
-    const { advisor_response, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name } = req.body;
+    console.log('[PEST_RESPOND_REQUEST]:', {
+      params: req.params,
+      bodyKeys: Object.keys(req.body || {}),
+      hasFiles: !!(req.files && req.files.length) || !!req.file,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+
+    // Soporte para archivos adjuntos recibidos directamente vía Multer
+    let attachedDocUrl = req.body.attachment_doc_url || null;
+    let attachedVideoUrl = req.body.attachment_video_url || null;
+    let attachedDocName = req.body.attachment_doc_name || null;
+
+    const uploadedFiles = req.files || (req.file ? [req.file] : []);
+    for (const f of uploadedFiles) {
+      const isVideo = (f.mimetype && f.mimetype.startsWith('video/')) || /\.(mp4|webm|mov|m4v)$/i.test(f.originalname || '');
+      const isPdf = (f.mimetype && f.mimetype.includes('pdf')) || /\.pdf$/i.test(f.originalname || '');
+      const folder = isVideo ? 'videos' : (isPdf ? 'documents' : 'general');
+      const relativeUrl = `/uploads/${folder}/${f.filename}`;
+      if (isVideo && !attachedVideoUrl) {
+        attachedVideoUrl = relativeUrl;
+      } else if (!attachedDocUrl) {
+        attachedDocUrl = relativeUrl;
+        if (!attachedDocName) attachedDocName = f.originalname || 'Guía Técnica Fitosanitaria';
+      }
+    }
+
+    // Normalización de nombres de parámetros para recomendación/dictamen
+    const advisor_response = req.body.advisor_response ||
+                             req.body.dictamen_texto ||
+                             req.body.dictamen ||
+                             req.body.recommendation ||
+                             req.body.response_text ||
+                             req.body.text;
+
+    const control_status = req.body.control_status || req.body.status || 'en_proceso';
+
+    // Soporte para adjuntos en formato objeto o array
+    if (req.body.adjuntos) {
+      if (typeof req.body.adjuntos === 'object' && !Array.isArray(req.body.adjuntos)) {
+        if (req.body.adjuntos.doc && !attachedDocUrl) attachedDocUrl = req.body.adjuntos.doc;
+        if (req.body.adjuntos.video && !attachedVideoUrl) attachedVideoUrl = req.body.adjuntos.video;
+        if (req.body.adjuntos.doc_name && !attachedDocName) attachedDocName = req.body.adjuntos.doc_name;
+      } else if (Array.isArray(req.body.adjuntos)) {
+        for (const item of req.body.adjuntos) {
+          const url = typeof item === 'string' ? item : item.url;
+          if (url) {
+            if (/\.(mp4|webm|mov)$/i.test(url) && !attachedVideoUrl) attachedVideoUrl = url;
+            else if (!attachedDocUrl) attachedDocUrl = url;
+          }
+        }
+      }
+    }
+
+    if (!attachedDocName && attachedDocUrl) {
+      attachedDocName = 'Guía Técnica Fitosanitaria';
+    }
+
+    const reportId = req.params.id || req.body.report_id || req.body.id;
+    if (!reportId) {
+      return res.status(400).json({ success: false, error: 'ID de reporte requerido.' });
+    }
 
     if (!advisor_response || advisor_response.trim() === '') {
       return res.status(400).json({ success: false, error: 'La respuesta y recomendación técnica del asesor es obligatoria.' });
@@ -150,14 +211,19 @@ async function respondReport(req, res) {
       LEFT JOIN users u ON pr.farmer_id = u.id
       LEFT JOIN parcels p ON pr.parcel_id = p.id
       WHERE pr.id = ?
-    `, [req.params.id]);
+    `, [reportId]);
 
     if (!report) {
       return res.status(404).json({ success: false, error: 'Reporte fitosanitario no encontrado.' });
     }
 
     const targetControlStatus = ['en_proceso', 'resuelto'].includes(control_status) ? control_status : 'en_proceso';
-    const mainStatus = targetControlStatus === 'resuelto' ? 'resuelto' : 'en_proceso';
+
+    // NOTA CLAVE: pest_reports.status tiene CHECK(status IN ('pendiente', 'en_revision', 'resuelto'))
+    // 'en_proceso' NO existe en la restricción CHECK de pest_reports.status.
+    // Por tanto: resuelto -> 'resuelto', en_proceso -> 'en_revision'.
+    const mainStatus = targetControlStatus === 'resuelto' ? 'resuelto' : 'en_revision';
+    const advisorId = req.user?.id || req.body.advisor_id || report.advisor_id || 1;
 
     // 1. Registrar en historial de respuestas
     await dbRun(
@@ -165,12 +231,12 @@ async function respondReport(req, res) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         report.id,
-        req.user.id,
+        advisorId,
         advisor_response.trim(),
         targetControlStatus,
-        attachment_video_url ? attachment_video_url.trim() : null,
-        attachment_doc_url ? attachment_doc_url.trim() : null,
-        attachment_doc_name ? attachment_doc_name.trim() : null
+        attachedVideoUrl ? attachedVideoUrl.trim() : null,
+        attachedDocUrl ? attachedDocUrl.trim() : null,
+        attachedDocName ? attachedDocName.trim() : null
       ]
     );
 
@@ -188,25 +254,26 @@ async function respondReport(req, res) {
        WHERE id = ?`,
       [
         advisor_response.trim(),
-        req.user.id,
+        advisorId,
         mainStatus,
         targetControlStatus,
-        attachment_video_url ? attachment_video_url.trim() : report.attachment_video_url,
-        attachment_doc_url ? attachment_doc_url.trim() : report.attachment_doc_url,
-        attachment_doc_name ? attachment_doc_name.trim() : report.attachment_doc_name,
+        attachedVideoUrl ? attachedVideoUrl.trim() : report.attachment_video_url,
+        attachedDocUrl ? attachedDocUrl.trim() : report.attachment_doc_url,
+        attachedDocName ? attachedDocName.trim() : report.attachment_doc_name,
         report.id
       ]
     );
 
     // 3. Notificar al agricultor
     const statusText = targetControlStatus === 'en_proceso' ? 'Tratamiento en Proceso' : 'Control Resuelto';
+    const advisorName = req.user?.name || 'Asesor Técnico';
     await dbRun(
       `INSERT INTO notifications (user_id, type, title, message, severity)
        VALUES (?, 'asesoria', ?, ?, 'info')`,
       [
         report.farmer_id,
         `📋 Recomendación Técnica: ${report.pest_name} (${statusText})`,
-        `El Asesor Técnico ${req.user.name} ha emitido un dictamen y plan de control. Revisa las instrucciones y materiales adjuntos en tu panel.`
+        `El Asesor Técnico ${advisorName} ha emitido un dictamen y plan de control. Revisa las instrucciones y materiales adjuntos en tu panel.`
       ]
     );
 
@@ -236,8 +303,8 @@ async function respondReport(req, res) {
       data: { ...updated, responses }
     });
   } catch (err) {
-    console.error('Error al responder reporte:', err);
-    res.status(500).json({ success: false, error: 'Error al responder reporte.' });
+    console.error('[PEST_RESPONSE_ERROR]:', err);
+    res.status(500).json({ success: false, error: 'Error al responder reporte: ' + (err.message || 'Error interno') });
   }
 }
 
@@ -271,8 +338,9 @@ async function confirmPestFeedback(req, res) {
     }
 
     const isExtinguished = feedback_status === 'extinguida';
-    const newStatus = isExtinguished ? 'resuelto' : 'no_resuelto';
-    const newControlStatus = isExtinguished ? 'resuelto' : 'no_resuelto';
+    // Cumplir con CHECK(status IN ('pendiente', 'en_revision', 'resuelto'))
+    const newStatus = isExtinguished ? 'resuelto' : 'en_revision';
+    const newControlStatus = isExtinguished ? 'resuelto' : 'persiste';
 
     await dbRun(
       `UPDATE pest_reports SET

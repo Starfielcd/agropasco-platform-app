@@ -21,4 +21,11 @@ router.post('/recommendations', createRecommendation);
 // Listar agricultores (para asignar recomendaciones)
 router.get('/farmers', getFarmers);
 
+const { respondReport } = require('../controllers/pestReportController');
+const { upload } = require('../controllers/uploadController');
+
+// Dictamen fitosanitario del asesor (soporta PUT/POST y multipart)
+router.put('/pest-reports/:id/respond', upload.any(), respondReport);
+router.post('/pest-reports/:id/respond', upload.any(), respondReport);
+
 module.exports = router;
