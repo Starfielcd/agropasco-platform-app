@@ -6,7 +6,8 @@ const {
   changePassword,
   getSetupStatus,
   setupInitialAdmin,
-  getApplicationStatus
+  getApplicationStatus,
+  setupApprovedPassword
 } = require('../controllers/authController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -19,6 +20,7 @@ router.put('/change-password', authenticateToken, changePassword);
 // Estado de solicitud de cuenta
 router.get('/application-status', getApplicationStatus);
 router.get('/application-status/:identifier', getApplicationStatus);
+router.post('/setup-approved-password', setupApprovedPassword);
 
 // Registro inicial único del Administrador (Primer uso del sistema)
 router.get('/setup-status', getSetupStatus);

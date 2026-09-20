@@ -655,40 +655,62 @@ async function approveAccount(req, res) {
       return res.status(400).json({ success: false, error: 'Esta cuenta no está pendiente de aprobación.' });
     }
 
-    // Generar contraseña temporal segura
-    const tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
-    const passwordHash = await bcrypt.hash(tempPassword, 12);
+    // MANTENER LA CONTRASEÑA ORIGINAL REGISTRADA POR EL USUARIO
+    // Solo generar contraseña temporal si el Administrador lo solicita explícitamente
+    const shouldGenerateTemp = Boolean(req.body && (req.body.generate_temp_password || req.body.reset_password));
+    let tempPassword = null;
 
-    // Activar cuenta con contraseña temporal y flag de cambio obligatorio
-    await dbRun(
-      `UPDATE users SET
-        status = 'active',
-        is_blocked = 0,
-        password_hash = ?,
-        must_change_password = 1,
-        approved_by = ?,
-        approved_at = CURRENT_TIMESTAMP,
-        updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [passwordHash, req.user.id, userId]
-    );
+    if (shouldGenerateTemp) {
+      tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      await dbRun(
+        `UPDATE users SET
+          status = 'active',
+          is_blocked = 0,
+          password_hash = ?,
+          must_change_password = 1,
+          approved_by = ?,
+          approved_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [passwordHash, req.user.id, userId]
+      );
+    } else {
+      // Activar cuenta preservando la contraseña original elegida por el usuario
+      await dbRun(
+        `UPDATE users SET
+          status = 'active',
+          is_blocked = 0,
+          must_change_password = 0,
+          approved_by = ?,
+          approved_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [req.user.id, userId]
+      );
+    }
 
     // Notificación interna al usuario
-    const roleLabel = user.role === 'advisor' ? 'Asesor Técnico' : 'Supermercado';
+    const roleLabel = user.role === 'advisor' ? 'Asesor Técnico' : (user.role === 'supermarket' ? 'Supermercado' : 'Usuario');
+    const notifMsg = shouldGenerateTemp
+      ? `¡Bienvenido a AgroPasco Digital! Tu cuenta como ${roleLabel} ha sido aprobada por el Administrador. Inicia sesión con las credenciales temporales generadas.`
+      : `¡Bienvenido a AgroPasco Digital! Tu cuenta como ${roleLabel} ha sido aprobada por el Administrador. Inicia sesión directamente con la contraseña que registraste.`;
+
     await createNotification(
       user.id,
       'sistema',
       '✅ Cuenta Aprobada',
-      `¡Bienvenido a AgroPasco Digital! Tu cuenta como ${roleLabel} ha sido aprobada por el Administrador. Inicia sesión con las credenciales enviadas a tu correo.`,
+      notifMsg,
       'info'
     );
 
-    // Email con credenciales temporales (envuelto para no bloquear la aprobación en caso de falla SMTP)
+    // Email de aprobación (envuelto en try/catch para no bloquear si SMTP no está configurado)
     let emailSent = false;
     let emailError = null;
     try {
-      const mailRes = await sendApprovalEmail(user, tempPassword);
-      emailSent = mailRes && mailRes.success;
+      const loginUrl = `${req.protocol}://${req.get('host')}/#/login`;
+      const mailRes = await sendApprovalEmail(user, tempPassword, loginUrl, !shouldGenerateTemp);
+      emailSent = mailRes && mailRes.delivered === true;
       if (!emailSent && mailRes?.error) emailError = mailRes.error;
     } catch (mailErr) {
       console.error('[APPROVE_ACCOUNT_EMAIL_ERROR]:', mailErr.message);
@@ -696,17 +718,24 @@ async function approveAccount(req, res) {
     }
 
     // Registro de auditoría
+    const auditDetail = shouldGenerateTemp
+      ? `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Clave temporal asignada.`
+      : `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Contraseña original de registro preservada para acceso directo.`;
+
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, 'APROBAR_CUENTA', 'user', userId, `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Credenciales temporales generadas.`, req.ip]
+      [req.user.id, 'APROBAR_CUENTA', 'user', userId, auditDetail, req.ip]
     );
 
     res.json({
       success: true,
-      message: `Cuenta de ${user.name} aprobada exitosamente.${emailSent ? ' Se ha enviado un email con las credenciales temporales.' : ' Credenciales listas para copia manual por el Administrador.'}`,
+      message: shouldGenerateTemp
+        ? `Cuenta de ${user.name} aprobada exitosamente.${emailSent ? ' Se envió un correo con la clave temporal.' : ' Clave lista para entrega manual.'}`
+        : `Cuenta de ${user.name} aprobada exitosamente. El usuario puede ingresar directamente con su contraseña de registro.`,
       userId: user.id,
       userName: user.name,
       userEmail: user.email,
+      keptOriginalPassword: !shouldGenerateTemp,
       tempPassword,
       provisional_password: tempPassword,
       emailSent,

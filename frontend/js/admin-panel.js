@@ -213,12 +213,18 @@ function confirmApproveAccount(userId, name, email, role) {
         ¿Aprobar la cuenta de <strong style="color: #4ade80;">${name}</strong> como <strong>${roleLabel}</strong>?
       </p>
       <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; color: var(--text-secondary);">
-        <p style="margin: 0;">Al aprobar:</p>
-        <ul style="margin: 8px 0 0 16px; padding: 0;">
-          <li>Se generará una contraseña temporal segura</li>
-          <li>Se enviará un email de bienvenida con las credenciales</li>
-          <li>El usuario deberá cambiar su contraseña al primer login</li>
+        <p style="margin: 0; font-weight: 700; color: #4ade80;">Efectos de la aprobación:</p>
+        <ul style="margin: 8px 0 0 16px; padding: 0; line-height: 1.5;">
+          <li>La cuenta quedará <strong>activa y habilitada</strong> inmediatamente.</li>
+          <li>Por defecto, <strong>se preservará la contraseña ingresada por el solicitante</strong> para que ingrese de inmediato.</li>
+          <li>Se intentará notificar por correo si el servidor SMTP está configurado.</li>
         </ul>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; color: var(--text-primary);">
+            <input type="checkbox" id="approve-generate-temp-pwd" style="cursor: pointer;">
+            <span>Sobrescribir y generar nueva contraseña temporal aleatoria</span>
+          </label>
+        </div>
       </div>
       <div style="display: flex; gap: 10px; margin-top: 20px;">
         <button class="btn btn-secondary" style="flex: 1;" onclick="closeAdminActionModal()">Cancelar</button>
@@ -268,9 +274,11 @@ function confirmRejectAccount(userId, name, email, role) {
 
 async function executeApproveAccount(userId, userName = '', userEmail = '') {
   const btn = document.getElementById('confirm-approve-btn');
+  const generateTemp = document.getElementById('approve-generate-temp-pwd')?.checked || false;
+
   if (btn) { btn.textContent = 'Aprobando...'; btn.disabled = true; }
 
-  const result = await api.approveAccount(userId);
+  const result = await api.approveAccount(userId, { generate_temp_password: generateTemp });
 
   closeAdminActionModal();
 
@@ -278,7 +286,7 @@ async function executeApproveAccount(userId, userName = '', userEmail = '') {
     showToast(result.message, 'success');
     if (result.tempPassword) {
       showCredentialModal(
-        'Cuenta Aprobada — Credenciales de Acceso',
+        'Cuenta Aprobada — Credenciales Generadas',
         result.userName || userName || 'Usuario Aprobado',
         result.userEmail || userEmail || 'correo del solicitante',
         result.tempPassword,

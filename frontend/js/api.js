@@ -158,7 +158,7 @@ const api = {
 
   // Admin — Solicitudes de Cuenta (Aprobación / Rechazo / Credenciales)
   getPendingAccounts: () => apiRequest('/admin/pending-accounts'),
-  approveAccount: (id) => apiRequest(`/admin/accounts/${id}/approve`, { method: 'PUT' }),
+  approveAccount: (id, data = {}) => apiRequest(`/admin/accounts/${id}/approve`, { method: 'PUT', body: JSON.stringify(data) }),
   rejectAccount: (id, data) => apiRequest(`/admin/accounts/${id}/reject`, { method: 'PUT', body: JSON.stringify(data) }),
   resendCredentials: (id) => apiRequest(`/admin/users/${id}/resend-credentials`, { method: 'POST' }),
 
@@ -167,6 +167,7 @@ const api = {
     const param = identifier ? (String(identifier).includes('@') ? `?email=${encodeURIComponent(identifier)}` : `?requestId=${encodeURIComponent(identifier)}`) : '';
     return apiRequest(`/users/application-status${param}`);
   },
+  setupApprovedPassword: (data) => apiRequest('/users/setup-approved-password', { method: 'POST', body: JSON.stringify(data) }),
 
   // Admin — Transferencia de Administración Única
   transferAdministration: (data) => apiRequest('/admin/transfer', { method: 'POST', body: JSON.stringify(data) }),

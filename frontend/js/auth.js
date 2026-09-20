@@ -366,10 +366,14 @@ async function checkStepperApplicationStatus(identifier) {
         window.__stepperPollInterval = null;
       }
 
+      const hasRegisteredPassword = Boolean(data.hasRegisteredPassword !== false && !data.mustChangePassword);
+
       if (statusIcon) statusIcon.textContent = '🎉';
       if (statusTitle) statusTitle.textContent = '¡Cuenta Aprobada y Habilitada!';
       if (statusDesc) {
-        statusDesc.innerHTML = `El Administrador ha aprobado tu cuenta como <strong>${data.roleLabel || 'usuario'}</strong>. Se generó y envió tu contraseña temporal al correo <strong>${data.email}</strong>.`;
+        statusDesc.innerHTML = hasRegisteredPassword
+          ? `El Administrador ha aprobado tu cuenta como <strong>${data.roleLabel || 'usuario'}</strong>. Ya puedes ingresar inmediatamente con tu correo <strong>${data.email}</strong> y la contraseña que ingresaste al registrarte.`
+          : `El Administrador ha aprobado tu cuenta como <strong>${data.roleLabel || 'usuario'}</strong>. Puedes iniciar sesión de inmediato o establecer tu contraseña a continuación.`;
       }
 
       if (step2) {
@@ -378,22 +382,29 @@ async function checkStepperApplicationStatus(identifier) {
       }
       if (step3) {
         step3.className = 'step-item completed';
-        step3.innerHTML = '<span class="step-number">3</span><span>Notificación por correo 📧 Credenciales enviadas</span>';
+        step3.innerHTML = '<span class="step-number">3</span><span>Activación y Acceso ✅ Cuenta Habilitada</span>';
       }
 
       if (statusAlert) {
         statusAlert.innerHTML = `
-          <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 13.5px; text-align: center;">
-            ✅ Acceso Concedido: Revisa tu bandeja de correo e inicia sesión con tu clave provisional.
+          <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 13.5px; text-align: center; line-height: 1.5;">
+            ${hasRegisteredPassword
+              ? '✅ Acceso Inmediato: Tu contraseña de registro está activa. No necesitas esperar ningún correo para ingresar.'
+              : '✅ Acceso Concedido: Puedes iniciar sesión o configurar tu contraseña directamente a continuación.'}
           </div>
         `;
       }
 
       if (primaryAction) {
         primaryAction.innerHTML = `
-          <button type="button" class="btn btn-primary btn-block btn-lg" onclick="goToLoginWithEmail('${data.email}')" style="background: #16a34a; border-color: #16a34a; font-weight: 700; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">
-            🔐 Iniciar Sesión Ahora
-          </button>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" class="btn btn-primary btn-block btn-lg" onclick="goToLoginWithEmail('${data.email}')" style="background: #16a34a; border-color: #16a34a; font-weight: 700; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">
+              ${hasRegisteredPassword ? '🔐 Iniciar Sesión con Mi Contraseña' : '🔐 Iniciar Sesión Ahora'}
+            </button>
+            <button type="button" class="btn btn-secondary btn-block btn-sm" onclick="showSetupApprovedPasswordModal('${data.email}')" style="color: #60a5fa; border-color: rgba(59, 130, 246, 0.4); font-weight: 600;">
+              🔑 ¿No recuerdas tu clave? Establecer Nueva Contraseña
+            </button>
+          </div>
         `;
       }
 
@@ -439,6 +450,113 @@ async function checkStepperApplicationStatus(identifier) {
     }
   } catch (err) {
     console.warn('Error al verificar estado de solicitud en el stepper:', err);
+  }
+}
+
+/**
+ * Modal directo de configuración de contraseña para cuentas aprobadas.
+ * Permite al usuario establecer su contraseña de acceso inmediatamente sin depender de la entrega de correos.
+ */
+function showSetupApprovedPasswordModal(email) {
+  const existing = document.getElementById('setup-approved-pwd-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'setup-approved-pwd-modal';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 480px; text-align: left; border: 1.5px solid rgba(59, 130, 246, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #1d4ed8); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff;">
+            🔑
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 17px; color: #ffffff; font-weight: 800;">Establecer Contraseña de Acceso</h3>
+            <p class="text-xs text-muted" style="margin: 0;">Cuenta aprobada: <strong>${email}</strong></p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('setup-approved-pwd-modal').remove()">✕</button>
+      </div>
+
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+        Crea tu contraseña para ingresar a AgroPasco. Una vez guardada, el sistema te identificará e ingresará de inmediato.
+      </p>
+
+      <form id="setup-approved-pwd-form" onsubmit="handleSetupApprovedPasswordSubmit(event, '${email}')">
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px; font-weight: 700;">Nueva Contraseña</label>
+          <input type="password" id="approved-new-password" class="form-input" placeholder="Mínimo 6 caracteres" required minlength="6" autofocus>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px; font-weight: 700;">Confirmar Contraseña</label>
+          <input type="password" id="approved-confirm-password" class="form-input" placeholder="Repite la nueva contraseña" required minlength="6">
+        </div>
+
+        <div id="setup-approved-error" class="form-error hidden" style="margin-bottom: 12px; padding: 10px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; font-size: 12.5px;"></div>
+
+        <div style="display: flex; gap: 10px; margin-top: 18px;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('setup-approved-pwd-modal').remove()">
+            Cancelar
+          </button>
+          <button type="submit" id="setup-approved-submit-btn" class="btn btn-primary" style="flex: 1.5; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-weight: 700;">
+            💾 Guardar e Ingresar
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+async function handleSetupApprovedPasswordSubmit(e, email) {
+  if (e) e.preventDefault();
+  const btn = document.getElementById('setup-approved-submit-btn');
+  const errorEl = document.getElementById('setup-approved-error');
+  const pwd = document.getElementById('approved-new-password')?.value;
+  const confirmPwd = document.getElementById('approved-confirm-password')?.value;
+
+  if (pwd !== confirmPwd) {
+    if (errorEl) {
+      errorEl.textContent = 'Las contraseñas no coinciden.';
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (!pwd || pwd.length < 6) {
+    if (errorEl) {
+      errorEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (errorEl) errorEl.classList.add('hidden');
+  if (btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
+
+  const res = await api.setupApprovedPassword({ email, newPassword: pwd });
+
+  if (res.success) {
+    document.getElementById('setup-approved-pwd-modal')?.remove();
+    showToast('¡Contraseña establecida con éxito! Ingresando al sistema...', 'success');
+    goToLoginWithEmail(email);
+    const passInput = document.getElementById('login-password');
+    if (passInput) {
+      passInput.value = pwd;
+      setTimeout(() => {
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) loginForm.dispatchEvent(new Event('submit', { cancelable: true }));
+      }, 350);
+    }
+  } else {
+    if (errorEl) {
+      errorEl.textContent = res.error || 'Error al guardar la contraseña.';
+      errorEl.classList.remove('hidden');
+    }
+    if (btn) { btn.textContent = '💾 Guardar e Ingresar'; btn.disabled = false; }
   }
 }
 

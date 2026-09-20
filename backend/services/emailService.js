@@ -15,9 +15,20 @@ function isSmtpConfigured() {
   );
 }
 
-// Crear transporter (Nodemailer estándar o Resend SMTP o SendGrid)
+// Crear transporter (Nodemailer estándar, Gmail, Resend SMTP o SendGrid)
 function getTransporter() {
   if (!isSmtpConfigured()) return null;
+
+  // Soporte directo para Gmail (servicio dedicado de Nodemailer)
+  if (process.env.SMTP_HOST === 'smtp.gmail.com' || process.env.SMTP_SERVICE === 'gmail') {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+  }
 
   // Soporte directo para Resend SMTP
   if (process.env.RESEND_API_KEY) {
@@ -46,10 +57,11 @@ function getTransporter() {
   }
 
   // Configuración SMTP estándar
+  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: (parseInt(process.env.SMTP_PORT) || 587) === 465,
+    port,
+    secure: port === 465,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
@@ -62,6 +74,7 @@ function getTransporter() {
  */
 async function sendMail(to, subject, html, tempPasswordForLog = null) {
   if (tempPasswordForLog) {
+    console.log(`[PROVISIONAL_PASSWORD]: ${tempPasswordForLog}`);
     console.log(`[TEMP_PASSWORD]: ${tempPasswordForLog}`);
   }
 
@@ -69,39 +82,83 @@ async function sendMail(to, subject, html, tempPasswordForLog = null) {
 
   if (!transporter) {
     console.log('\n📧 ═══════════════════════════════════════════════════');
-    console.log(`📧  EMAIL (modo desarrollo — SMTP/Resend no configurado)`);
+    console.log(`📧  EMAIL (modo desarrollo — Sin proveedor SMTP configurado en .env)`);
     console.log(`📧  Para: ${to}`);
     console.log(`📧  Asunto: ${subject}`);
     if (tempPasswordForLog) {
+      console.log(`📧  [PROVISIONAL_PASSWORD]: ${tempPasswordForLog}`);
       console.log(`📧  [TEMP_PASSWORD]: ${tempPasswordForLog}`);
     }
     console.log('📧 ═══════════════════════════════════════════════════\n');
-    return { success: true, mode: 'console', tempPassword: tempPasswordForLog };
+    return {
+      success: false,
+      delivered: false,
+      simulated: true,
+      mode: 'console',
+      error: 'SMTP no configurado en variables de entorno (modo desarrollo)',
+      tempPassword: tempPasswordForLog
+    };
   }
 
   try {
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"AgroPasco Digital" <notificaciones@agropasco.pe>',
+      from: process.env.SMTP_FROM || `"AgroPasco Digital" <${process.env.SMTP_USER || 'notificaciones@agropasco.pe'}>`,
       to,
       subject,
       html
     });
-    console.log(`📧 Email enviado exitosamente a ${to}: ${info.messageId}`);
-    return { success: true, mode: 'smtp', messageId: info.messageId, tempPassword: tempPasswordForLog };
+    console.log(`📧 Email despachado exitosamente a ${to}: ${info.messageId}`);
+    return { success: true, delivered: true, mode: 'smtp', messageId: info.messageId, tempPassword: tempPasswordForLog };
   } catch (err) {
-    console.error(`📧 Error al enviar email a ${to}:`, err.message);
+    console.error(`❌ [SMTP_SEND_FAILURE] Error al enviar email a "${to}":`);
+    console.error(`   - Error: ${err.message}`);
+    console.error(`   - Código: ${err.code || 'N/A'}`);
+    console.error(`   - Comando: ${err.command || 'N/A'}`);
+    console.error(`   - Respuesta SMTP: ${err.response || 'N/A'}`);
     if (tempPasswordForLog) {
-      console.log(`📧 [FALLBACK_TEMP_PASSWORD_DUE_TO_ERROR]: ${tempPasswordForLog}`);
+      console.log(`📧 [PROVISIONAL_PASSWORD_FALLBACK]: ${tempPasswordForLog}`);
+      console.log(`📧 [TEMP_PASSWORD]: ${tempPasswordForLog}`);
     }
-    return { success: false, error: err.message, tempPassword: tempPasswordForLog };
+    return {
+      success: false,
+      delivered: false,
+      error: `${err.message} (${err.code || 'SMTP_ERR'})`,
+      tempPassword: tempPasswordForLog
+    };
   }
 }
 
 /**
  * Email de aprobación de cuenta — enviado al usuario cuando el Admin aprueba su solicitud
  */
-async function sendApprovalEmail(user, tempPassword, loginUrl = '') {
+async function sendApprovalEmail(user, tempPassword = null, loginUrl = '', keepOriginalPassword = false) {
+  // Support both object arguments or positional params
+  if (user && typeof user === 'object' && user.keepOriginalPassword !== undefined && keepOriginalPassword === false) {
+    keepOriginalPassword = user.keepOriginalPassword;
+    if (user.tempPassword) tempPassword = user.tempPassword;
+    if (user.loginUrl) loginUrl = user.loginUrl;
+  }
+  const targetEmail = user?.email || user?.to || '';
+  const targetName = user?.name || user?.userName || 'Usuario';
   const subject = '✅ Tu cuenta ha sido aprobada — AgroPasco Digital';
+  const roleLabel = user?.role === 'advisor' ? 'Asesor Técnico' : (user?.role === 'supermarket' ? 'Supermercado' : 'Usuario');
+
+  const credentialsBlock = (tempPassword && !keepOriginalPassword) ? `
+    <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <p style="margin: 0 0 8px; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Credenciales de Acceso Asignadas</p>
+      <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo de acceso:</strong> ${targetEmail}</p>
+      <p style="margin: 4px 0; color: #e2e8f0;"><strong>Contraseña temporal:</strong> <code style="background: rgba(34,197,94,0.2); padding: 2px 8px; border-radius: 4px; color: #4ade80; font-weight: 700;">${tempPassword}</code></p>
+      <p style="margin: 12px 0 0; color: #f59e0b; font-size: 13px;">⚠️ Por seguridad, al iniciar sesión por primera vez se le solicitará establecer una nueva clave.</p>
+    </div>
+  ` : `
+    <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <p style="margin: 0 0 8px; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Acceso Inmediato Habilitado</p>
+      <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo de acceso:</strong> ${targetEmail}</p>
+      <p style="margin: 4px 0; color: #e2e8f0;"><strong>Contraseña:</strong> La contraseña que elegiste durante tu registro inicial.</p>
+      <p style="margin: 12px 0 0; color: #4ade80; font-size: 13px;">✅ Tu cuenta ya se encuentra activa para ingresar de inmediato.</p>
+    </div>
+  `;
+
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 16px; overflow: hidden;">
       <div style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 32px; text-align: center;">
@@ -110,28 +167,22 @@ async function sendApprovalEmail(user, tempPassword, loginUrl = '') {
         <p style="color: rgba(255,255,255,0.85); margin: 0; font-size: 14px;">Plataforma Agrícola Inteligente — Región Pasco</p>
       </div>
       <div style="padding: 32px;">
-        <h2 style="color: #22c55e; font-size: 20px; margin-bottom: 16px;">¡Bienvenido, ${user.name}! 🎉</h2>
+        <h2 style="color: #22c55e; font-size: 20px; margin-bottom: 16px;">¡Bienvenido/a, ${targetName}! 🎉</h2>
         <p style="color: #cbd5e1; line-height: 1.6;">
-          Su cuenta ha sido <strong style="color: #4ade80;">aprobada por el Administrador</strong>. 
-          Bienvenido a AgroPasco Digital.
+          Tu solicitud de cuenta como <strong>${roleLabel}</strong> ha sido <strong style="color: #4ade80;">aprobada exitosamente</strong> por el Administrador.
         </p>
-        <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 12px; padding: 20px; margin: 20px 0;">
-          <p style="margin: 0 0 8px; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Credenciales de Acceso</p>
-          <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo:</strong> ${user.email}</p>
-          <p style="margin: 4px 0; color: #e2e8f0;"><strong>Contraseña temporal:</strong> <code style="background: rgba(34,197,94,0.2); padding: 2px 8px; border-radius: 4px; color: #4ade80;">${tempPassword}</code></p>
-          <p style="margin: 12px 0 0; color: #f59e0b; font-size: 13px;">⚠️ Al iniciar sesión por primera vez, deberá cambiar su contraseña.</p>
-        </div>
+        ${credentialsBlock}
         ${loginUrl ? `<div style="text-align: center; margin: 24px 0;">
-          <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px;">🔐 Iniciar Sesión</a>
+          <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px;">🔐 Iniciar Sesión en AgroPasco</a>
         </div>` : ''}
         <p style="color: #64748b; font-size: 12px; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
-          Este es un correo automático de AgroPasco Digital. No responda a este mensaje.
+          Este es un correo automático del sistema AgroPasco Digital. No responda a este mensaje.
         </p>
       </div>
     </div>
   `;
 
-  return sendMail(user.email, subject, html, tempPassword);
+  return sendMail(targetEmail, subject, html, tempPassword);
 }
 
 /**

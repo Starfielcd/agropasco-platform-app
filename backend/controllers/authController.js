@@ -367,7 +367,9 @@ async function getApplicationStatus(req, res) {
     if (isApproved) {
       currentStep = 3;
       statusText = 'Aprobada';
-      message = '¡Tu cuenta ha sido aprobada! Revisa tu bandeja de correo para obtener tu contraseña provisional o temporal de acceso.';
+      message = user.must_change_password
+        ? '¡Tu cuenta ha sido aprobada! El administrador asignó una clave temporal para tu cuenta.'
+        : '¡Tu cuenta ha sido aprobada! Ya puedes iniciar sesión de inmediato con la contraseña que registraste al crear tu cuenta.';
     } else if (isRejected) {
       currentStep = 2;
       statusText = 'Rechazada';
@@ -389,6 +391,8 @@ async function getApplicationStatus(req, res) {
         status: user.status,
         statusText,
         message,
+        mustChangePassword: Boolean(user.must_change_password),
+        hasRegisteredPassword: !Boolean(user.must_change_password),
         step: currentStep,
         stepStatus: {
           step1: 'completed',
@@ -409,6 +413,72 @@ async function getApplicationStatus(req, res) {
   }
 }
 
+/**
+ * Permite a un usuario cuya cuenta fue aprobada (status = 'active')
+ * establecer o actualizar su contraseña de acceso directamente desde la interfaz,
+ * garantizando que nunca quede atrapado si el correo SMTP no llegó.
+ */
+async function setupApprovedPassword(req, res) {
+  try {
+    const { email, identifier, newPassword } = req.body;
+    const searchParam = (email || identifier || '').trim().toLowerCase();
+
+    if (!searchParam || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Correo electrónico y nueva contraseña son obligatorios.'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'La nueva contraseña debe tener al menos 6 caracteres.'
+      });
+    }
+
+    let user = null;
+    if (searchParam.includes('@')) {
+      user = await dbGet('SELECT * FROM users WHERE LOWER(email) = LOWER(?)', [searchParam]);
+    } else if (!isNaN(parseInt(searchParam, 10))) {
+      user = await dbGet('SELECT * FROM users WHERE id = ?', [parseInt(searchParam, 10)]);
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'No se encontró ninguna cuenta registrada con estos datos.'
+      });
+    }
+
+    if (user.status !== 'active' || user.is_blocked) {
+      return res.status(403).json({
+        success: false,
+        error: 'Esta opción solo está disponible para cuentas que ya han sido aprobadas por el Administrador.'
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await dbRun(
+      'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [passwordHash, user.id]
+    );
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [user.id, 'SET_APPROVED_PASSWORD', 'user', user.id, `Contraseña configurada por el usuario aprobado "${user.name}" (${user.email}).`, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: '¡Contraseña establecida exitosamente! Ya puedes iniciar sesión con tu nueva clave.'
+    });
+  } catch (err) {
+    console.error('Error al configurar contraseña aprobada:', err);
+    res.status(500).json({ success: false, error: 'Error al establecer la contraseña.' });
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -416,5 +486,6 @@ module.exports = {
   changePassword,
   getSetupStatus,
   setupInitialAdmin,
-  getApplicationStatus
+  getApplicationStatus,
+  setupApprovedPassword
 };
