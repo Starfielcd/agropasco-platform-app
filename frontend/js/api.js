@@ -200,6 +200,7 @@ const api = {
     });
   },
   confirmPestFeedback: (id, data) => apiRequest(`/pest-reports/${id}/feedback`, { method: 'POST', body: JSON.stringify(data) }),
+  reportPestPersists: (id, data) => apiRequest(`/pest-reports/${id}/persist`, { method: 'POST', body: JSON.stringify(data) }),
   getPestReportResponses: (id) => apiRequest(`/pest-reports/${id}/responses`),
 
   // AI

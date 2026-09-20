@@ -19,7 +19,7 @@ const AgroMediaUploader = (function () {
    * @param {string} [options.existingUrl] - URL existente (para edición)
    */
   function render(options) {
-    const { id, folder = 'general', label = 'Fotografía en Vivo o Archivo', existingUrl = '' } = options;
+    const { id, folder = 'general', label = 'Fotografía en Vivo o Archivo', existingUrl = '', accept = 'image/*', uploadBtnText = 'Subir Imagen' } = options;
 
     return `
       <div class="agro-media-uploader" id="${id}-container" data-folder="${folder}">
@@ -30,7 +30,7 @@ const AgroMediaUploader = (function () {
           </span>
         </label>
 
-        <!-- Botones de Acción: Abrir Cámara y Subir Imagen -->
+        <!-- Botones de Acción: Abrir Cámara y Subir Imagen / Video -->
         <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
           <button type="button" class="btn btn-primary" id="${id}-btn-camera" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
                   onclick="event.preventDefault(); event.stopPropagation(); AgroMediaUploader.openCamera('${id}', event); return false;">
@@ -41,12 +41,12 @@ const AgroMediaUploader = (function () {
           <button type="button" class="btn btn-secondary" id="${id}-btn-upload" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;"
                   onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('${id}-file-input')?.click(); return false;">
             <span>📁</span>
-            <strong>Subir Imagen</strong>
+            <strong>${uploadBtnText}</strong>
           </button>
         </div>
 
         <!-- Input de archivo nativo aislado (sin capture para evitar conflictos con WebRTC) -->
-        <input type="file" id="${id}-file-input" accept="image/*" style="display: none;"
+        <input type="file" id="${id}-file-input" accept="${accept}" style="display: none;"
                tabindex="-1" aria-hidden="true"
                onclick="event.stopPropagation();"
                onchange="AgroMediaUploader.handleFileSelected('${id}', this.files[0]); this.value = '';">

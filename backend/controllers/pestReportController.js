@@ -113,12 +113,12 @@ async function listReports(req, res) {
     }
 
     if (status) {
-      if (status === 'no_resuelto') {
-        sql += " AND (pr.status = 'no_resuelto' OR pr.status = 'pendiente' OR pr.control_status = 'no_resuelto')";
+      if (status === 'no_resuelto' || status === 'No Resuelta') {
+        sql += " AND (pr.status IN ('no_resuelto', 'No Resuelta', 'pendiente', 'reabierta', 'urgente') OR pr.control_status IN ('no_resuelto', 'persiste') OR pr.feedback_status = 'persiste')";
       } else if (status === 'en_proceso') {
-        sql += " AND (pr.control_status = 'en_proceso' OR pr.status = 'en_revision')";
+        sql += " AND ((pr.control_status = 'en_proceso' OR pr.status = 'en_proceso' OR pr.status = 'en_revision') AND pr.control_status != 'no_resuelto' AND pr.control_status != 'persiste' AND (pr.feedback_status IS NULL OR pr.feedback_status != 'persiste') AND pr.status != 'resuelto' AND pr.control_status != 'resuelto' AND pr.status != 'No Resuelta')";
       } else if (status === 'resuelto') {
-        sql += " AND (pr.status = 'resuelto' OR pr.control_status = 'resuelto')";
+        sql += " AND ((pr.status = 'resuelto' OR pr.control_status = 'resuelto' OR pr.feedback_status = 'extinguida') AND pr.control_status != 'no_resuelto' AND pr.control_status != 'persiste' AND (pr.feedback_status IS NULL OR pr.feedback_status != 'persiste') AND pr.status != 'No Resuelta')";
       } else {
         sql += ' AND pr.status = ?';
         params.push(status);
@@ -218,10 +218,6 @@ async function respondReport(req, res) {
     }
 
     const targetControlStatus = ['en_proceso', 'resuelto'].includes(control_status) ? control_status : 'en_proceso';
-
-    // NOTA CLAVE: pest_reports.status tiene CHECK(status IN ('pendiente', 'en_revision', 'resuelto'))
-    // 'en_proceso' NO existe en la restricción CHECK de pest_reports.status.
-    // Por tanto: resuelto -> 'resuelto', en_proceso -> 'en_revision'.
     const mainStatus = targetControlStatus === 'resuelto' ? 'resuelto' : 'en_revision';
     const advisorId = req.user?.id || req.body.advisor_id || report.advisor_id || 1;
 
@@ -308,46 +304,45 @@ async function respondReport(req, res) {
   }
 }
 
-// Agricultor confirma seguimiento: Extinguida o Persiste (Requerimiento 4)
+// Agricultor confirma seguimiento: Extinguida o Persiste (Requerimiento 4 / Plaga Persiste)
 async function confirmPestFeedback(req, res) {
   try {
-    const { feedback_status, feedback_notes } = req.body;
+    const rawStatus = req.body.feedback_status || (req.body.status === 'No Resuelta' || req.body.status === 'no_resuelto' ? 'persiste' : 'persiste');
+    const feedback_status = rawStatus === 'extinguida' ? 'extinguida' : 'persiste';
+    const feedback_notes = req.body.feedback_notes || req.body.notes || req.body.observations || '';
+    const feedbackMedia = req.body.media_url || req.body.photo_url || req.body.video_url || req.body.attachment_url || null;
 
-    if (!feedback_status || !['extinguida', 'persiste'].includes(feedback_status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Debes indicar si la plaga fue "extinguida" o si "persiste".'
-      });
-    }
-
+    const reportId = req.params.id || req.body.report_id || req.body.id;
     const report = await dbGet(`
       SELECT pr.*, u.name as farmer_name, p.name as parcel_name
       FROM pest_reports pr
       LEFT JOIN users u ON pr.farmer_id = u.id
       LEFT JOIN parcels p ON pr.parcel_id = p.id
       WHERE pr.id = ?
-    `, [req.params.id]);
+    `, [reportId]);
 
     if (!report) {
       return res.status(404).json({ success: false, error: 'Reporte fitosanitario no encontrado.' });
     }
 
-    // Validar que el usuario sea el dueño agricultor (o admin)
-    if (req.user.role !== 'admin' && report.farmer_id !== req.user.id) {
+    // Validar que el usuario sea el dueño agricultor (o asesor/admin)
+    if (req.user.role !== 'admin' && req.user.role !== 'advisor' && report.farmer_id !== req.user.id) {
       return res.status(403).json({ success: false, error: 'Solo el agricultor titular de la parcela puede confirmar el estado.' });
     }
 
     const isExtinguished = feedback_status === 'extinguida';
-    // Cumplir con CHECK(status IN ('pendiente', 'en_revision', 'resuelto'))
-    const newStatus = isExtinguished ? 'resuelto' : 'en_revision';
-    const newControlStatus = isExtinguished ? 'resuelto' : 'persiste';
+    // Mapeo no destructivo: 'No Resuelta' con prioridad urgente
+    const newStatus = isExtinguished ? 'resuelto' : 'No Resuelta';
+    const newControlStatus = isExtinguished ? 'resuelto' : 'no_resuelto';
 
+    // UPDATE NO DESTRUCTIVO: preserva photo_url y descripción inicial
     await dbRun(
       `UPDATE pest_reports SET
         status = ?,
         control_status = ?,
         feedback_status = ?,
         feedback_notes = ?,
+        feedback_media_url = ?,
         feedback_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
@@ -355,43 +350,72 @@ async function confirmPestFeedback(req, res) {
         newControlStatus,
         feedback_status,
         feedback_notes ? feedback_notes.trim() : null,
+        feedbackMedia ? feedbackMedia.trim() : report.feedback_media_url,
         report.id
       ]
     );
 
+    // Agregar al timeline/historial en pest_report_responses si la plaga persiste
+    if (!isExtinguished) {
+      const isVideo = feedbackMedia && (/\.(mp4|webm|mov)$/i.test(feedbackMedia) || feedbackMedia.includes('/videos/'));
+      await dbRun(
+        `INSERT INTO pest_report_responses (pest_report_id, advisor_id, response_text, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          report.id,
+          report.advisor_id || req.user.id || 1,
+          `⚠️ [ALERTA: LA PLAGA PERSISTE]: ${feedback_notes ? feedback_notes.trim() : 'El agricultor reporta que los síntomas persisten tras la aplicación del tratamiento.'}`,
+          'no_resuelto',
+          isVideo ? feedbackMedia : null,
+          !isVideo ? feedbackMedia : null,
+          feedbackMedia ? (isVideo ? 'Video de Plaga Persistente' : 'Evidencia Fotográfica de Persistencia') : null
+        ]
+      );
+    }
+
     // Notificar al asesor técnico asignado o a todos los asesores
     const advisorTargetId = report.advisor_id;
-    if (advisorTargetId) {
-      const notifTitle = isExtinguished
-        ? `🎉 Plaga Extinguida: ${report.pest_name}`
-        : `⚠️ Plaga Persiste: ${report.pest_name}`;
-      const notifMsg = isExtinguished
-        ? `El agricultor ${report.farmer_name} confirmó que el tratamiento fue efectivo y la plaga en "${report.parcel_name || 'su parcela'}" fue erradicada con éxito.`
-        : `El agricultor ${report.farmer_name} reporta que la plaga en "${report.parcel_name || 'su parcela'}" persiste tras la aplicación. ${feedback_notes ? 'Nota: ' + feedback_notes : ''}`;
+    const notifTitle = isExtinguished
+      ? `🎉 Plaga Extinguida: ${report.pest_name}`
+      : `🚨 URGENTE: Plaga Persiste — ${report.pest_name} en Parcela "${report.parcel_name || 'Sin Parcela'}"`;
+    const notifMsg = isExtinguished
+      ? `El agricultor ${report.farmer_name} confirmó que el tratamiento fue efectivo y la plaga en "${report.parcel_name || 'su parcela'}" fue erradicada con éxito.`
+      : `El agricultor ${report.farmer_name} reporta que la plaga "${report.pest_name}" en "${report.parcel_name || 'su parcela'}" NO ha cedido y persiste. Se requiere reformulación de dosis o nuevo plan de acción urgente.${feedback_notes ? ' Observaciones: ' + feedback_notes : ''}`;
 
+    if (advisorTargetId) {
       await dbRun(
         `INSERT INTO notifications (user_id, type, title, message, severity)
          VALUES (?, 'asesoria', ?, ?, ?)`,
         [advisorTargetId, notifTitle, notifMsg, isExtinguished ? 'info' : 'critical']
       );
+    } else {
+      const advisors = await dbAll(`SELECT id FROM users WHERE role = 'advisor'`);
+      for (const adv of advisors) {
+        await dbRun(
+          `INSERT INTO notifications (user_id, type, title, message, severity)
+           VALUES (?, 'asesoria', ?, ?, ?)`,
+          [adv.id, notifTitle, notifMsg, isExtinguished ? 'info' : 'critical']
+        );
+      }
     }
 
     res.json({
       success: true,
       message: isExtinguished
         ? '¡Excelente! Has confirmado que la plaga fue extinguida. El reporte queda cerrado satisfactoriamente.'
-        : 'Reporte actualizado a No Resuelto. El Asesor Técnico ha sido alertado para coordinar una nueva estrategia de control.',
+        : 'Reporte actualizado a No Resuelta. El Asesor Técnico ha sido alertado con prioridad urgente.',
       data: {
         id: report.id,
         status: newStatus,
         control_status: newControlStatus,
         feedback_status,
-        feedback_notes
+        feedback_notes,
+        feedback_media_url: feedbackMedia
       }
     });
   } catch (err) {
     console.error('Error al confirmar feedback de plaga:', err);
-    res.status(500).json({ success: false, error: 'Error al actualizar el estado de seguimiento.' });
+    res.status(500).json({ success: false, error: 'Error al actualizar el estado de seguimiento: ' + err.message });
   }
 }
 

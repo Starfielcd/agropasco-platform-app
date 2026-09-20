@@ -12,12 +12,51 @@ let advisorPestMap = null;
 let activeInfectionLayer = null;
 let highlightedPolygonLayer = null;
 
+// Helper functions para clasificación estricta y segura de estados de plagas
+function isPestReportResolved(r) {
+  if (!r) return false;
+  const s = String(r.status || '').toLowerCase().trim();
+  const cs = String(r.control_status || '').toLowerCase().trim();
+  const fs = String(r.feedback_status || '').toLowerCase().trim();
+  // Si persiste o fue reportada como no resuelta recientemente, NO está resuelta
+  if (fs === 'persiste' || cs === 'persiste' || s === 'no resuelta' || s === 'no_resuelto' || s === 'reabierta' || s === 'urgente') {
+    return false;
+  }
+  return s === 'resuelto' || cs === 'resuelto' || cs === 'extinguida' || fs === 'extinguida';
+}
+
+function isPestReportInProcess(r) {
+  if (!r) return false;
+  if (isPestReportResolved(r)) return false;
+  const s = String(r.status || '').toLowerCase().trim();
+  const cs = String(r.control_status || '').toLowerCase().trim();
+  const fs = String(r.feedback_status || '').toLowerCase().trim();
+  // Si persiste o está marcada como no resuelta, NO está en proceso
+  if (fs === 'persiste' || cs === 'persiste' || s === 'no resuelta' || s === 'no_resuelto' || s === 'reabierta' || s === 'urgente') {
+    return false;
+  }
+  return cs === 'en_proceso' || s === 'en_proceso' || s === 'en_revision';
+}
+
+function isPestReportUnresolved(r) {
+  if (!r) return false;
+  return !isPestReportResolved(r) && !isPestReportInProcess(r);
+}
+
 // Helper: Formato de badges de estado con semáforo de colores
 function getPestStatusBadge(report) {
-  const st = (report.control_status || report.status || 'pendiente').toLowerCase();
-  if (st === 'resuelto' || st === 'extinguida') {
+  if (!report) return `<span class="badge badge-red" style="font-weight: 700;">🔴 No Resuelta</span>`;
+  const s = String(report.status || '').toLowerCase().trim();
+  const cs = String(report.control_status || '').toLowerCase().trim();
+  const fs = String(report.feedback_status || '').toLowerCase().trim();
+
+  if (fs === 'persiste' || cs === 'persiste' || (s === 'no resuelta' && report.feedback_at)) {
+    return `<span class="badge badge-red" style="font-weight: 700; background: #dc2626; color: #fff; box-shadow: 0 0 10px rgba(220,38,38,0.5);">⚠️ Plaga Persiste (Urgente)</span>`;
+  }
+
+  if (isPestReportResolved(report)) {
     return `<span class="badge badge-green" style="font-weight: 700;">🟢 Resuelta / Extinguida</span>`;
-  } else if (st === 'en_proceso' || st === 'en_revision') {
+  } else if (isPestReportInProcess(report)) {
     return `<span class="badge badge-amber" style="font-weight: 700;">🟡 En Proceso de Control</span>`;
   } else {
     return `<span class="badge badge-red" style="font-weight: 700;">🔴 No Resuelta</span>`;
@@ -37,9 +76,9 @@ async function renderPestReportsPage() {
   const result = await api.getPestReports();
   const reports = result.data || [];
 
-  const unresolved = reports.filter(r => (r.status === 'no_resuelto' || r.status === 'pendiente' || r.control_status === 'no_resuelto'));
-  const inProcess = reports.filter(r => (r.control_status === 'en_proceso' || r.status === 'en_proceso'));
-  const resolved = reports.filter(r => (r.status === 'resuelto' || r.control_status === 'resuelto'));
+  const unresolved = reports.filter(isPestReportUnresolved);
+  const inProcess = reports.filter(isPestReportInProcess);
+  const resolved = reports.filter(isPestReportResolved);
 
   return `
     <div class="page-content">
@@ -90,9 +129,9 @@ async function renderPestReportsPage() {
 }
 
 function renderFarmerReportCard(r) {
-  const isUnresolved = r.status === 'no_resuelto' || r.status === 'pendiente' || r.control_status === 'no_resuelto';
-  const isInProcess = r.control_status === 'en_proceso' || r.status === 'en_proceso';
-  const isResolved = r.status === 'resuelto' || r.control_status === 'resuelto';
+  const isUnresolved = isPestReportUnresolved(r);
+  const isInProcess = isPestReportInProcess(r);
+  const isResolved = isPestReportResolved(r);
 
   const borderColor = isResolved ? '#22c55e' : isInProcess ? '#f59e0b' : '#ef4444';
 
@@ -124,11 +163,42 @@ function renderFarmerReportCard(r) {
       <!-- Fotografía Obligatoria enviada -->
       ${r.photo_url ? `
         <div style="margin: 12px 0; max-width: 360px;">
-          <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 4px;">📸 Fotografía del daño enviada:</div>
+          <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 4px;">📸 Fotografía del daño original enviada:</div>
           <img src="${r.photo_url}" alt="Foto plaga" style="max-height: 190px; width: 100%; border-radius: 8px; border: 1.5px solid var(--border); object-fit: cover; cursor: pointer; display: block;"
                onclick="AgroMediaUploader.previewEnlarged('${r.photo_url}', 'Foto Plaga: ${r.pest_name.replace(/'/g, "\\'")}')"
                title="Clic para ampliar imagen">
           <span class="text-xs text-muted" style="display: block; margin-top: 4px;">🔍 Clic en la foto para ver en pantalla completa</span>
+        </div>
+      ` : ''}
+
+      <!-- SEGUIMIENTO: Notificación si el agricultor reportó persistencia -->
+      ${(r.feedback_status === 'persiste' || r.feedback_notes || r.feedback_media_url) ? `
+        <div style="margin: 14px 0; padding: 14px; background: rgba(239,68,68,0.12); border-radius: 8px; border-left: 4px solid #ef4444;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+            <strong style="color: #f87171; font-size: 13.5px; display: flex; align-items: center; gap: 6px;">
+              <span>⚠️</span> Has reportado que la plaga persiste
+            </strong>
+            ${r.feedback_at ? `<span class="text-xs text-muted">📅 ${new Date(r.feedback_at).toLocaleString('es-PE')}</span>` : ''}
+          </div>
+          ${r.feedback_notes ? `
+            <div style="font-size: 13px; color: #fee2e2; margin-bottom: 8px; line-height: 1.5;">
+              <strong>Tus observaciones de seguimiento:</strong> "${r.feedback_notes}"
+            </div>
+          ` : ''}
+          ${r.feedback_media_url ? `
+            <div style="margin-top: 8px;">
+              <span class="text-xs" style="color: #fca5a5; display: block; margin-bottom: 4px;">📸 Nueva evidencia fotográfica / video adjuntada:</span>
+              ${(/\.(mp4|webm|mov)$/i.test(r.feedback_media_url) || r.feedback_media_url.includes('/videos/')) ? `
+                <video src="${r.feedback_media_url}" controls style="max-height: 180px; max-width: 100%; border-radius: 6px; border: 1px solid #ef4444;"></video>
+              ` : `
+                <img src="${r.feedback_media_url}" alt="Evidencia de persistencia" style="max-height: 140px; border-radius: 6px; border: 1px solid #ef4444; cursor: pointer;"
+                     onclick="AgroMediaUploader.previewEnlarged('${r.feedback_media_url}', 'Evidencia de persistencia')" />
+              `}
+            </div>
+          ` : ''}
+          <div style="font-size: 12px; color: #fca5a5; margin-top: 8px;">
+            ℹ️ Tu caso se encuentra en prioridad urgente para que el Asesor Técnico emita una nueva recomendación o reformule la dosis.
+          </div>
         </div>
       ` : ''}
 
@@ -434,45 +504,86 @@ async function handleCreatePestReport(e) {
 }
 
 // Confirmación de seguimiento por el agricultor (Extinguida o Persiste)
-async function handleFarmerPestFeedback(reportId, feedbackStatus, notes = '') {
+async function handleFarmerPestFeedback(reportId, feedbackStatus, notes = '', mediaUrl = '') {
   const result = await api.confirmPestFeedback(reportId, {
     feedback_status: feedbackStatus,
-    feedback_notes: notes
+    feedback_notes: notes,
+    feedback_media_url: mediaUrl,
+    media_url: mediaUrl
   });
 
   if (result.success) {
     showToast(result.message || 'Estado de seguimiento actualizado correctamente.', 'success');
-    navigateTo('/pest-reports');
+    await refreshPestReportsView();
   } else {
     showToast(result.error || 'Error al actualizar estado.', 'error');
   }
 }
 
+// Función helper para refrescar la vista de plagas inmediatamente sin recargar la página
+async function refreshPestReportsView() {
+  const hash = window.location.hash || '';
+  if (hash.includes('/advisor/pest-reports')) {
+    if (typeof navigateTo === 'function') {
+      await navigateTo('/advisor/pest-reports');
+    }
+  } else {
+    if (typeof navigateTo === 'function') {
+      await navigateTo('/pest-reports');
+    }
+  }
+}
+
 function showReportPersistsModal(reportId, pestName) {
+  // Eliminar modal previo si existiera
+  document.getElementById('persist-modal')?.remove();
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'persist-modal';
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 500px;">
+    <div class="modal" style="max-width: 540px; max-height: 90vh; overflow-y: auto;">
       <div class="modal-header">
-        <h3>⚠️ Reportar que la Plaga Persiste</h3>
-        <button class="modal-close" onclick="document.getElementById('persist-modal').remove()">✕</button>
+        <h3 style="display: flex; align-items: center; gap: 8px; font-size: 18px;">
+          <span>⚠️</span> Reportar que la Plaga Persiste
+        </h3>
+        <button type="button" class="modal-close" onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('persist-modal')?.remove()">✕</button>
       </div>
 
-      <div style="padding: 10px; background: rgba(239,68,68,0.12); border-left: 4px solid #ef4444; border-radius: 6px; margin-bottom: 14px; font-size: 13px; color: #fca5a5;">
-        El reporte volverá al estado <strong>No Resuelta</strong> y el Asesor Técnico recibirá una alerta urgente para reformular la dosis o cambiar el método de control.
+      <div style="padding: 12px; background: rgba(239,68,68,0.12); border-left: 4px solid #ef4444; border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: #fca5a5; line-height: 1.5;">
+        El reporte volverá al estado <strong>No Resuelta</strong> con prioridad urgente. El Asesor Técnico recibirá una alerta crítica para reformular el plan de acción, ajuste de dosis o rotación fitosanitaria.
       </div>
 
-      <form onsubmit="handlePersistSubmit(event, ${reportId})">
+      <form id="persist-pest-form" onsubmit="handlePersistSubmit(event, ${reportId})">
         <div class="form-group">
-          <label class="form-label">Comentarios u observaciones adicionales:</label>
-          <textarea class="form-textarea" id="persist-notes" rows="3" placeholder="Ej: Se aplicó el biol hace 4 días pero aún se observan larvas vivas en el envés de la hoja..." required></textarea>
+          <label class="form-label" style="font-weight: 700; color: #ffffff;">Observaciones del agricultor sobre la persistencia *</label>
+          <textarea class="form-textarea" id="persist-notes" rows="3" placeholder="Ej: Se aplicó el biol hace 4 días pero aún se observan larvas vivas y hojas mordidas en el sector norte..." required></textarea>
         </div>
 
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-          <button type="button" class="btn btn-secondary" onclick="document.getElementById('persist-modal').remove()">Cancelar</button>
-          <button type="submit" class="btn btn-danger" style="font-weight: 700;">Confirmar: La Plaga Persiste</button>
+        <!-- Evidencia Multimedia (Cámara WebRTC o Archivo Foto/Video) -->
+        <div class="form-group" style="padding: 12px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); margin-bottom: 18px;">
+          ${typeof AgroMediaUploader !== 'undefined' ? AgroMediaUploader.render({
+            id: 'persist-media',
+            folder: 'pests',
+            label: 'Nueva Evidencia (Cámara en Vivo o Subir Foto/Video)',
+            accept: 'image/*,video/*',
+            uploadBtnText: 'Subir Foto o Video'
+          }) : `
+            <input type="text" id="persist-media-value" class="form-input" placeholder="URL de evidencia (opcional)">
+          `}
+          <div class="text-xs text-muted" style="margin-top: 6px; color: #94a3b8;">
+            💡 Adjunta una nueva foto o video corto para que el ingeniero agrónomo compruebe la magnitud actual de la infestación.
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 14px;">
+          <button type="button" class="btn btn-secondary" onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('persist-modal')?.remove()">
+            Cancelar
+          </button>
+          <button type="submit" id="persist-submit-btn" class="btn btn-danger" style="font-weight: 700; display: flex; align-items: center; gap: 6px;">
+            <span>⚠️</span> Confirmar: La Plaga Persiste
+          </button>
         </div>
       </form>
     </div>
@@ -480,11 +591,40 @@ function showReportPersistsModal(reportId, pestName) {
   document.body.appendChild(modal);
 }
 
-function handlePersistSubmit(e, reportId) {
-  e.preventDefault();
-  const notes = document.getElementById('persist-notes').value;
-  document.getElementById('persist-modal')?.remove();
-  handleFarmerPestFeedback(reportId, 'persiste', notes);
+async function handlePersistSubmit(e, reportId) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const notesInput = document.getElementById('persist-notes');
+  const notes = notesInput ? notesInput.value.trim() : '';
+
+  if (!notes) {
+    showToast('⚠️ Por favor ingresa una observación detallada del estado actual de la plaga.', 'warning');
+    notesInput?.focus();
+    return;
+  }
+
+  const mediaUrl = document.getElementById('persist-media-value')?.value?.trim() || '';
+  const submitBtn = document.getElementById('persist-submit-btn');
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳</span> Enviando alerta urgente...';
+  }
+
+  try {
+    await handleFarmerPestFeedback(reportId, 'persiste', notes, mediaUrl);
+    document.getElementById('persist-modal')?.remove();
+  } catch (err) {
+    console.error('Error al reportar persistencia:', err);
+    showToast('Error al enviar el reporte: ' + (err.message || 'Error interno'), 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>⚠️</span> Confirmar: La Plaga Persiste';
+    }
+  }
 }
 
 // Modal para ver el historial de respuestas y materiales de un reporte
@@ -497,38 +637,70 @@ async function showPestResponsesHistory(reportId) {
   modal.id = 'history-modal';
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 620px;">
+    <div class="modal" style="max-width: 640px; max-height: 85vh; display: flex; flex-direction: column;">
       <div class="modal-header">
-        <h3>📜 Historial de Recomendaciones Técnicas</h3>
-        <button class="modal-close" onclick="document.getElementById('history-modal').remove()">✕</button>
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <span>📜</span> Historial Cronológico de Dictámenes y Seguimiento
+        </h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('history-modal')?.remove()">✕</button>
       </div>
 
-      <div style="max-height: 480px; overflow-y: auto; padding-right: 6px;">
-        ${responses.length > 0 ? responses.map((resp, idx) => `
-          <div style="margin-bottom: 14px; padding: 14px; background: rgba(15,23,42,0.85); border-radius: 8px; border-left: 4px solid #38bdf8;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <strong style="color: #38bdf8; font-size: 13.5px;">Dictamen #${idx + 1} — ${resp.advisor_name || 'Asesor Técnico'}</strong>
-              <span class="text-xs text-muted">${new Date(resp.created_at).toLocaleString('es-PE')}</span>
-            </div>
-            <div style="font-size: 13px; color: #e2e8f0; line-height: 1.5; margin-bottom: 8px;">
-              ${resp.response_text}
-            </div>
-            ${resp.attachment_doc_url ? `
-              <div style="margin-top: 6px;">
-                <a href="${resp.attachment_doc_url}" target="_blank" class="btn btn-sm btn-secondary" style="font-size: 11px;">
-                  📄 Descargar Guía Adjunta (PDF)
-                </a>
+      <div style="overflow-y: auto; padding-right: 6px; flex: 1;">
+        ${responses.length > 0 ? responses.map((resp, idx) => {
+          const isPersistAlert = (resp.response_text || '').includes('LA PLAGA PERSISTE') || (resp.control_status === 'no_resuelto');
+          const borderClr = isPersistAlert ? '#ef4444' : '#38bdf8';
+          const titleClr = isPersistAlert ? '#f87171' : '#38bdf8';
+          const title = isPersistAlert
+            ? `⚠️ Alerta de Persistencia #${idx + 1}`
+            : `Dictamen #${idx + 1} — ${resp.advisor_name || 'Asesor Técnico'}`;
+
+          const hasImage = resp.attachment_doc_url && (/\.(jpg|jpeg|png|webp|gif)$/i.test(resp.attachment_doc_url) || resp.attachment_doc_url.includes('/uploads/'));
+          const hasVideo = resp.attachment_video_url && (/\.(mp4|webm|mov)$/i.test(resp.attachment_video_url) || resp.attachment_video_url.includes('/videos/'));
+
+          return `
+            <div style="margin-bottom: 14px; padding: 14px; background: rgba(15,23,42,0.85); border-radius: 8px; border-left: 4px solid ${borderClr};">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                <strong style="color: ${titleClr}; font-size: 13.5px;">${title}</strong>
+                <span class="text-xs text-muted">${new Date(resp.created_at).toLocaleString('es-PE')}</span>
               </div>
-            ` : ''}
-            ${resp.attachment_video_url ? `
-              <div style="margin-top: 6px;">
-                <a href="${resp.attachment_video_url}" target="_blank" class="btn btn-sm btn-secondary" style="font-size: 11px;">
-                  🎬 Ver Video Adjunto
-                </a>
+              <div style="font-size: 13px; color: #e2e8f0; line-height: 1.5; margin-bottom: 8px; white-space: pre-line;">
+                ${resp.response_text}
               </div>
-            ` : ''}
-          </div>
-        `).join('') : `
+
+              <!-- Evidencia Fotográfica o Documento adjunto -->
+              ${resp.attachment_doc_url ? `
+                <div style="margin-top: 8px;">
+                  ${hasImage ? `
+                    <div style="display: inline-block;">
+                      <img src="${resp.attachment_doc_url}" alt="Evidencia adjunta" style="max-height: 150px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer;"
+                           onclick="AgroMediaUploader.previewEnlarged('${resp.attachment_doc_url}', 'Evidencia de Seguimiento')" />
+                      <div class="text-xs text-muted" style="margin-top: 3px;">🔍 Clic para ampliar evidencia</div>
+                    </div>
+                  ` : `
+                    <a href="${resp.attachment_doc_url}" target="_blank" class="btn btn-sm btn-secondary" style="font-size: 11.5px; display: inline-flex; align-items: center; gap: 6px;">
+                      <span>📄</span>
+                      <strong>${resp.attachment_doc_name || 'Descargar Guía Técnica (PDF)'}</strong>
+                    </a>
+                  `}
+                </div>
+              ` : ''}
+
+              <!-- Video adjunto -->
+              ${resp.attachment_video_url ? `
+                <div style="margin-top: 8px;">
+                  ${hasVideo ? `
+                    <video src="${resp.attachment_video_url}" controls style="max-height: 180px; max-width: 100%; border-radius: 6px; border: 1px solid var(--border);"></video>
+                  ` : `
+                    <a href="${resp.attachment_video_url}" target="_blank" class="btn btn-sm btn-secondary" style="font-size: 11.5px; display: inline-flex; align-items: center; gap: 6px;">
+                      <span>🎬</span>
+                      <strong>Ver Video Adjunto</strong>
+                    </a>
+                  `}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('') : `
           <div class="empty-state" style="padding: 20px;">
             <div class="empty-state-text">No hay dictámenes previos registrados.</div>
           </div>
@@ -544,10 +716,10 @@ async function renderAdvisorPestReportsPage() {
   const result = await api.getPestReports();
   const reports = result.data || [];
 
-  // Clasificación estricta en 3 estados según Requerimiento 6
-  const unresolved = reports.filter(r => (r.status === 'no_resuelto' || r.status === 'pendiente' || r.control_status === 'no_resuelto'));
-  const inProcess = reports.filter(r => (r.control_status === 'en_proceso' || r.status === 'en_proceso'));
-  const resolved = reports.filter(r => (r.status === 'resuelto' || r.control_status === 'resuelto'));
+  // Clasificación estricta y unificada en 3 estados
+  const unresolved = reports.filter(isPestReportUnresolved);
+  const inProcess = reports.filter(isPestReportInProcess);
+  const resolved = reports.filter(isPestReportResolved);
 
   return `
     <div class="page-content">
@@ -734,6 +906,42 @@ function renderAdvisorReportCard(r, category) {
           </div>
         `}
 
+        <!-- ALERTA DE SEGUIMIENTO: EL AGRICULTOR REPORTA QUE LA PLAGA PERSISTE -->
+        ${(r.feedback_status === 'persiste' || r.feedback_notes || r.feedback_media_url) ? `
+          <div style="margin-bottom: 14px; padding: 14px; background: rgba(239,68,68,0.15); border-radius: 8px; border-left: 4px solid #ef4444; border: 1px solid rgba(239,68,68,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <strong style="color: #f87171; font-size: 13.5px; display: flex; align-items: center; gap: 6px;">
+                <span>🚨</span> SEGUIMIENTO URGENTE: EL AGRICULTOR REPORTA QUE LA PLAGA PERSISTE
+              </strong>
+              ${r.feedback_at ? `<span class="text-xs" style="color: #fca5a5;">📅 ${new Date(r.feedback_at).toLocaleString('es-PE')}</span>` : ''}
+            </div>
+            ${r.feedback_notes ? `
+              <div style="font-size: 13px; color: #fee2e2; line-height: 1.5; margin-bottom: 8px;">
+                <strong>Observaciones del Agricultor:</strong> "${r.feedback_notes}"
+              </div>
+            ` : ''}
+            ${r.feedback_media_url ? `
+              <div style="margin-top: 8px;">
+                <span class="text-xs" style="color: #fca5a5; font-weight: 700; display: block; margin-bottom: 4px;">
+                  📸 Nueva Evidencia de la Persistencia (Foto / Video):
+                </span>
+                ${(/\.(mp4|webm|mov)$/i.test(r.feedback_media_url) || r.feedback_media_url.includes('/videos/')) ? `
+                  <video src="${r.feedback_media_url}" controls style="max-height: 180px; max-width: 100%; border-radius: 6px; border: 1px solid #ef4444; display: block;"></video>
+                ` : `
+                  <div style="display: inline-block;">
+                    <img src="${r.feedback_media_url}" alt="Evidencia de plaga persistente" style="max-height: 160px; max-width: 100%; border-radius: 6px; border: 1px solid #ef4444; cursor: pointer; object-fit: contain; display: block;"
+                         onclick="AgroMediaUploader.previewEnlarged('${r.feedback_media_url}', 'Evidencia Plaga Persistente: ${r.pest_name.replace(/'/g, "\\'")}')" />
+                    <span class="text-xs" style="color: #fca5a5; display: block; margin-top: 2px;">🔍 Clic para ampliar</span>
+                  </div>
+                `}
+              </div>
+            ` : ''}
+            <div style="font-size: 12px; color: #fca5a5; margin-top: 8px; font-weight: 600;">
+              ⚠️ Se requiere emitir un nuevo dictamen fitosanitario o ajustar la formulación/dosis.
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Última recomendación si existe -->
         ${r.advisor_response ? `
           <div style="margin-bottom: 12px; padding: 12px; background: rgba(34,197,94,0.12); border-radius: 6px; border-left: 3px solid #22c55e;">
@@ -808,8 +1016,8 @@ async function loadPestReportsOnMap() {
 
   reports.forEach(r => {
     let layer = null;
-    const isUnresolved = r.status === 'no_resuelto' || r.status === 'pendiente' || r.control_status === 'no_resuelto';
-    const isInProcess = r.control_status === 'en_proceso' || r.status === 'en_proceso';
+    const isUnresolved = isPestReportUnresolved(r);
+    const isInProcess = isPestReportInProcess(r);
 
     let color = '#22c55e'; // Resuelta
     if (isUnresolved) color = '#ef4444'; // No resuelta

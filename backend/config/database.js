@@ -252,7 +252,7 @@ async function initializeDatabase() {
       photo_url TEXT,
       location_lat REAL,
       location_lng REAL,
-      status TEXT DEFAULT 'pendiente' CHECK(status IN ('pendiente', 'en_revision', 'resuelto')),
+      status TEXT DEFAULT 'pendiente',
       advisor_response TEXT,
       advisor_id INTEGER,
       responded_at DATETIME,
@@ -328,10 +328,69 @@ async function initializeDatabase() {
     "ALTER TABLE pest_reports ADD COLUMN attachment_doc_name TEXT",
     "ALTER TABLE pest_reports ADD COLUMN feedback_status TEXT",
     "ALTER TABLE pest_reports ADD COLUMN feedback_notes TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN feedback_at DATETIME"
+    "ALTER TABLE pest_reports ADD COLUMN feedback_at DATETIME",
+    "ALTER TABLE pest_reports ADD COLUMN feedback_media_url TEXT"
   ];
   for (const sql of pestAndPhotoMigrations) {
     try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
+  // Relajar restricción CHECK de pest_reports si existe
+  try {
+    const tableDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='pest_reports'");
+    if (tableDef && tableDef.sql && tableDef.sql.includes('CHECK(status IN')) {
+      await dbRun('PRAGMA foreign_keys = OFF;');
+      await dbRun('ALTER TABLE pest_reports RENAME TO pest_reports_old;');
+      await dbRun(`
+        CREATE TABLE pest_reports (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          farmer_id INTEGER NOT NULL,
+          parcel_id INTEGER,
+          pest_name TEXT NOT NULL,
+          description TEXT,
+          photo_url TEXT,
+          location_lat REAL,
+          location_lng REAL,
+          status TEXT DEFAULT 'pendiente',
+          advisor_response TEXT,
+          advisor_id INTEGER,
+          responded_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          severity TEXT DEFAULT 'moderado',
+          control_status TEXT DEFAULT 'pendiente',
+          attachment_video_url TEXT,
+          attachment_doc_url TEXT,
+          attachment_doc_name TEXT,
+          feedback_status TEXT,
+          feedback_notes TEXT,
+          feedback_at DATETIME,
+          feedback_media_url TEXT,
+          FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL,
+          FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+      await dbRun(`
+        INSERT INTO pest_reports (
+          id, farmer_id, parcel_id, pest_name, description, photo_url,
+          location_lat, location_lng, status, advisor_response, advisor_id,
+          responded_at, created_at, severity, control_status,
+          attachment_video_url, attachment_doc_url, attachment_doc_name,
+          feedback_status, feedback_notes, feedback_at
+        )
+        SELECT
+          id, farmer_id, parcel_id, pest_name, description, photo_url,
+          location_lat, location_lng, status, advisor_response, advisor_id,
+          responded_at, created_at, severity, control_status,
+          attachment_video_url, attachment_doc_url, attachment_doc_name,
+          feedback_status, feedback_notes, feedback_at
+        FROM pest_reports_old;
+      `);
+      await dbRun('DROP TABLE pest_reports_old;');
+      await dbRun('PRAGMA foreign_keys = ON;');
+    }
+  } catch (err) {
+    console.warn('Advertencia en migración de pest_reports:', err.message);
   }
 
   // ===== TABLA: pest_report_responses (historial de respuestas del asesor y materiales) =====
@@ -350,6 +409,40 @@ async function initializeDatabase() {
       FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // ===== MIGRACIÓN: Corregir FK de pest_report_responses si apunta a pest_reports_old =====
+  try {
+    const respDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='pest_report_responses'");
+    if (respDef && respDef.sql && respDef.sql.includes('pest_reports_old')) {
+      await dbRun('PRAGMA foreign_keys = OFF;');
+      await dbRun(`
+        CREATE TABLE pest_report_responses_fixed (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pest_report_id INTEGER NOT NULL,
+          advisor_id INTEGER NOT NULL,
+          response_text TEXT NOT NULL,
+          control_status TEXT NOT NULL DEFAULT 'en_proceso',
+          attachment_video_url TEXT,
+          attachment_doc_url TEXT,
+          attachment_doc_name TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (pest_report_id) REFERENCES pest_reports(id) ON DELETE CASCADE,
+          FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+      await dbRun(`
+        INSERT INTO pest_report_responses_fixed (id, pest_report_id, advisor_id, response_text, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name, created_at)
+        SELECT id, pest_report_id, advisor_id, response_text, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name, created_at
+        FROM pest_report_responses;
+      `);
+      await dbRun('DROP TABLE pest_report_responses;');
+      await dbRun('ALTER TABLE pest_report_responses_fixed RENAME TO pest_report_responses;');
+      await dbRun('PRAGMA foreign_keys = ON;');
+      console.log('✅ Migración: pest_report_responses FK actualizada a pest_reports exitosamente');
+    }
+  } catch (err) {
+    console.warn('Advertencia en migración de pest_report_responses FK:', err.message);
+  }
 
   // ===== SEED DATA =====
   await seedData();
