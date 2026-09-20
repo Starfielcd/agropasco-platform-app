@@ -27,7 +27,7 @@ async function renderCropsPage() {
           <h3 style="font-size: 18px; font-weight: 700;">${pageTitle}</h3>
           <p class="text-sm text-muted">${pageSubtitle}</p>
         </div>
-        <button class="btn btn-primary" onclick="showNewCropModal()">+ Registrar Cultivo</button>
+        <button type="button" class="btn btn-primary" onclick="event.preventDefault(); event.stopPropagation(); showNewCropModal(event); return false;">+ Registrar Cultivo</button>
       </div>
 
       ${crops.length > 0 ? `
@@ -39,7 +39,7 @@ async function renderCropsPage() {
           <div class="empty-state-icon">🌱</div>
           <div class="empty-state-title">No hay cultivos registrados</div>
           <div class="empty-state-text">Registra tu primer cultivo para comenzar con la asesoría personalizada y trazabilidad digital.</div>
-          <button class="btn btn-primary btn-lg" onclick="showNewCropModal()">🌾 Registrar cultivo ahora</button>
+          <button type="button" class="btn btn-primary btn-lg" onclick="event.preventDefault(); event.stopPropagation(); showNewCropModal(event); return false;">⚡ Registrar cultivo ahora</button>
         </div>
       `}
     </div>
@@ -200,12 +200,30 @@ async function renderCropDetail(cropId) {
 
 let cropModalMap = null;
 let cropDrawnLayer = null;
+let isOpeningCropModal = false;
 
-async function showNewCropModal() {
-  // Limpiar cualquier modal previo
+async function showNewCropModal(event) {
+  if (event) {
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+  }
+
+  // Prevenir aperturas simultáneas o clicks dobles
+  if (isOpeningCropModal) return;
+  isOpeningCropModal = true;
+  setTimeout(() => { isOpeningCropModal = false; }, 300);
+
+  // Limpiar cualquier modal previo de manera limpia
   const existing = document.getElementById('crop-modal');
   if (existing) {
-    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
+    if (window._cropEscHandler) {
+      window.removeEventListener('keydown', window._cropEscHandler);
+      window._cropEscHandler = null;
+    }
+    if (cropModalMap) {
+      try { cropModalMap.remove(); } catch (e) {}
+      cropModalMap = null;
+    }
     existing.remove();
   }
 
@@ -217,31 +235,40 @@ async function showNewCropModal() {
   } catch (e) {}
 
   const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
+  modal.className = 'modal-overlay active';
   modal.id = 'crop-modal';
-  modal.style.zIndex = '9999';
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 99999; opacity: 1 !important; visibility: visible !important; padding: 16px; box-sizing: border-box;';
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-label', 'Registrar Nuevo Cultivo — AgroPasco');
 
-  const closeCropModal = () => {
+  const closeCropModal = (evt) => {
+    if (evt) {
+      if (typeof evt.preventDefault === 'function') evt.preventDefault();
+      if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    }
     if (window._cropEscHandler) {
       window.removeEventListener('keydown', window._cropEscHandler);
       window._cropEscHandler = null;
     }
-    if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
-    document.getElementById('crop-modal')?.remove();
+    if (cropModalMap) {
+      try { cropModalMap.remove(); } catch (err) {}
+      cropModalMap = null;
+    }
+    const m = document.getElementById('crop-modal');
+    if (m) m.remove();
   };
+  window._closeCropModal = closeCropModal;
 
   const handleEscKey = (e) => {
-    if (e.key === 'Escape') closeCropModal();
+    if (e.key === 'Escape') closeCropModal(e);
   };
   window._cropEscHandler = handleEscKey;
   window.addEventListener('keydown', handleEscKey);
 
   modal.onclick = (e) => {
     if (e.target === modal) {
-      closeCropModal();
+      closeCropModal(e);
     }
   };
 
@@ -251,13 +278,13 @@ async function showNewCropModal() {
     : '<option value="">No tienes parcelas registradas aún</option>';
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px;" onclick="event.stopPropagation()">
+    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 20px;">🌱</span>
           <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Registrar Nuevo Cultivo</h3>
         </div>
-        <button type="button" class="modal-close" aria-label="Cerrar modal" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()">✕</button>
+        <button type="button" class="modal-close" aria-label="Cerrar modal" onclick="event.preventDefault(); event.stopPropagation(); window._closeCropModal(event);">✕</button>
       </div>
 
       <!-- Selector de parcela existente para auto-rellenado -->
@@ -367,7 +394,7 @@ async function showNewCropModal() {
         </div>
 
         <div style="display: flex; gap: 10px; margin-top: 20px;">
-          <button type="button" class="btn btn-secondary" onclick="if(cropModalMap){cropModalMap.remove();cropModalMap=null;}document.getElementById('crop-modal')?.remove()" style="flex: 0.35;">
+          <button type="button" class="btn btn-secondary" onclick="event.preventDefault(); event.stopPropagation(); window._closeCropModal(event);" style="flex: 0.35;">
             Cancelar
           </button>
           <button type="submit" id="crop-submit-btn" class="btn btn-primary btn-lg" style="flex: 1;">
@@ -597,7 +624,10 @@ async function applyCropElevation(lat, lng) {
 }
 
 async function handleCreateCrop(e) {
-  e.preventDefault();
+  if (e) {
+    if (typeof e.preventDefault === 'function') e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
 
   const nameInput = document.getElementById('crop-name');
   const typeInput = document.getElementById('crop-type');
@@ -668,8 +698,12 @@ async function handleCreateCrop(e) {
 
     if (result.success) {
       if (window.AgroLogger) AgroLogger.info('CROP', `Cultivo "${nameVal}" registrado con éxito`);
-      if (cropModalMap) { cropModalMap.remove(); cropModalMap = null; }
-      document.getElementById('crop-modal')?.remove();
+      if (typeof window._closeCropModal === 'function') {
+        window._closeCropModal();
+      } else {
+        if (cropModalMap) { try { cropModalMap.remove(); } catch (err) {} cropModalMap = null; }
+        document.getElementById('crop-modal')?.remove();
+      }
       showToast('¡Cultivo registrado exitosamente!', 'success');
       window.location.hash = '#/crops';
       navigateTo('/crops');
@@ -798,3 +832,7 @@ function getPhenologicalAdvice(cropType, status) {
     </div>
   `;
 }
+
+// Exponer globalmente para listeners HTML y llamados programáticos
+window.showNewCropModal = showNewCropModal;
+window.handleOpenCropModal = showNewCropModal;

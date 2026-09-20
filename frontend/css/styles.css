@@ -1772,7 +1772,7 @@ a:hover { color: var(--green-400); }
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.3s ease;
   padding: 20px;
 }
