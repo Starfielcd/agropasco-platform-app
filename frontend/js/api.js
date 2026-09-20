@@ -156,10 +156,17 @@ const api = {
   respondSupportTicket: (id, data) => apiRequest(`/admin/support/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify(data) }),
   escalateSupportTicket: (id) => apiRequest(`/admin/support/tickets/${id}/escalate`, { method: 'POST' }),
 
-  // Admin — Solicitudes de Cuenta (Aprobación / Rechazo)
+  // Admin — Solicitudes de Cuenta (Aprobación / Rechazo / Credenciales)
   getPendingAccounts: () => apiRequest('/admin/pending-accounts'),
   approveAccount: (id) => apiRequest(`/admin/accounts/${id}/approve`, { method: 'PUT' }),
   rejectAccount: (id, data) => apiRequest(`/admin/accounts/${id}/reject`, { method: 'PUT', body: JSON.stringify(data) }),
+  resendCredentials: (id) => apiRequest(`/admin/users/${id}/resend-credentials`, { method: 'POST' }),
+
+  // Consulta de Estado de Solicitud (Stepper Reactivo)
+  getApplicationStatus: (identifier) => {
+    const param = identifier ? (String(identifier).includes('@') ? `?email=${encodeURIComponent(identifier)}` : `?requestId=${encodeURIComponent(identifier)}`) : '';
+    return apiRequest(`/users/application-status${param}`);
+  },
 
   // Admin — Transferencia de Administración Única
   transferAdministration: (data) => apiRequest('/admin/transfer', { method: 'POST', body: JSON.stringify(data) }),

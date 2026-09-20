@@ -40,6 +40,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ===== RUTAS API =====
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
 app.use('/api/crops', require('./routes/crops'));
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/advisory', require('./routes/advisory'));

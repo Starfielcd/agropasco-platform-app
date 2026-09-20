@@ -222,7 +222,7 @@ function confirmApproveAccount(userId, name, email, role) {
       </div>
       <div style="display: flex; gap: 10px; margin-top: 20px;">
         <button class="btn btn-secondary" style="flex: 1;" onclick="closeAdminActionModal()">Cancelar</button>
-        <button class="btn btn-primary" style="flex: 1; background: linear-gradient(135deg, #22c55e, #16a34a);" id="confirm-approve-btn" onclick="executeApproveAccount(${userId})">
+        <button class="btn btn-primary" style="flex: 1; background: linear-gradient(135deg, #22c55e, #16a34a);" id="confirm-approve-btn" onclick="executeApproveAccount(${userId}, '${name.replace(/'/g, "\\'")}', '${email}')">
           ✅ Sí, Aprobar Cuenta
         </button>
       </div>
@@ -266,7 +266,7 @@ function confirmRejectAccount(userId, name, email, role) {
   requestAnimationFrame(() => modal.classList.add('active'));
 }
 
-async function executeApproveAccount(userId) {
+async function executeApproveAccount(userId, userName = '', userEmail = '') {
   const btn = document.getElementById('confirm-approve-btn');
   if (btn) { btn.textContent = 'Aprobando...'; btn.disabled = true; }
 
@@ -277,12 +277,98 @@ async function executeApproveAccount(userId) {
   if (result.success) {
     showToast(result.message, 'success');
     if (result.tempPassword) {
-      showToast(`Contraseña temporal: ${result.tempPassword}`, 'info');
+      showCredentialModal(
+        'Cuenta Aprobada — Credenciales de Acceso',
+        result.userName || userName || 'Usuario Aprobado',
+        result.userEmail || userEmail || 'correo del solicitante',
+        result.tempPassword,
+        result.emailSent,
+        result.emailError
+      );
     }
     // Recargar la pestaña de pendientes
     switchAdminTab('pending');
   } else {
     showToast(result.error || 'Error al aprobar la cuenta', 'error');
+  }
+}
+
+/**
+ * Modal centralizado para mostrar y copiar credenciales temporales generadas
+ */
+function showCredentialModal(title, userName, email, tempPassword, emailSent = false, emailError = null) {
+  const existing = document.getElementById('admin-credential-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'admin-credential-modal';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 520px; text-align: left; border: 1.5px solid rgba(34, 197, 94, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #16a34a, #15803d); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff;">
+            🔑
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; color: #ffffff; font-weight: 800;">${title || 'Credenciales de Acceso'}</h3>
+            <p class="text-xs text-muted" style="margin: 0;">Usuario: <strong>${userName}</strong> (${email})</p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('admin-credential-modal').remove()">✕</button>
+      </div>
+
+      <div style="background: ${emailSent ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)'}; border-left: 4px solid ${emailSent ? '#22c55e' : '#f59e0b'}; padding: 12px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
+        ${emailSent
+          ? `📧 <strong>Correo enviado exitosamente</strong> a <code>${email}</code> con las credenciales de acceso.`
+          : `⚠️ <strong>Aviso de Envío SMTP:</strong> El correo no pudo enviarse automáticamente (${emailError || 'Entorno de desarrollo o sin SMTP'}). <strong>Copia y entrega la contraseña temporal al usuario manualmente:</strong>`
+        }
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label class="form-label" style="font-size: 12px; font-weight: 700;">Contraseña Temporal Asignada:</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="credential-temp-password-input" class="form-input" value="${tempPassword}" readonly style="font-weight: 800; font-size: 16px; color: #4ade80; background: rgba(0,0,0,0.5); font-family: monospace;">
+          <button type="button" class="btn btn-primary" onclick="copyCredentialToClipboard('${tempPassword}')" style="min-width: 140px; font-weight: 700;">
+            📋 Copiar Clave
+          </button>
+        </div>
+      </div>
+
+      <p class="text-xs text-muted" style="margin-bottom: 20px;">
+        🔒 Por seguridad y auditoría, el usuario deberá cambiar esta contraseña obligatoriamente al ingresar por primera vez.
+      </p>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('admin-credential-modal').remove()">
+          Entendido / Cerrar
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function copyCredentialToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 Contraseña copiada al portapapeles', 'success');
+    }).catch(() => {
+      const input = document.getElementById('credential-temp-password-input');
+      if (input) {
+        input.select();
+        document.execCommand('copy');
+        showToast('📋 Contraseña copiada', 'success');
+      }
+    });
+  } else {
+    const input = document.getElementById('credential-temp-password-input');
+    if (input) {
+      input.select();
+      document.execCommand('copy');
+      showToast('📋 Contraseña copiada', 'success');
+    }
   }
 }
 
@@ -949,30 +1035,34 @@ async function scanDuplicatesModal() {
 
 // Modal para restablecer contraseña
 function resetUserPasswordPrompt(userId, userName) {
-  const tempPass = 'AgroPasco2026!';
+  const tempPass = 'AP-' + Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase() + '!';
   const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
+  modal.className = 'modal-overlay active';
   modal.id = 'reset-pass-modal';
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 500px;">
+    <div class="modal" style="max-width: 520px;">
       <div class="modal-header">
-        <h3>🔑 Restablecer Contraseña</h3>
+        <h3 style="font-size: 18px; font-weight: 800;">🔑 Restablecer Contraseña</h3>
         <button class="modal-close" onclick="document.getElementById('reset-pass-modal').remove()">✕</button>
       </div>
       <p class="text-sm text-muted mb-md">
-        Se asignará una contraseña provisional segura al usuario <strong>${userName}</strong>:
+        Se asignará una contraseña provisional segura al usuario <strong>${userName}</strong> y se enviará por correo si SMTP está activo:
       </p>
 
       <div class="form-group">
-        <label class="form-label">Nueva Contraseña Provisional:</label>
-        <input type="text" id="reset-pass-input" class="form-input" value="${tempPass}" style="font-weight: 700; color: #4ade80;">
+        <label class="form-label" style="font-size: 12px; font-weight: 700;">Nueva Contraseña Provisional:</label>
+        <input type="text" id="reset-pass-input" class="form-input" value="${tempPass}" style="font-weight: 700; color: #4ade80; font-family: monospace;">
+        <span class="text-xs text-muted">Puedes modificarla o dejar esta clave autogenerada.</span>
       </div>
 
-      <div style="display: flex; gap: 8px; margin-top: 14px;">
-        <button class="btn btn-primary btn-block btn-lg" onclick="executeResetPassword(${userId})">
-          Confirmar y Restablecer
+      <div style="display: flex; gap: 10px; margin-top: 18px;">
+        <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('reset-pass-modal').remove()">
+          Cancelar
+        </button>
+        <button type="button" class="btn btn-primary" style="flex: 1;" onclick="executeResetPassword(${userId}, '${userName.replace(/'/g, "\\'")}')">
+          🔑 Confirmar Reset
         </button>
       </div>
     </div>
@@ -980,13 +1070,21 @@ function resetUserPasswordPrompt(userId, userName) {
   document.body.appendChild(modal);
 }
 
-async function executeResetPassword(userId) {
-  const tempPass = document.getElementById('reset-pass-input').value.trim();
+async function executeResetPassword(userId, userName = '') {
+  const tempPass = document.getElementById('reset-pass-input')?.value.trim();
   const res = await api.resetUserPassword(userId, { temp_password: tempPass });
 
   if (res.success) {
     document.getElementById('reset-pass-modal')?.remove();
-    showToast(`✅ ${res.message} Clave: ${tempPass}`, 'success');
+    showToast(`✅ ${res.message}`, 'success');
+    showCredentialModal(
+      'Contraseña Restablecida',
+      res.userName || userName || 'Usuario',
+      res.userEmail || 'correo del usuario',
+      res.tempPassword || tempPass,
+      res.emailSent,
+      res.emailError
+    );
   } else {
     showToast(res.error || 'Error al restablecer contraseña.', 'error');
   }
@@ -999,7 +1097,20 @@ async function toggleUserStatusAction(userId, newBlockedState, userName) {
   const res = await api.toggleUserStatus(userId, { is_blocked: newBlockedState });
   if (res.success) {
     showToast(res.message, 'success');
-    navigateTo('/admin');
+    if (!newBlockedState && res.tempPassword) {
+      showCredentialModal(
+        'Cuenta Desbloqueada — Credenciales de Acceso',
+        res.userName || userName,
+        res.userEmail || 'correo del usuario',
+        res.tempPassword,
+        res.emailSent,
+        res.emailError
+      );
+    }
+    const contentEl = document.getElementById('admin-tab-content');
+    if (contentEl) {
+      contentEl.innerHTML = await renderUsersTabContent();
+    }
   } else {
     showToast(res.error || 'Error al cambiar estado.', 'error');
   }

@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { createNotification } = require('../services/notificationService');
-const { sendApprovalEmail, sendRejectionEmail, sendAdminTransferEmail } = require('../services/emailService');
+const { sendApprovalEmail, sendPasswordResetEmail, sendRejectionEmail, sendAdminTransferEmail } = require('../services/emailService');
 
 // ===== 1. GESTIÓN DE USUARIOS =====
 
@@ -94,13 +94,35 @@ async function toggleUserStatus(req, res) {
 
     const newBlockedState = is_blocked ? 1 : 0;
     const newStatus = newBlockedState ? 'blocked' : 'active';
+    let tempPassword = null;
+    let emailSent = false;
+    let emailError = null;
 
-    await dbRun('UPDATE users SET is_blocked = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newBlockedState, newStatus, userId]);
+    if (newBlockedState === 0) {
+      // Al desbloquear, generar contraseña temporal y enviar email de acceso
+      tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      await dbRun(
+        'UPDATE users SET is_blocked = 0, status = "active", password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [passwordHash, userId]
+      );
+
+      try {
+        const mailRes = await sendPasswordResetEmail(user, tempPassword, 'Cuenta Reactivada / Desbloqueada por el Administrador');
+        emailSent = mailRes && mailRes.success;
+        if (!emailSent && mailRes?.error) emailError = mailRes.error;
+      } catch (mailErr) {
+        console.error('[UNBLOCK_EMAIL_ERROR]:', mailErr.message);
+        emailError = mailErr.message;
+      }
+    } else {
+      await dbRun('UPDATE users SET is_blocked = 1, status = "blocked", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [userId]);
+    }
 
     const actionText = newBlockedState ? 'BLOQUEAR_CUENTA' : 'DESBLOQUEAR_CUENTA';
     const detailText = newBlockedState
       ? `Cuenta de "${user.name}" (${user.email}) bloqueada. Motivo: ${reason || 'Sospecha o infracción de normas'}`
-      : `Cuenta de "${user.name}" reactivada por administración.`;
+      : `Cuenta de "${user.name}" reactivada por administración. Credenciales temporales generadas.`;
 
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
@@ -109,9 +131,16 @@ async function toggleUserStatus(req, res) {
 
     res.json({
       success: true,
-      message: `Cuenta de ${user.name} ${newBlockedState ? 'bloqueada' : 'habilitada'} exitosamente.`,
+      message: `Cuenta de ${user.name} ${newBlockedState ? 'bloqueada' : 'desbloqueada y habilitada'} exitosamente.${tempPassword ? (emailSent ? ' Se enviaron las credenciales por correo.' : ' Credenciales listas para copia manual.') : ''}`,
       status: newStatus,
-      is_blocked: newBlockedState
+      is_blocked: newBlockedState,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      tempPassword,
+      provisional_password: tempPassword,
+      emailSent,
+      emailError
     });
   } catch (err) {
     console.error('Error al alternar estado del usuario:', err);
@@ -129,10 +158,24 @@ async function resetUserPassword(req, res) {
       return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
     }
 
-    const provisionalPassword = temp_password || 'AgroPasco2026!';
-    const passwordHash = await bcrypt.hash(provisionalPassword, 10);
+    const provisionalPassword = (temp_password && temp_password.trim()) || ('AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!');
+    const passwordHash = await bcrypt.hash(provisionalPassword, 12);
 
-    await dbRun('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [passwordHash, userId]);
+    await dbRun(
+      'UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = "active", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [passwordHash, userId]
+    );
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const mailRes = await sendPasswordResetEmail(user, provisionalPassword, 'Restablecimiento de credenciales por el Administrador');
+      emailSent = mailRes && mailRes.success;
+      if (!emailSent && mailRes?.error) emailError = mailRes.error;
+    } catch (mailErr) {
+      console.error('[RESET_PASSWORD_EMAIL_ERROR]:', mailErr.message);
+      emailError = mailErr.message;
+    }
 
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
@@ -141,12 +184,61 @@ async function resetUserPassword(req, res) {
 
     res.json({
       success: true,
-      message: `Contraseña restablecida exitosamente para ${user.name}.`,
-      provisional_password: provisionalPassword
+      message: `Contraseña restablecida exitosamente para ${user.name}.${emailSent ? ' Se envió un email con las credenciales.' : ' Credencial lista para copia manual.'}`,
+      provisional_password: provisionalPassword,
+      tempPassword: provisionalPassword,
+      emailSent,
+      emailError
     });
   } catch (err) {
     console.error('Error al resetear contraseña:', err);
     res.status(500).json({ success: false, error: 'Error al restablecer contraseña.' });
+  }
+}
+
+async function resendCredentials(req, res) {
+  try {
+    const userId = req.params.id;
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+
+    const tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    await dbRun(
+      'UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = "active", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [passwordHash, userId]
+    );
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const mailRes = await sendPasswordResetEmail(user, tempPassword, 'Reenvío de credenciales de acceso solicitadas por Administración');
+      emailSent = mailRes && mailRes.success;
+      if (!emailSent && mailRes?.error) emailError = mailRes.error;
+    } catch (mailErr) {
+      console.error('[RESEND_CREDENTIALS_EMAIL_ERROR]:', mailErr.message);
+      emailError = mailErr.message;
+    }
+
+    await dbRun(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'RESEND_CREDENTIALS', 'user', userId, `Credenciales reenviadas a ${user.name} (${user.email}).`, req.ip]
+    );
+
+    res.json({
+      success: true,
+      message: `Credenciales regeneradas y reenviadas exitosamente a ${user.email}.${emailSent ? '' : ' Credencial lista para copia manual.'}`,
+      tempPassword,
+      provisional_password: tempPassword,
+      emailSent,
+      emailError
+    });
+  } catch (err) {
+    console.error('Error al reenviar credenciales:', err);
+    res.status(500).json({ success: false, error: 'Error al reenviar credenciales.' });
   }
 }
 
@@ -591,19 +683,34 @@ async function approveAccount(req, res) {
       'info'
     );
 
-    // Email con credenciales temporales
-    await sendApprovalEmail(user, tempPassword);
+    // Email con credenciales temporales (envuelto para no bloquear la aprobación en caso de falla SMTP)
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const mailRes = await sendApprovalEmail(user, tempPassword);
+      emailSent = mailRes && mailRes.success;
+      if (!emailSent && mailRes?.error) emailError = mailRes.error;
+    } catch (mailErr) {
+      console.error('[APPROVE_ACCOUNT_EMAIL_ERROR]:', mailErr.message);
+      emailError = mailErr.message;
+    }
 
     // Registro de auditoría
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, 'APROBAR_CUENTA', 'user', userId, `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Credenciales temporales enviadas.`, req.ip]
+      [req.user.id, 'APROBAR_CUENTA', 'user', userId, `Cuenta de "${user.name}" (${user.email}) aprobada como ${roleLabel}. Credenciales temporales generadas.`, req.ip]
     );
 
     res.json({
       success: true,
-      message: `Cuenta de ${user.name} aprobada exitosamente. Se ha enviado un email con las credenciales temporales.`,
-      tempPassword // Se muestra al admin por si el email falla
+      message: `Cuenta de ${user.name} aprobada exitosamente.${emailSent ? ' Se ha enviado un email con las credenciales temporales.' : ' Credenciales listas para copia manual por el Administrador.'}`,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      tempPassword,
+      provisional_password: tempPassword,
+      emailSent,
+      emailError
     });
   } catch (err) {
     console.error('Error al aprobar cuenta:', err);
@@ -820,5 +927,6 @@ module.exports = {
   getPendingAccounts,
   approveAccount,
   rejectAccount,
+  resendCredentials,
   transferAdministration
 };

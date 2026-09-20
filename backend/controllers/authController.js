@@ -70,6 +70,10 @@ async function register(req, res) {
       return res.status(201).json({
         success: true,
         pending: true,
+        requestId: result.lastID,
+        userId: result.lastID,
+        email,
+        role: validRole,
         message: `¡Solicitud enviada! Tu cuenta como ${roleLabel} está pendiente de aprobación por el Administrador. Recibirás una notificación cuando sea revisada.`
       });
     }
@@ -312,11 +316,105 @@ async function setupInitialAdmin(req, res) {
   }
 }
 
+/**
+ * Consulta del estado de una solicitud de registro para actualización reactiva del stepper en frontend
+ * Acepta identifier por params o query (email o id/requestId)
+ */
+async function getApplicationStatus(req, res) {
+  try {
+    const identifier = req.params.identifier || req.query.email || req.query.requestId || req.query.userId || req.query.id;
+    if (!identifier) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parámetro de búsqueda (email o id) requerido para consultar la solicitud.'
+      });
+    }
+
+    let user = null;
+    const cleanId = String(identifier).trim();
+    if (cleanId.includes('@')) {
+      user = await dbGet(
+        'SELECT id, name, email, role, status, is_blocked, must_change_password, rejection_reason, approved_at, created_at FROM users WHERE LOWER(email) = LOWER(?)',
+        [cleanId]
+      );
+    } else if (!isNaN(parseInt(cleanId, 10))) {
+      user = await dbGet(
+        'SELECT id, name, email, role, status, is_blocked, must_change_password, rejection_reason, approved_at, created_at FROM users WHERE id = ?',
+        [parseInt(cleanId, 10)]
+      );
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'No se encontró ninguna solicitud de cuenta registrada con los datos proporcionados.'
+      });
+    }
+
+    const roleLabel = user.role === 'advisor' ? 'Asesor Técnico' : (user.role === 'supermarket' ? 'Supermercado' : 'Agricultor');
+    const isApproved = user.status === 'active' && !user.is_blocked;
+    const isRejected = user.status === 'rejected';
+    const isPending = user.status === 'pending';
+
+    // Steps definition:
+    // Step 1: Solicitud registrada
+    // Step 2: Revisión del Administrador (in_progress si pending, completed si active, rejected si rejected)
+    // Step 3: Notificación por correo (completed si active, pending si pending)
+    let currentStep = 1;
+    let statusText = 'Pendiente de Aprobación';
+    let message = 'Tu solicitud está en cola para revisión del Administrador.';
+
+    if (isApproved) {
+      currentStep = 3;
+      statusText = 'Aprobada';
+      message = '¡Tu cuenta ha sido aprobada! Revisa tu bandeja de correo para obtener tu contraseña provisional o temporal de acceso.';
+    } else if (isRejected) {
+      currentStep = 2;
+      statusText = 'Rechazada';
+      message = user.rejection_reason || 'Tu solicitud no fue aprobada por el Administrador.';
+    } else if (isPending) {
+      currentStep = 2;
+      statusText = 'En Revisión';
+      message = 'El Administrador está evaluando tu perfil y credenciales institucionales.';
+    }
+
+    res.json({
+      success: true,
+      data: {
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        roleLabel,
+        status: user.status,
+        statusText,
+        message,
+        step: currentStep,
+        stepStatus: {
+          step1: 'completed',
+          step2: isApproved ? 'completed' : (isRejected ? 'rejected' : 'in_progress'),
+          step3: isApproved ? 'completed' : 'pending'
+        },
+        isApproved,
+        isRejected,
+        isPending,
+        rejectionReason: user.rejection_reason,
+        approvedAt: user.approved_at,
+        createdAt: user.created_at
+      }
+    });
+  } catch (err) {
+    console.error('Error al consultar estado de solicitud:', err);
+    res.status(500).json({ success: false, error: 'Error al consultar estado de la solicitud.' });
+  }
+}
+
 module.exports = {
   register,
   login,
   getProfile,
   changePassword,
   getSetupStatus,
-  setupInitialAdmin
+  setupInitialAdmin,
+  getApplicationStatus
 };

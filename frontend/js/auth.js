@@ -148,6 +148,10 @@ function switchAuthTab(tab) {
   const tabRegister = document.getElementById('tab-register');
 
   if (tab === 'login') {
+    if (window.__stepperPollInterval) {
+      clearInterval(window.__stepperPollInterval);
+      window.__stepperPollInterval = null;
+    }
     tabLogin.classList.add('active');
     tabRegister.classList.remove('active');
     document.getElementById('login-form-container').classList.remove('hidden');
@@ -157,6 +161,22 @@ function switchAuthTab(tab) {
     tabLogin.classList.remove('active');
     document.getElementById('login-form-container').classList.add('hidden');
     document.getElementById('register-form-container').classList.remove('hidden');
+  }
+}
+
+function goToLoginWithEmail(email) {
+  if (window.__stepperPollInterval) {
+    clearInterval(window.__stepperPollInterval);
+    window.__stepperPollInterval = null;
+  }
+  switchAuthTab('login');
+  if (email) {
+    const emailInput = document.getElementById('login-email');
+    if (emailInput) {
+      emailInput.value = email;
+      const passInput = document.getElementById('login-password');
+      if (passInput) passInput.focus();
+    }
   }
 }
 
@@ -235,8 +255,13 @@ async function handleRegister(e) {
     // ===== Flujo de aprobación: rol sensible queda pendiente =====
     if (result.pending) {
       showToast(result.message, 'info');
-      // Mostrar mensaje informativo prominente y volver al login
-      showPendingApprovalMessage(result.message);
+      // Mostrar mensaje informativo prominente y activar stepper reactivo
+      const identifier = result.requestId || result.userId || result.email || document.getElementById('reg-email')?.value?.trim();
+      showPendingApprovalMessage(result.message, identifier, {
+        name: document.getElementById('reg-name')?.value?.trim(),
+        email: document.getElementById('reg-email')?.value?.trim() || result.email,
+        role: document.getElementById('reg-role')?.value || result.role
+      });
       return;
     }
 
@@ -253,36 +278,167 @@ async function handleRegister(e) {
 }
 
 /**
- * Muestra un mensaje informativo cuando la cuenta queda pendiente de aprobación.
- * Luego redirige al tab de login.
+ * Muestra el stepper reactivo cuando la cuenta queda pendiente de aprobación.
+ * Consulta periódicamente (/api/users/application-status) para mover los pasos
+ * de Paso 1 a Paso 2 y Paso 3 en tiempo real.
  */
-function showPendingApprovalMessage(message) {
+function showPendingApprovalMessage(message, identifier, userData = {}) {
   const container = document.getElementById('register-form-container');
-  if (container) {
-    container.innerHTML = `
-      <div class="pending-approval-message">
-        <div class="pending-approval-icon">⏳</div>
-        <h3>Solicitud Enviada</h3>
-        <p>${message}</p>
-        <div class="pending-approval-steps">
-          <div class="step-item">
-            <span class="step-number">1</span>
-            <span>Solicitud registrada ✅</span>
-          </div>
-          <div class="step-item pending">
-            <span class="step-number">2</span>
-            <span>Revisión del Administrador ⏳</span>
-          </div>
-          <div class="step-item pending">
-            <span class="step-number">3</span>
-            <span>Notificación por correo 📧</span>
-          </div>
+  if (!container) return;
+
+  if (window.__stepperPollInterval) {
+    clearInterval(window.__stepperPollInterval);
+    window.__stepperPollInterval = null;
+  }
+
+  const queryId = identifier || userData.requestId || userData.userId || userData.email || '';
+  const emailDisplay = userData.email || (String(queryId).includes('@') ? queryId : '');
+  const roleDisplay = userData.role === 'advisor' ? 'Asesor Técnico' : (userData.role === 'supermarket' ? 'Supermercado' : 'Usuario');
+
+  container.innerHTML = `
+    <div class="pending-approval-message" id="application-stepper-card">
+      <div class="pending-approval-icon" id="stepper-status-icon">⏳</div>
+      <h3 id="stepper-status-title">Solicitud Enviada</h3>
+      <p id="stepper-status-desc">${message || 'Tu solicitud de cuenta está pendiente de aprobación por el Administrador Central.'}</p>
+
+      <div class="pending-approval-steps" id="stepper-steps-list">
+        <div class="step-item completed" id="stepper-step-1">
+          <span class="step-number">1</span>
+          <span>Solicitud registrada ✅</span>
         </div>
-        <button class="btn btn-primary btn-block" onclick="switchAuthTab('login')" style="margin-top: 20px;">
+        <div class="step-item in-progress" id="stepper-step-2">
+          <span class="step-number">2</span>
+          <span>Revisión del Administrador ⏳ (En curso)</span>
+        </div>
+        <div class="step-item pending" id="stepper-step-3">
+          <span class="step-number">3</span>
+          <span>Notificación por correo 📧 (En espera de aprobación)</span>
+        </div>
+      </div>
+
+      <div id="stepper-status-alert" style="margin: 12px 0;"></div>
+
+      <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <button type="button" class="btn btn-secondary btn-block btn-sm" id="btn-check-status-now" onclick="checkStepperApplicationStatus('${queryId}')">
+          🔄 Verificar Estado
+        </button>
+        <button type="button" class="btn btn-secondary btn-block btn-sm" onclick="goToLoginWithEmail('${emailDisplay}')">
           ← Volver a Iniciar Sesión
         </button>
       </div>
-    `;
+      <div id="stepper-action-primary" style="margin-top: 12px;"></div>
+    </div>
+  `;
+
+  // Iniciar sondeo / polling automático cada 3.5 segundos
+  if (queryId) {
+    setTimeout(() => checkStepperApplicationStatus(queryId), 1200);
+
+    window.__stepperPollInterval = setInterval(() => {
+      checkStepperApplicationStatus(queryId);
+    }, 3500);
+  }
+}
+
+/**
+ * Consulta el estado de la solicitud en el backend y actualiza las clases y textos del stepper
+ */
+async function checkStepperApplicationStatus(identifier) {
+  if (!identifier) return;
+  const statusAlert = document.getElementById('stepper-status-alert');
+  const step2 = document.getElementById('stepper-step-2');
+  const step3 = document.getElementById('stepper-step-3');
+  const statusIcon = document.getElementById('stepper-status-icon');
+  const statusTitle = document.getElementById('stepper-status-title');
+  const statusDesc = document.getElementById('stepper-status-desc');
+  const primaryAction = document.getElementById('stepper-action-primary');
+
+  try {
+    const res = await api.getApplicationStatus(identifier);
+    if (!res || !res.success || !res.data) return;
+
+    const data = res.data;
+
+    if (data.isApproved || data.status === 'active') {
+      // 1. Paso 2 y Paso 3 Completados (Aprobado)
+      if (window.__stepperPollInterval) {
+        clearInterval(window.__stepperPollInterval);
+        window.__stepperPollInterval = null;
+      }
+
+      if (statusIcon) statusIcon.textContent = '🎉';
+      if (statusTitle) statusTitle.textContent = '¡Cuenta Aprobada y Habilitada!';
+      if (statusDesc) {
+        statusDesc.innerHTML = `El Administrador ha aprobado tu cuenta como <strong>${data.roleLabel || 'usuario'}</strong>. Se generó y envió tu contraseña temporal al correo <strong>${data.email}</strong>.`;
+      }
+
+      if (step2) {
+        step2.className = 'step-item completed';
+        step2.innerHTML = '<span class="step-number">2</span><span>Revisión del Administrador ✅ Aprobada</span>';
+      }
+      if (step3) {
+        step3.className = 'step-item completed';
+        step3.innerHTML = '<span class="step-number">3</span><span>Notificación por correo 📧 Credenciales enviadas</span>';
+      }
+
+      if (statusAlert) {
+        statusAlert.innerHTML = `
+          <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 13.5px; text-align: center;">
+            ✅ Acceso Concedido: Revisa tu bandeja de correo e inicia sesión con tu clave provisional.
+          </div>
+        `;
+      }
+
+      if (primaryAction) {
+        primaryAction.innerHTML = `
+          <button type="button" class="btn btn-primary btn-block btn-lg" onclick="goToLoginWithEmail('${data.email}')" style="background: #16a34a; border-color: #16a34a; font-weight: 700; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">
+            🔐 Iniciar Sesión Ahora
+          </button>
+        `;
+      }
+
+      showToast('¡Tu cuenta ha sido aprobada por el Administrador!', 'success');
+    } else if (data.isRejected || data.status === 'rejected') {
+      // Solicitud rechazada
+      if (window.__stepperPollInterval) {
+        clearInterval(window.__stepperPollInterval);
+        window.__stepperPollInterval = null;
+      }
+
+      if (statusIcon) statusIcon.textContent = '❌';
+      if (statusTitle) statusTitle.textContent = 'Solicitud No Aprobada';
+      if (statusDesc) statusDesc.textContent = 'Tu solicitud de acceso no fue aprobada por la administración del sistema.';
+
+      if (step2) {
+        step2.className = 'step-item rejected';
+        step2.innerHTML = '<span class="step-number">2</span><span>Revisión del Administrador ❌ Rechazada</span>';
+      }
+      if (step3) {
+        step3.className = 'step-item rejected';
+        step3.innerHTML = '<span class="step-number">3</span><span>Notificación por correo ⛔ Cancelada</span>';
+      }
+
+      if (statusAlert) {
+        statusAlert.innerHTML = `
+          <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; padding: 12px; border-radius: 8px; font-size: 13px; text-align: left;">
+            <strong>Motivo indicado:</strong> ${data.rejectionReason || 'No especificado por el administrador.'}<br>
+            <span style="font-size: 12px; opacity: 0.85;">Si consideras que esto es un error, por favor contacta al canal de soporte.</span>
+          </div>
+        `;
+      }
+    } else {
+      // En evaluación activa (pending)
+      if (step2) {
+        step2.className = 'step-item in-progress';
+        step2.innerHTML = '<span class="step-number">2</span><span>Revisión del Administrador ⏳ (En evaluación activa)</span>';
+      }
+      if (step3) {
+        step3.className = 'step-item pending';
+        step3.innerHTML = '<span class="step-number">3</span><span>Notificación por correo 📧 (En espera de dictamen)</span>';
+      }
+    }
+  } catch (err) {
+    console.warn('Error al verificar estado de solicitud en el stepper:', err);
   }
 }
 

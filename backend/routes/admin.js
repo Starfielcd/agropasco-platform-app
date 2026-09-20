@@ -23,6 +23,7 @@ const {
   getPendingAccounts,
   approveAccount,
   rejectAccount,
+  resendCredentials,
   transferAdministration
 } = require('../controllers/adminController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -36,6 +37,7 @@ router.get('/users', listUsers);
 router.put('/users/:id/role', updateUserRole);
 router.put('/users/:id/status', toggleUserStatus);
 router.post('/users/:id/reset-password', resetUserPassword);
+router.post('/users/:id/resend-credentials', resendCredentials);
 router.get('/duplicates', detectDuplicates);
 router.delete('/users/:id', deleteUser);
 
