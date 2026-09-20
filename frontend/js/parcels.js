@@ -6,8 +6,12 @@
 let parcelMap = null;
 
 async function renderParcelsPage() {
-  const result = await api.getParcels();
+  const [result, cropsResult] = await Promise.all([
+    api.getParcels(),
+    api.getCrops ? api.getCrops() : Promise.resolve({ data: [] })
+  ]);
   const parcels = result.data || [];
+  const crops = (cropsResult && cropsResult.data) ? cropsResult.data : [];
 
   return `
     <div class="page-content">
@@ -67,13 +71,20 @@ async function renderParcelsPage() {
               <label class="form-label">Cultivo Actual</label>
               <select class="form-select" id="parcel-crop-type">
                 <option value="">Sin cultivo asignado</option>
-                <option value="papa">🥔 Papa</option>
-                <option value="maca">🌿 Maca</option>
-                <option value="quinua">🌾 Quinua</option>
-                <option value="habas">🫘 Habas</option>
-                <option value="cafe">☕ Café</option>
-                <option value="olluco">🟡 Olluco</option>
-                <option value="cebada">🌾 Cebada</option>
+                ${crops.length > 0 ? `
+                  <optgroup label="🌱 Mis Cultivos Registrados">
+                    ${crops.map(c => `<option value="${c.id}" data-crop-type="${c.crop_type}">🌱 ${c.name} (${c.crop_type})</option>`).join('')}
+                  </optgroup>
+                ` : ''}
+                <optgroup label="📋 Tipos de Cultivo Generales">
+                  <option value="papa" data-crop-type="papa">🥔 Papa</option>
+                  <option value="maca" data-crop-type="maca">🌿 Maca</option>
+                  <option value="quinua" data-crop-type="quinua">🌾 Quinua</option>
+                  <option value="habas" data-crop-type="habas">🫘 Habas</option>
+                  <option value="cafe" data-crop-type="cafe">☕ Café</option>
+                  <option value="olluco" data-crop-type="olluco">🟡 Olluco</option>
+                  <option value="cebada" data-crop-type="cebada">🌾 Cebada</option>
+                </optgroup>
               </select>
             </div>
           </div>
@@ -423,21 +434,44 @@ async function handleCreateParcel(e) {
     return;
   }
 
+  const cropSelect = document.getElementById('parcel-crop-type');
+  const selectedCropVal = cropSelect?.value || '';
+  const selectedCropOption = cropSelect?.options ? cropSelect.options[cropSelect.selectedIndex] : null;
+  const selectedCropType = selectedCropOption?.getAttribute('data-crop-type') || '';
+
+  let cropId = null;
+  let cropType = null;
+
+  if (selectedCropVal) {
+    if (!isNaN(Number(selectedCropVal)) && Number(selectedCropVal) > 0) {
+      cropId = parseInt(selectedCropVal, 10);
+      cropType = selectedCropType || null;
+    } else {
+      cropType = selectedCropVal;
+      cropId = null;
+    }
+  }
+
+  const currentUser = typeof getUser === 'function' ? getUser() : null;
+  const currentUserId = currentUser?.id || null;
+
   const submitBtn = document.getElementById('parcel-submit-btn') || e.target.querySelector('button[type="submit"]');
 
   const executeCreate = async () => {
     if (window.AgroLogger) AgroLogger.action('PARCEL', 'Enviando registro de parcela delimitada');
 
     const result = await api.createParcel({
-      name: document.getElementById('parcel-name').value,
+      user_id: currentUserId,
+      name: document.getElementById('parcel-name').value.trim(),
       geo_json: geoJson,
       area_hectares: parseFloat(document.getElementById('parcel-area-ha').value) || 0,
       center_lat: parseFloat(document.getElementById('parcel-center-lat').value) || null,
       center_lng: parseFloat(document.getElementById('parcel-center-lng').value) || null,
-      crop_type: document.getElementById('parcel-crop-type').value || null,
+      crop_id: cropId,
+      crop_type: cropType,
       planting_date: document.getElementById('parcel-planting-date').value || null,
-      altitude_masl: parseInt(document.getElementById('parcel-altitude').value) || 4380,
-      notes: document.getElementById('parcel-notes').value || null,
+      altitude_masl: parseInt(document.getElementById('parcel-altitude').value, 10) || 4380,
+      notes: document.getElementById('parcel-notes').value ? document.getElementById('parcel-notes').value.trim() : null,
       photo_url: photoUrl.trim()
     });
 
@@ -448,8 +482,8 @@ async function handleCreateParcel(e) {
       navigateTo('/parcels');
     } else {
       const errorMsg = result.error || 'Error al registrar parcela';
-      if (window.AgroLogger) AgroLogger.error('PARCEL', 'Fallo al registrar parcela en el servidor', { error: errorMsg });
-      showToast(`Error al registrar parcela: ${errorMsg}`, 'error');
+      if (window.AgroLogger) AgroLogger.error('PARCEL', 'Fallo al registrar parcela en el servidor', { error: errorMsg, field: result.field });
+      showToast(errorMsg, 'error');
     }
   };
 
@@ -462,13 +496,18 @@ async function handleCreateParcel(e) {
 
 // ===== MODAL DE EDICIÓN DE PARCELAS =====
 async function showEditParcelModal(parcelId) {
-  const result = await api.getParcel(parcelId);
+  const [result, cropsResult] = await Promise.all([
+    api.getParcel(parcelId),
+    api.getCrops ? api.getCrops() : Promise.resolve({ data: [] })
+  ]);
+
   if (!result.success) {
     showToast('Error al cargar datos de la parcela', 'error');
     return;
   }
 
   const p = result.data;
+  const crops = (cropsResult && cropsResult.data) ? cropsResult.data : [];
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -506,14 +545,21 @@ async function showEditParcelModal(parcelId) {
           <div class="form-group">
             <label class="form-label">Cultivo Asignado</label>
             <select class="form-select" id="edit-parcel-crop">
-              <option value="" ${!p.crop_type ? 'selected' : ''}>Sin cultivo asignado</option>
-              <option value="papa" ${p.crop_type === 'papa' ? 'selected' : ''}>🥔 Papa</option>
-              <option value="maca" ${p.crop_type === 'maca' ? 'selected' : ''}>🌿 Maca</option>
-              <option value="quinua" ${p.crop_type === 'quinua' ? 'selected' : ''}>🌾 Quinua</option>
-              <option value="habas" ${p.crop_type === 'habas' ? 'selected' : ''}>🫘 Habas</option>
-              <option value="cafe" ${p.crop_type === 'cafe' ? 'selected' : ''}>☕ Café</option>
-              <option value="olluco" ${p.crop_type === 'olluco' ? 'selected' : ''}>🟡 Olluco</option>
-              <option value="cebada" ${p.crop_type === 'cebada' ? 'selected' : ''}>🌾 Cebada</option>
+              <option value="" ${!p.crop_id && !p.crop_type ? 'selected' : ''}>Sin cultivo asignado</option>
+              ${crops.length > 0 ? `
+                <optgroup label="🌱 Mis Cultivos Registrados">
+                  ${crops.map(c => `<option value="${c.id}" data-crop-type="${c.crop_type}" ${p.crop_id === c.id ? 'selected' : ''}>🌱 ${c.name} (${c.crop_type})</option>`).join('')}
+                </optgroup>
+              ` : ''}
+              <optgroup label="📋 Tipos de Cultivo Generales">
+                <option value="papa" data-crop-type="papa" ${!p.crop_id && p.crop_type === 'papa' ? 'selected' : ''}>🥔 Papa</option>
+                <option value="maca" data-crop-type="maca" ${!p.crop_id && p.crop_type === 'maca' ? 'selected' : ''}>🌿 Maca</option>
+                <option value="quinua" data-crop-type="quinua" ${!p.crop_id && p.crop_type === 'quinua' ? 'selected' : ''}>🌾 Quinua</option>
+                <option value="habas" data-crop-type="habas" ${!p.crop_id && p.crop_type === 'habas' ? 'selected' : ''}>🫘 Habas</option>
+                <option value="cafe" data-crop-type="cafe" ${!p.crop_id && p.crop_type === 'cafe' ? 'selected' : ''}>☕ Café</option>
+                <option value="olluco" data-crop-type="olluco" ${!p.crop_id && p.crop_type === 'olluco' ? 'selected' : ''}>🟡 Olluco</option>
+                <option value="cebada" data-crop-type="cebada" ${!p.crop_id && p.crop_type === 'cebada' ? 'selected' : ''}>🌾 Cebada</option>
+              </optgroup>
             </select>
           </div>
           <div class="form-group">
@@ -598,15 +644,34 @@ async function handleUpdateParcel(e, parcelId) {
   e.preventDefault();
   const submitBtn = document.getElementById('edit-parcel-submit-btn') || e.target.querySelector('button[type="submit"]');
 
+  const cropSelect = document.getElementById('edit-parcel-crop');
+  const selectedCropVal = cropSelect?.value || '';
+  const selectedCropOption = cropSelect?.options ? cropSelect.options[cropSelect.selectedIndex] : null;
+  const selectedCropType = selectedCropOption?.getAttribute('data-crop-type') || '';
+
+  let cropId = null;
+  let cropType = null;
+
+  if (selectedCropVal) {
+    if (!isNaN(Number(selectedCropVal)) && Number(selectedCropVal) > 0) {
+      cropId = parseInt(selectedCropVal, 10);
+      cropType = selectedCropType || null;
+    } else {
+      cropType = selectedCropVal;
+      cropId = null;
+    }
+  }
+
   const executeUpdate = async () => {
     const result = await api.updateParcel(parcelId, {
-      name: document.getElementById('edit-parcel-name').value,
-      crop_type: document.getElementById('edit-parcel-crop').value || null,
+      name: document.getElementById('edit-parcel-name').value.trim(),
+      crop_id: cropId,
+      crop_type: cropType,
       status: document.getElementById('edit-parcel-status').value,
       area_hectares: parseFloat(document.getElementById('edit-parcel-area').value) || 0,
-      altitude_masl: parseInt(document.getElementById('edit-parcel-altitude').value) || 4380,
+      altitude_masl: parseInt(document.getElementById('edit-parcel-altitude').value, 10) || 4380,
       planting_date: document.getElementById('edit-parcel-planting-date').value || null,
-      notes: document.getElementById('edit-parcel-notes').value || null
+      notes: document.getElementById('edit-parcel-notes').value ? document.getElementById('edit-parcel-notes').value.trim() : null
     });
 
     if (result.success) {
@@ -617,7 +682,7 @@ async function handleUpdateParcel(e, parcelId) {
     } else {
       const errMsg = result.error || 'Error al actualizar parcela';
       if (window.AgroLogger) AgroLogger.error('PARCEL', 'Fallo al actualizar parcela', { error: errMsg });
-      showToast(`Error al actualizar parcela: ${errMsg}`, 'error');
+      showToast(errMsg, 'error');
       // Modal remains open so the user doesn't lose changes
     }
   };

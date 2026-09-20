@@ -174,13 +174,16 @@ async function initializeDatabase() {
       center_lat REAL,
       center_lng REAL,
       crop_type TEXT,
+      crop_id INTEGER,
       planting_date DATE,
       status TEXT DEFAULT 'activa' CHECK(status IN ('activa', 'en_descanso', 'planificada', 'cosechada')),
       altitude_masl INTEGER DEFAULT 4380,
       notes TEXT,
+      photo_url TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (crop_id) REFERENCES crops(id) ON DELETE SET NULL
     )
   `);
 
@@ -317,6 +320,7 @@ async function initializeDatabase() {
   // ===== MIGRACIÓN: Fotos obligatorias y seguimiento de plagas =====
   const pestAndPhotoMigrations = [
     "ALTER TABLE parcels ADD COLUMN photo_url TEXT",
+    "ALTER TABLE parcels ADD COLUMN crop_id INTEGER REFERENCES crops(id) ON DELETE SET NULL",
     "ALTER TABLE crops ADD COLUMN photo_url TEXT",
     "ALTER TABLE pest_reports ADD COLUMN control_status TEXT DEFAULT 'pendiente'",
     "ALTER TABLE pest_reports ADD COLUMN attachment_video_url TEXT",
