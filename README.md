@@ -304,11 +304,59 @@ agropasco-platform/
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
 | GET | `/api/config/maps` | Configuración de mapas (público) |
-| GET | `/api` | Documentación completa de la API |
+### Machine Learning Meteorológico
+| Método | Endpoint | Rol Mínimo | Descripción |
+|--------|----------|------------|-------------|
+| GET | `/api/ml/predict/:parcelId` | Propietario / Advisor / Admin | Inferencia ML por parcela con degradación a reglas |
+| GET | `/api/ml/predictions` | Farmer | Predicciones de todas las parcelas del usuario |
+| GET | `/api/ml/predictions/all` | Advisor / Admin | Predicciones consolidadas de la región Pasco |
+| GET | `/api/ml/models/status` | Autenticado | Estado de los 4 modelos y métricas auditadas |
+| GET | `/api/ml/alerts` | Farmer | Consulta de alertas meteorológicas del usuario |
+| PUT | `/api/ml/alerts/:id/read` | Propietario | Marca una alerta propia como leída |
+| GET | `/api/ml/preferences` | Farmer | Consulta de preferencias de notificación |
+| PUT | `/api/ml/preferences` | Farmer | Actualización de preferencias de notificación |
+| POST | `/api/ml/alerts/generate` | Admin | Generación batch de alertas con prevención de duplicados |
+| GET | `/api/ml/observations` | Autenticado | Consulta de observaciones de campo verificadas |
+| POST | `/api/ml/observations` | Autenticado | Registro de observación física de campo / SENAMHI |
+| GET | `/api/ml/admin/dashboard` | Admin | Panel de salud, caché y métricas ML |
 
 ---
 
-##  Despliegue en Render
+## 🔬 Módulo de Machine Learning Meteorológico
+
+El sistema cuenta con un microservicio desacoplado en Python (FastAPI en puerto 8100) para inferencia meteorológica predictiva sobre las próximas 72 horas provistas por Open-Meteo.
+
+### Modelos y Métricas Auditadas (Sin Target Leakage):
+- **Heladas (`frost`):** Gradient Boosting (100 estimadores). Test F1 = **0.8997** | Prec = **0.8674** | Rec = **0.9345** | PR-AUC = **0.9749** | ECE = **0.0178**.
+- **Lluvias Intensas (`heavy_rain`):** Random Forest (100 estimadores). Test F1 = **0.5900** | Prec = **0.4646** | Rec = **0.8082** | PR-AUC = **0.6288** | ECE = **0.0534**.
+- **Nevadas (`snow`):** Regresión Logística (ponderada). Test F1 = **0.7575** | Prec = **0.7904** | Rec = **0.7273** | PR-AUC = **0.8491** | ECE = **0.0274**.
+- **Granizo (`hail`):** Reglas físicas heurísticas documentadas (temperatura > 5°C, humedad > 85%, precipitación convectiva > 10mm). No entrenado por ausencia de eventos (0 horas WMO 96-99 en reanálisis ERA5).
+
+### Ejecución Local:
+```bash
+# 1. Iniciar Microservicio ML (Python)
+cd backend/ml-service
+pip install -r requirements.txt
+python -X utf8 app.py
+
+# 2. Iniciar Servidor Express (Node.js)
+cd backend
+npm install
+node server.js
+```
+
+### Ejecutar Pruebas Automatizadas:
+```bash
+# Pruebas de Python (CSVs, modelos, métricas y features sin fuga)
+python -X utf8 backend/ml-service/test_ml_full_suite.py
+
+# Pruebas de Node.js (Integración, seguridad RBAC, alertas y resiliencia)
+node backend/tests/test_ml_full_system.js
+```
+
+---
+
+## 🚀 Despliegue en Render
 
 La plataforma está preparada para despliegue en [Render](https://render.com/) como **Web Service**.
 

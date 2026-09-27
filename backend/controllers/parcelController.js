@@ -5,6 +5,35 @@
 
 const { dbRun, dbGet, dbAll } = require('../config/database');
 
+/**
+ * Extrae el centroide (lat, lng) de un GeoJSON (Polygon o Feature) si no se enviaron explícitamente.
+ */
+function extractCentroid(geoJson) {
+  try {
+    const geo = typeof geoJson === 'string' ? JSON.parse(geoJson) : geoJson;
+    let coords = [];
+    if (geo.type === 'Polygon' && geo.coordinates?.[0]) {
+      coords = geo.coordinates[0];
+    } else if (geo.type === 'Feature' && geo.geometry?.coordinates?.[0]) {
+      coords = geo.geometry.coordinates[0];
+    }
+    if (coords && coords.length > 0) {
+      let sumLat = 0, sumLng = 0;
+      for (const pt of coords) {
+        sumLng += pt[0];
+        sumLat += pt[1];
+      }
+      return {
+        lat: Number((sumLat / coords.length).toFixed(6)),
+        lng: Number((sumLng / coords.length).toFixed(6))
+      };
+    }
+  } catch (e) {
+    // Si no es un formato parseable, retornamos null
+  }
+  return null;
+}
+
 async function listParcels(req, res) {
   try {
     let parcels;
@@ -138,6 +167,16 @@ async function createParcel(req, res) {
       ? photo_url.trim()
       : null;
 
+    let finalLat = center_lat ? parseFloat(center_lat) : null;
+    let finalLng = center_lng ? parseFloat(center_lng) : null;
+    if ((finalLat === null || finalLng === null) && geoJsonStr) {
+      const centroid = extractCentroid(geoJsonStr);
+      if (centroid) {
+        if (finalLat === null) finalLat = centroid.lat;
+        if (finalLng === null) finalLng = centroid.lng;
+      }
+    }
+
     let result;
     try {
       result = await dbRun(
@@ -148,8 +187,8 @@ async function createParcel(req, res) {
           name.trim(),
           geoJsonStr,
           parseFloat(area_hectares) || 0,
-          center_lat ? parseFloat(center_lat) : null,
-          center_lng ? parseFloat(center_lng) : null,
+          finalLat,
+          finalLng,
           resolvedCropType || null,
           resolvedCropId,
           planting_date || null,
@@ -300,6 +339,16 @@ async function updateParcel(req, res) {
     const geoJsonStr = geo_json ? (typeof geo_json === 'string' ? geo_json : JSON.stringify(geo_json)) : parcel.geo_json;
     const finalPhoto = (photo_url && typeof photo_url === 'string' && photo_url.trim() !== '') ? photo_url.trim() : parcel.photo_url;
 
+    let finalLat = center_lat !== undefined ? (center_lat ? parseFloat(center_lat) : null) : parcel.center_lat;
+    let finalLng = center_lng !== undefined ? (center_lng ? parseFloat(center_lng) : null) : parcel.center_lng;
+    if ((finalLat === null || finalLng === null) && geoJsonStr) {
+      const centroid = extractCentroid(geoJsonStr);
+      if (centroid) {
+        if (finalLat === null) finalLat = centroid.lat;
+        if (finalLng === null) finalLng = centroid.lng;
+      }
+    }
+
     try {
       await dbRun(
         `UPDATE parcels SET name=?, geo_json=?, area_hectares=?, center_lat=?, center_lng=?, crop_type=?, crop_id=?, planting_date=?, status=?, altitude_masl=?, notes=?, photo_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
@@ -307,8 +356,8 @@ async function updateParcel(req, res) {
           name ? name.trim() : parcel.name,
           geoJsonStr,
           area_hectares !== undefined ? (parseFloat(area_hectares) || 0) : parcel.area_hectares,
-          center_lat !== undefined ? (center_lat ? parseFloat(center_lat) : null) : parcel.center_lat,
-          center_lng !== undefined ? (center_lng ? parseFloat(center_lng) : null) : parcel.center_lng,
+          finalLat,
+          finalLng,
           resolvedCropType || null,
           resolvedCropId,
           planting_date !== undefined ? (planting_date || null) : parcel.planting_date,

@@ -51,6 +51,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/advisor', require('./routes/advisor'));
 app.use('/api/pest-reports', require('./routes/pestReports'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/ml', require('./routes/ml'));
 
 // ===== CONFIGURACIÓN DE MAPAS (público, para frontend) =====
 app.get('/api/config/maps', (req, res) => {
@@ -81,6 +82,7 @@ app.get('/api', (req, res) => {
       supermarket: { products: 'GET /api/v1/supermarket/products', trace: 'GET /api/v1/supermarket/products/:id/trace' },
       admin: { users: 'GET /api/admin/users', update_role: 'PUT /api/admin/users/:id/role', audit: 'GET /api/admin/audit', stats: 'GET /api/admin/stats' },
       ai: { recommend: 'GET /api/ai/recommend/:cropId', frost_risk: 'GET /api/ai/frost-risk', irrigation: 'GET /api/ai/irrigation/:cropId' },
+      ml: { predict: 'GET /api/ml/predict/:parcelId', predictions: 'GET /api/ml/predictions', models: 'GET /api/ml/models/status', alerts: 'POST /api/ml/alerts/generate', admin: 'GET /api/ml/admin/dashboard' },
       maps: { config: 'GET /api/config/maps' }
     }
   });

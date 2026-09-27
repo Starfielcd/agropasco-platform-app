@@ -27,6 +27,7 @@ async function getForecastData(req, res) {
 async function getAlerts(req, res) {
   try {
     const weather = await getCurrentWeather();
+    const forecast = await getForecast();
     const simType = req.query.sim || null;
     const alerts = generateAlerts(weather, forecast, simType);
 

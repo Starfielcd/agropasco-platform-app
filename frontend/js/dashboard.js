@@ -4,13 +4,14 @@
 
 async function renderDashboard() {
   const user = getUser();
-  const [weatherRes, liveWeatherRes, cropsRes, alertsRes, productsRes, frostRes] = await Promise.all([
+  const [weatherRes, liveWeatherRes, cropsRes, alertsRes, productsRes, frostRes, mlPredRes] = await Promise.all([
     api.getCurrentWeather(),
     api.getLiveWeather(),
     api.getCrops(),
     api.getAlerts(),
     api.getProducts(),
-    api.getFrostRisk()
+    api.getFrostRisk(),
+    api.getMLPredictions().catch(() => ({ data: [] })),
   ]);
 
   const weather = weatherRes.data || {};
@@ -19,6 +20,7 @@ async function renderDashboard() {
   const alerts = alertsRes.data || {};
   const products = productsRes.data || [];
   const frost = frostRes.data || {};
+  const mlPredictions = mlPredRes.data || [];
 
   const temp = live.temp_2m ?? weather.main?.temp ?? '--';
   const humidity = live.humidity ?? weather.main?.humidity ?? '--';
@@ -106,6 +108,9 @@ async function renderDashboard() {
         </div>
       </div>
 
+      <!-- ML Risk Summary -->
+      ${renderDashboardMLWidget(mlPredictions)}
+
       <!-- Recent Crops Section -->
       <div class="card mt-lg">
         <div class="card-header">
@@ -170,6 +175,80 @@ function renderCropCard(crop) {
           <div class="crop-card-stat-value">${crop.total_logs || 0}</div>
           <div class="crop-card-stat-label">Registros</div>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== ML RISK WIDGET FOR DASHBOARD =====
+function renderDashboardMLWidget(mlPredictions) {
+  // Collect highest risks across parcels
+  const successPreds = mlPredictions.filter(p => p.success && p.data?.predictions);
+  if (successPreds.length === 0) {
+    return `
+      <div class="card mt-lg" style="border-left: 4px solid var(--purple-400);">
+        <div class="card-header">
+          <div class="card-title"><span class="card-title-icon">🔬</span> Predicción ML Meteorológica</div>
+          <a href="#/ml-monitor" class="btn btn-sm btn-secondary">Ver Panel ML</a>
+        </div>
+        <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          <div style="font-size: 32px; margin-bottom: 8px;">🔬</div>
+          Registra parcelas con coordenadas para activar predicciones ML personalizadas.
+        </div>
+      </div>
+    `;
+  }
+
+  const phenomenonEmoji = { frost: '🥶', heavy_rain: '🌧️', snow: '❄️', hail: '🌩️' };
+  const phenomenonName = { frost: 'Helada', heavy_rain: 'Lluvia', snow: 'Nieve', hail: 'Granizo' };
+  const riskColors = { high: 'var(--red-400)', moderate: 'var(--amber-400)', low: 'var(--green-400)', none: 'var(--green-500)' };
+
+  // Aggregate highest risk per phenomenon across all parcels
+  const riskSummary = {};
+  let highestRisk = { score: 0, level: 'none', phenomenon: '', parcel: '' };
+
+  for (const p of successPreds) {
+    for (const pred of (p.data.predictions || [])) {
+      const ph = pred.phenomenon;
+      if (!riskSummary[ph] || pred.risk_score > riskSummary[ph].score) {
+        riskSummary[ph] = { score: pred.risk_score || 0, level: pred.risk_level || 'none', model: pred.model_type };
+      }
+      if ((pred.risk_score || 0) > highestRisk.score) {
+        highestRisk = { score: pred.risk_score, level: pred.risk_level, phenomenon: ph, parcel: p.data.parcel_name || p.parcel_name };
+      }
+    }
+  }
+
+  const riskBadgeClass = highestRisk.level === 'high' ? 'red' : highestRisk.level === 'moderate' ? 'amber' : 'green';
+
+  return `
+    <div class="card mt-lg" style="border-left: 4px solid ${riskColors[highestRisk.level] || 'var(--purple-400)'};">
+      <div class="card-header">
+        <div class="card-title"><span class="card-title-icon">🔬</span> Predicción ML Meteorológica</div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span class="badge badge-${riskBadgeClass}" style="font-size: 11px; font-weight: 700;">
+            ${highestRisk.level === 'high' ? '🔴 Riesgo Alto' : highestRisk.level === 'moderate' ? '🟡 Riesgo Moderado' : '🟢 Sin Riesgo'}
+          </span>
+          <a href="#/ml-monitor" class="btn btn-sm btn-secondary">Ver Detalle</a>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 8px;">
+        ${Object.entries(riskSummary).map(([ph, r]) => `
+          <div style="background: var(--bg-glass); border-radius: 10px; padding: 12px; text-align: center; cursor: pointer;" onclick="window.location.hash='#/ml-monitor'">
+            <div style="font-size: 24px;">${phenomenonEmoji[ph] || '❓'}</div>
+            <div style="font-weight: 700; font-size: 12px; margin: 4px 0;">${phenomenonName[ph] || ph}</div>
+            <div style="font-size: 20px; font-weight: 800; color: ${riskColors[r.level]};">${r.score.toFixed(0)}</div>
+            <div style="font-size: 10px; color: var(--text-muted);">${r.model === 'ml_trained' ? '🔬 ML' : '⚙️ Reglas'}</div>
+          </div>
+        `).join('')}
+      </div>
+      ${highestRisk.score >= 30 ? `
+        <div style="margin-top: 10px; font-size: 12px; color: var(--text-secondary); background: rgba(251,191,36,0.08); padding: 8px 12px; border-radius: 8px;">
+          ⚠️ Mayor riesgo: <strong>${phenomenonName[highestRisk.phenomenon]}</strong> (${highestRisk.score.toFixed(0)}/100) en <strong>${highestRisk.parcel}</strong>
+        </div>
+      ` : ''}
+      <div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+        ${successPreds.length} parcela${successPreds.length !== 1 ? 's' : ''} evaluada${successPreds.length !== 1 ? 's' : ''} · ${successPreds[0]?.source === 'ml_service' ? '🔬 Servicio ML activo' : '⚙️ Modo reglas'}
       </div>
     </div>
   `;

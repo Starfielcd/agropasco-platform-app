@@ -7,7 +7,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { advisoryKnowledge } = require('../data/advisory-knowledge');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'agropasco.db');
+const DB_PATH = process.env.DB_PATH
+  ? (path.isAbsolute(process.env.DB_PATH) ? process.env.DB_PATH : path.resolve(__dirname, '..', process.env.DB_PATH))
+  : path.join(__dirname, '..', 'agropasco.db');
 
 let db;
 
@@ -443,6 +445,125 @@ async function initializeDatabase() {
   } catch (err) {
     console.warn('Advertencia en migración de pest_report_responses FK:', err.message);
   }
+
+  // ===== MIGRACIÓN: Ampliar weather_cache para soportar ml_prediction =====
+  try {
+    const wcDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='weather_cache'");
+    if (wcDef && wcDef.sql && wcDef.sql.includes("CHECK(data_type IN ('current', 'forecast'))")) {
+      await dbRun('PRAGMA foreign_keys = OFF;');
+      await dbRun(`
+        CREATE TABLE weather_cache_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          location TEXT NOT NULL,
+          data_type TEXT NOT NULL DEFAULT 'current',
+          data_json TEXT NOT NULL,
+          fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await dbRun(`
+        INSERT INTO weather_cache_v2 (id, location, data_type, data_json, fetched_at)
+        SELECT id, location, data_type, data_json, fetched_at FROM weather_cache;
+      `);
+      await dbRun('DROP TABLE weather_cache;');
+      await dbRun('ALTER TABLE weather_cache_v2 RENAME TO weather_cache;');
+      await dbRun('PRAGMA foreign_keys = ON;');
+      console.log('✅ Migración: weather_cache ampliada para ML predictions');
+    }
+  } catch (err) {
+    console.warn('Advertencia en migración weather_cache:', err.message);
+  }
+
+  // ===== MIGRACIÓN: Ampliar notifications para soportar tipos ML =====
+  try {
+    const notifDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'");
+    if (notifDef && notifDef.sql && notifDef.sql.includes("CHECK(type IN") && !notifDef.sql.includes('alerta_nevada')) {
+      await dbRun('PRAGMA foreign_keys = OFF;');
+      await dbRun(`
+        CREATE TABLE notifications_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          severity TEXT DEFAULT 'info',
+          read INTEGER DEFAULT 0,
+          parcel_id INTEGER,
+          phenomenon TEXT,
+          model_type TEXT,
+          issued_at DATETIME,
+          valid_until DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+        )
+      `);
+      await dbRun(`
+        INSERT INTO notifications_v2 (id, user_id, type, title, message, severity, read, created_at)
+        SELECT id, user_id, type, title, message, severity, read, created_at FROM notifications;
+      `);
+      await dbRun('DROP TABLE notifications;');
+      await dbRun('ALTER TABLE notifications_v2 RENAME TO notifications;');
+      await dbRun('PRAGMA foreign_keys = ON;');
+      console.log('✅ Migración: notifications ampliada para ML (parcel_id, phenomenon, model_type)');
+    }
+  } catch (err) {
+    console.warn('Advertencia en migración notifications:', err.message);
+  }
+
+  // Añadir columnas ML a notifications si no existen (para tabla sin CHECK)
+  const notifMlMigrations = [
+    "ALTER TABLE notifications ADD COLUMN parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL",
+    "ALTER TABLE notifications ADD COLUMN phenomenon TEXT",
+    "ALTER TABLE notifications ADD COLUMN model_type TEXT",
+    "ALTER TABLE notifications ADD COLUMN issued_at DATETIME",
+    "ALTER TABLE notifications ADD COLUMN valid_until DATETIME",
+  ];
+  for (const sql of notifMlMigrations) {
+    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
+  }
+
+  // ===== TABLA: ground_truth_observations (Observaciones verificadas en campo / SENAMHI) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ground_truth_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      parcel_id INTEGER,
+      observed_at DATETIME NOT NULL,
+      latitude REAL,
+      longitude REAL,
+      altitude_masl INTEGER,
+      phenomenon TEXT NOT NULL CHECK(phenomenon IN ('frost', 'heavy_rain', 'snow', 'hail', 'drought', 'strong_winds')),
+      severity TEXT DEFAULT 'moderado' CHECK(severity IN ('leve', 'moderado', 'severo', 'extremo')),
+      source TEXT NOT NULL DEFAULT 'farmer_report' CHECK(source IN ('farmer_report', 'senamhi_station', 'field_advisor', 'satellite_validated')),
+      verification_method TEXT DEFAULT 'visual_inspection' CHECK(verification_method IN ('visual_inspection', 'thermometer', 'pluviometer', 'official_report')),
+      station_id TEXT,
+      temperature_recorded REAL,
+      precipitation_recorded_mm REAL,
+      crop_damage_percentage REAL,
+      notes TEXT,
+      photo_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+    )
+  `);
+
+  // ===== TABLA: alert_preferences (Preferencias de alertas meteorológicas por usuario) =====
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS alert_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL,
+      frost_enabled INTEGER DEFAULT 1,
+      heavy_rain_enabled INTEGER DEFAULT 1,
+      snow_enabled INTEGER DEFAULT 1,
+      hail_enabled INTEGER DEFAULT 1,
+      min_risk_level TEXT DEFAULT 'moderate' CHECK(min_risk_level IN ('low', 'moderate', 'high')),
+      in_app_enabled INTEGER DEFAULT 1,
+      email_enabled INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 
   // ===== SEED DATA =====
   await seedData();

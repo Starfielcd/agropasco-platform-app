@@ -8,3 +8,11 @@ backend/.env
 *.log
 .DS_Store
 Thumbs.db
+
+# ML Service
+backend/data/weather-history/models/
+backend/data/weather-history/processed/
+backend/data/weather-history/reports/
+backend/ml-service/__pycache__/
+backend/ml-service/.venv/
+*.pyc

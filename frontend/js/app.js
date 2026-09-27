@@ -13,6 +13,7 @@ const routes = {
   '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer', 'admin'] },
   '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
+  '/ml-monitor': { title: 'Monitoreo ML', subtitle: 'Predicciones meteorológicas inteligentes por parcela', icon: '🔬', render: renderMLMonitorPage, roles: ['farmer', 'advisor', 'admin'] },
   '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor'] },
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
   '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer', 'advisor', 'admin'] },
@@ -253,6 +254,9 @@ function getNavItemsForRole(role) {
         <span class="nav-item-icon">⛅</span> Clima & Alertas
         <span class="nav-badge" id="alert-badge" style="display: none;">0</span>
       </div>
+      <div class="nav-item" data-route="/ml-monitor" onclick="window.location.hash='#/ml-monitor'">
+        <span class="nav-item-icon">🔬</span> Monitoreo ML
+      </div>
       <div class="nav-item" data-route="/advisory" onclick="window.location.hash='#/advisory'">
         <span class="nav-item-icon">📚</span> Asesoría
       </div>
@@ -279,6 +283,9 @@ function getNavItemsForRole(role) {
       </div>
       <div class="nav-item" data-route="/crops" onclick="window.location.hash='#/crops'">
         <span class="nav-item-icon">🌿</span> Cultivos Regionales
+      </div>
+      <div class="nav-item" data-route="/ml-monitor" onclick="window.location.hash='#/ml-monitor'">
+        <span class="nav-item-icon">🔬</span> Monitoreo ML
       </div>
 
       <div class="nav-section-title">Gestión</div>
@@ -332,6 +339,9 @@ function getNavItemsForRole(role) {
       <div class="nav-section-title">Administración</div>
       <div class="nav-item" data-route="/admin" onclick="window.location.hash='#/admin'">
         <span class="nav-item-icon">📊</span> Panel Admin
+      </div>
+      <div class="nav-item" data-route="/ml-monitor" onclick="window.location.hash='#/ml-monitor'">
+        <span class="nav-item-icon">🔬</span> Monitoreo ML
       </div>
       <div class="nav-item" data-route="/admin/users" onclick="window.location.hash='#/admin/users'">
         <span class="nav-item-icon">👥</span> Usuarios & Roles

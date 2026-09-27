@@ -215,6 +215,20 @@ const api = {
   getRecommendationsAI: (cropId) => apiRequest(`/ai/recommend/${cropId}`),
   getFrostRisk: () => apiRequest('/ai/frost-risk'),
   getIrrigationPlan: (cropId) => apiRequest(`/ai/irrigation/${cropId}`),
+
+  // Machine Learning Meteorológico
+  getMLPrediction: (parcelId) => apiRequest(`/ml/predict/${parcelId}`),
+  getMLPredictions: () => apiRequest('/ml/predictions'),
+  getMLPredictionsAll: () => apiRequest('/ml/predictions/all'),
+  getMLModelsStatus: () => apiRequest('/ml/models/status'),
+  generateMLAlerts: () => apiRequest('/ml/alerts/generate', { method: 'POST' }),
+  getMLAdminDashboard: () => apiRequest('/ml/admin/dashboard'),
+  getMLAlerts: (unread = false) => apiRequest(`/ml/alerts${unread ? '?unread=true' : ''}`),
+  markMLAlertRead: (id) => apiRequest(`/ml/alerts/${id}/read`, { method: 'PUT' }),
+  getMLPreferences: () => apiRequest('/ml/preferences'),
+  updateMLPreferences: (data) => apiRequest('/ml/preferences', { method: 'PUT', body: JSON.stringify(data) }),
+  getMLObservations: (phenomenon = '') => apiRequest(`/ml/observations${phenomenon ? `?phenomenon=${phenomenon}` : ''}`),
+  createMLObservation: (data) => apiRequest('/ml/observations', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // Toast notification system
