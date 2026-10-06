@@ -179,8 +179,8 @@ async function generateAlerts(req, res) {
           // Check for duplicate alert specifically for this parcel and phenomenon within 6 hours
           const existing = await dbGet(
             `SELECT id FROM notifications 
-             WHERE user_id = ? AND type = ? AND title LIKE ?
-             AND created_at > datetime('now', '-6 hours')`,
+             WHERE user_id = ? AND type = ? AND title ILIKE ?
+             AND created_at > NOW() - INTERVAL '6 hours'`,
             [parcel.user_id, notifType, `%${parcel.name}%`]
           );
 
@@ -279,7 +279,7 @@ async function adminDashboard(req, res) {
     const recentAlerts = await dbGet(
       `SELECT COUNT(*) as count FROM notifications 
        WHERE type IN ('alerta_helada', 'alerta_lluvia', 'alerta_granizo')
-       AND created_at > datetime('now', '-24 hours')`
+       AND created_at > NOW() - INTERVAL '24 hours'`
     );
 
     // Count active parcels with coords
@@ -321,7 +321,7 @@ async function getUserAlerts(req, res) {
     const whereClause = unreadOnly ? 'AND read = 0' : '';
     const alerts = await dbAll(
       `SELECT * FROM notifications 
-       WHERE user_id = ? AND type LIKE 'alerta_%' ${whereClause} 
+       WHERE user_id = ? AND type ILIKE 'alerta_%' ${whereClause} 
        ORDER BY created_at DESC LIMIT ?`,
       [userId, limit]
     );

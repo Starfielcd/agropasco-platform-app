@@ -1,0 +1,193 @@
+{
+  "phenomenon": "frost",
+  "model_type": "gradient_boosting",
+  "features": [
+    "temperature_2m_mean",
+    "temperature_2m_max",
+    "temp_range",
+    "wind_speed_10m_max",
+    "et0_fao_evapotranspiration",
+    "elevation",
+    "month",
+    "day_of_year",
+    "is_winter",
+    "is_dry_season",
+    "temp_min_lag1",
+    "temp_max_lag1",
+    "precip_lag1",
+    "temp_min_rolling_3d",
+    "temp_min_rolling_7d",
+    "humidity_mean",
+    "humidity_min",
+    "soil_moisture_mean"
+  ],
+  "requires_scaler": false,
+  "version": "2.0.0_audited_no_leak",
+  "trained_at": "2026-09-27T17:01:16.617419",
+  "status": "trained",
+  "label_type": "proxy_rule_based_era5",
+  "validation_metrics": {
+    "split": "validation",
+    "n_samples": 362,
+    "n_positive": 42,
+    "n_negative": 320,
+    "class_balance": 0.116,
+    "precision": 0.9512,
+    "recall": 0.9286,
+    "f1": 0.9398,
+    "confusion_matrix": [
+      [
+        318,
+        2
+      ],
+      [
+        3,
+        39
+      ]
+    ],
+    "true_negatives": 318,
+    "false_positives": 2,
+    "false_negatives": 3,
+    "true_positives": 39,
+    "pr_auc": 0.9888,
+    "roc_auc": 0.9983,
+    "brier_score": 0.0102,
+    "expected_calibration_error": 0.01,
+    "is_calibrated": true,
+    "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+  },
+  "test_metrics": {
+    "split": "test",
+    "n_samples": 906,
+    "n_positive": 168,
+    "n_negative": 738,
+    "class_balance": 0.1854,
+    "precision": 0.8674,
+    "recall": 0.9345,
+    "f1": 0.8997,
+    "confusion_matrix": [
+      [
+        714,
+        24
+      ],
+      [
+        11,
+        157
+      ]
+    ],
+    "true_negatives": 714,
+    "false_positives": 24,
+    "false_negatives": 11,
+    "true_positives": 157,
+    "pr_auc": 0.9749,
+    "roc_auc": 0.993,
+    "brier_score": 0.0278,
+    "expected_calibration_error": 0.0178,
+    "is_calibrated": true,
+    "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+  },
+  "baselines": {
+    "dummy_most_frequent": {
+      "split": "test",
+      "n_samples": 906,
+      "n_positive": 168,
+      "n_negative": 738,
+      "class_balance": 0.1854,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "confusion_matrix": [
+        [
+          738,
+          0
+        ],
+        [
+          168,
+          0
+        ]
+      ],
+      "true_negatives": 738,
+      "false_positives": 0,
+      "false_negatives": 168,
+      "true_positives": 0,
+      "pr_auc": 0.1854,
+      "roc_auc": 0.5,
+      "brier_score": 0.1854,
+      "expected_calibration_error": 0.1854,
+      "is_calibrated": false,
+      "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+    },
+    "dummy_stratified": {
+      "split": "test",
+      "n_samples": 906,
+      "n_positive": 168,
+      "n_negative": 738,
+      "class_balance": 0.1854,
+      "precision": 0.1709,
+      "recall": 0.2024,
+      "f1": 0.1853,
+      "confusion_matrix": [
+        [
+          573,
+          165
+        ],
+        [
+          134,
+          34
+        ]
+      ],
+      "true_negatives": 573,
+      "false_positives": 165,
+      "false_negatives": 134,
+      "true_positives": 34,
+      "pr_auc": 0.1825,
+      "roc_auc": 0.4894,
+      "brier_score": 0.33,
+      "expected_calibration_error": 0.33,
+      "is_calibrated": false,
+      "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+    },
+    "simple_domain_rule": {
+      "split": "test",
+      "n_samples": 906,
+      "n_positive": 168,
+      "n_negative": 738,
+      "class_balance": 0.1854,
+      "precision": 0.7209,
+      "recall": 0.1845,
+      "f1": 0.2938,
+      "confusion_matrix": [
+        [
+          726,
+          12
+        ],
+        [
+          137,
+          31
+        ]
+      ],
+      "true_negatives": 726,
+      "false_positives": 12,
+      "false_negatives": 137,
+      "true_positives": 31,
+      "pr_auc": 0.2842,
+      "roc_auc": 0.5841,
+      "brier_score": 0.1645,
+      "expected_calibration_error": 0.1645,
+      "is_calibrated": false,
+      "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+    }
+  },
+  "calibration": {
+    "brier_score": 0.0278,
+    "expected_calibration_error": 0.0178,
+    "is_calibrated": true,
+    "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+  },
+  "limitations": [
+    "Etiquetas sintéticas derivadas de umbrales en datos de reanálisis ERA5 de Open-Meteo.",
+    "No reemplaza validación empírica con estaciones de campo de SENAMHI.",
+    "Representatividad geográfica centrada en Cerro de Pasco, Yanahuanca y Oxapampa.",
+    "Las probabilidades son puntajes de riesgo del ensamble y no probabilidades calibradas estrictas."
+  ]
+}

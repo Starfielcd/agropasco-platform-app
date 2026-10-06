@@ -28,7 +28,7 @@ async function getProducts(req, res) {
     if (quality) { sql += ' AND p.quality = ?'; params.push(quality); }
     if (crop_type) { sql += ' AND p.crop_type = ?'; params.push(crop_type); }
     if (available !== undefined) { sql += ' AND p.available = ?'; params.push(available === 'true' ? 1 : 0); }
-    if (search) { sql += ' AND (p.name LIKE ? OR p.description LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    if (search) { sql += ' AND (p.name ILIKE ? OR p.description ILIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
 
     sql += ' ORDER BY p.certified_natural DESC, p.updated_at DESC';
 
@@ -183,7 +183,7 @@ async function publishProduct(req, res) {
       `INSERT INTO products (farmer_id, name, crop_type, quality, origin, stock_kg, price_per_kg, unit, description,
                              traceability_code, certified_natural, harvest_date, photo_url,
                              validation_status, original_price)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, date('now'), ?, 'pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_DATE, ?, 'pending', ?)`,
       [req.user.id, name, crop_type, quality || 'primera', finalOrigin,
        stock_kg || 0, price_per_kg, unit || 'kg', description || '', traceabilityCode,
        photo_url.trim(), price_per_kg]

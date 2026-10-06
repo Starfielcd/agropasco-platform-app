@@ -1,0 +1,1117 @@
+{
+  "frost": {
+    "phenomenon": "frost",
+    "target_label": "frost",
+    "label_type": "proxy_rule_based_era5",
+    "status": "trained",
+    "selected_model": "gradient_boosting",
+    "selection_reason": "Mejor F1 en validación (0.9398)",
+    "features_used": [
+      "temperature_2m_mean",
+      "temperature_2m_max",
+      "temp_range",
+      "wind_speed_10m_max",
+      "et0_fao_evapotranspiration",
+      "elevation",
+      "month",
+      "day_of_year",
+      "is_winter",
+      "is_dry_season",
+      "temp_min_lag1",
+      "temp_max_lag1",
+      "precip_lag1",
+      "temp_min_rolling_3d",
+      "temp_min_rolling_7d",
+      "humidity_mean",
+      "humidity_min",
+      "soil_moisture_mean"
+    ],
+    "n_features": 18,
+    "data_summary": {
+      "train_samples": 3654,
+      "train_positive": 792,
+      "train_negative": 2862,
+      "val_samples": 362,
+      "val_positive": 42,
+      "test_samples": 906,
+      "test_positive": 168,
+      "test_negative": 738,
+      "train_period": "<= 2024-12-31",
+      "val_period": "2024-12-31 a 2025-06-30",
+      "test_period": "> 2025-06-30"
+    },
+    "baselines": {
+      "dummy_most_frequent": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 168,
+        "n_negative": 738,
+        "class_balance": 0.1854,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "confusion_matrix": [
+          [
+            738,
+            0
+          ],
+          [
+            168,
+            0
+          ]
+        ],
+        "true_negatives": 738,
+        "false_positives": 0,
+        "false_negatives": 168,
+        "true_positives": 0,
+        "pr_auc": 0.1854,
+        "roc_auc": 0.5,
+        "brier_score": 0.1854,
+        "expected_calibration_error": 0.1854,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      },
+      "dummy_stratified": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 168,
+        "n_negative": 738,
+        "class_balance": 0.1854,
+        "precision": 0.1709,
+        "recall": 0.2024,
+        "f1": 0.1853,
+        "confusion_matrix": [
+          [
+            573,
+            165
+          ],
+          [
+            134,
+            34
+          ]
+        ],
+        "true_negatives": 573,
+        "false_positives": 165,
+        "false_negatives": 134,
+        "true_positives": 34,
+        "pr_auc": 0.1825,
+        "roc_auc": 0.4894,
+        "brier_score": 0.33,
+        "expected_calibration_error": 0.33,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      },
+      "simple_domain_rule": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 168,
+        "n_negative": 738,
+        "class_balance": 0.1854,
+        "precision": 0.7209,
+        "recall": 0.1845,
+        "f1": 0.2938,
+        "confusion_matrix": [
+          [
+            726,
+            12
+          ],
+          [
+            137,
+            31
+          ]
+        ],
+        "true_negatives": 726,
+        "false_positives": 12,
+        "false_negatives": 137,
+        "true_positives": 31,
+        "pr_auc": 0.2842,
+        "roc_auc": 0.5841,
+        "brier_score": 0.1645,
+        "expected_calibration_error": 0.1645,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      }
+    },
+    "model_comparison": {
+      "random_forest": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 42,
+          "n_negative": 320,
+          "class_balance": 0.116,
+          "precision": 0.8636,
+          "recall": 0.9048,
+          "f1": 0.8837,
+          "confusion_matrix": [
+            [
+              314,
+              6
+            ],
+            [
+              4,
+              38
+            ]
+          ],
+          "true_negatives": 314,
+          "false_positives": 6,
+          "false_negatives": 4,
+          "true_positives": 38,
+          "pr_auc": 0.9437,
+          "roc_auc": 0.9916,
+          "brier_score": 0.0263,
+          "expected_calibration_error": 0.0423,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "precision": 0.7574,
+          "recall": 0.9107,
+          "f1": 0.827,
+          "confusion_matrix": [
+            [
+              689,
+              49
+            ],
+            [
+              15,
+              153
+            ]
+          ],
+          "true_negatives": 689,
+          "false_positives": 49,
+          "false_negatives": 15,
+          "true_positives": 153,
+          "pr_auc": 0.9278,
+          "roc_auc": 0.9789,
+          "brier_score": 0.0556,
+          "expected_calibration_error": 0.0713,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "gradient_boosting": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 42,
+          "n_negative": 320,
+          "class_balance": 0.116,
+          "precision": 0.9512,
+          "recall": 0.9286,
+          "f1": 0.9398,
+          "confusion_matrix": [
+            [
+              318,
+              2
+            ],
+            [
+              3,
+              39
+            ]
+          ],
+          "true_negatives": 318,
+          "false_positives": 2,
+          "false_negatives": 3,
+          "true_positives": 39,
+          "pr_auc": 0.9888,
+          "roc_auc": 0.9983,
+          "brier_score": 0.0102,
+          "expected_calibration_error": 0.01,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "precision": 0.8674,
+          "recall": 0.9345,
+          "f1": 0.8997,
+          "confusion_matrix": [
+            [
+              714,
+              24
+            ],
+            [
+              11,
+              157
+            ]
+          ],
+          "true_negatives": 714,
+          "false_positives": 24,
+          "false_negatives": 11,
+          "true_positives": 157,
+          "pr_auc": 0.9749,
+          "roc_auc": 0.993,
+          "brier_score": 0.0278,
+          "expected_calibration_error": 0.0178,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "logistic_regression": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 42,
+          "n_negative": 320,
+          "class_balance": 0.116,
+          "precision": 0.8571,
+          "recall": 1.0,
+          "f1": 0.9231,
+          "confusion_matrix": [
+            [
+              313,
+              7
+            ],
+            [
+              0,
+              42
+            ]
+          ],
+          "true_negatives": 313,
+          "false_positives": 7,
+          "false_negatives": 0,
+          "true_positives": 42,
+          "pr_auc": 0.9927,
+          "roc_auc": 0.999,
+          "brier_score": 0.0139,
+          "expected_calibration_error": 0.0294,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "precision": 0.8227,
+          "recall": 0.994,
+          "f1": 0.9003,
+          "confusion_matrix": [
+            [
+              702,
+              36
+            ],
+            [
+              1,
+              167
+            ]
+          ],
+          "true_negatives": 702,
+          "false_positives": 36,
+          "false_negatives": 1,
+          "true_positives": 167,
+          "pr_auc": 0.9938,
+          "roc_auc": 0.9985,
+          "brier_score": 0.0252,
+          "expected_calibration_error": 0.0447,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      }
+    },
+    "best_model_test_metrics": {
+      "split": "test",
+      "n_samples": 906,
+      "n_positive": 168,
+      "n_negative": 738,
+      "class_balance": 0.1854,
+      "precision": 0.8674,
+      "recall": 0.9345,
+      "f1": 0.8997,
+      "confusion_matrix": [
+        [
+          714,
+          24
+        ],
+        [
+          11,
+          157
+        ]
+      ],
+      "true_negatives": 714,
+      "false_positives": 24,
+      "false_negatives": 11,
+      "true_positives": 157,
+      "pr_auc": 0.9749,
+      "roc_auc": 0.993,
+      "brier_score": 0.0278,
+      "expected_calibration_error": 0.0178,
+      "is_calibrated": true,
+      "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+    },
+    "feature_importance": {
+      "temp_min_lag1": 0.3972,
+      "temp_range": 0.2739,
+      "temperature_2m_mean": 0.22,
+      "temperature_2m_max": 0.0524,
+      "humidity_min": 0.0097,
+      "temp_max_lag1": 0.0095,
+      "temp_min_rolling_7d": 0.0081,
+      "humidity_mean": 0.0078,
+      "temp_min_rolling_3d": 0.0078,
+      "wind_speed_10m_max": 0.0043,
+      "soil_moisture_mean": 0.0029,
+      "et0_fao_evapotranspiration": 0.0026,
+      "day_of_year": 0.0023,
+      "precip_lag1": 0.0014,
+      "is_winter": 0.0001,
+      "month": 0.0001,
+      "is_dry_season": 0.0,
+      "elevation": 0.0
+    },
+    "trained_at": "2026-09-27T17:01:16.617419",
+    "limitations": [
+      "Etiquetas sintéticas derivadas de umbrales en datos de reanálisis ERA5 de Open-Meteo.",
+      "No reemplaza validación empírica con estaciones de campo de SENAMHI.",
+      "Representatividad geográfica centrada en Cerro de Pasco, Yanahuanca y Oxapampa.",
+      "Las probabilidades son puntajes de riesgo del ensamble y no probabilidades calibradas estrictas."
+    ]
+  },
+  "heavy_rain": {
+    "phenomenon": "heavy_rain",
+    "target_label": "heavy_rain",
+    "label_type": "proxy_rule_based_era5",
+    "status": "trained",
+    "selected_model": "random_forest",
+    "selection_reason": "Mejor F1 en validación (0.6977)",
+    "features_used": [
+      "temperature_2m_min",
+      "temperature_2m_max",
+      "temperature_2m_mean",
+      "wind_speed_10m_max",
+      "et0_fao_evapotranspiration",
+      "elevation",
+      "month",
+      "day_of_year",
+      "is_dry_season",
+      "precip_rolling_3d",
+      "precip_rolling_7d",
+      "precip_lag1",
+      "temp_max_rolling_3d",
+      "humidity_mean",
+      "humidity_max",
+      "soil_moisture_mean"
+    ],
+    "n_features": 16,
+    "data_summary": {
+      "train_samples": 5481,
+      "train_positive": 313,
+      "train_negative": 5168,
+      "val_samples": 543,
+      "val_positive": 50,
+      "test_samples": 1359,
+      "test_positive": 73,
+      "test_negative": 1286,
+      "train_period": "<= 2024-12-31",
+      "val_period": "2024-12-31 a 2025-06-30",
+      "test_period": "> 2025-06-30"
+    },
+    "baselines": {
+      "dummy_most_frequent": {
+        "split": "test",
+        "n_samples": 1359,
+        "n_positive": 73,
+        "n_negative": 1286,
+        "class_balance": 0.0537,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "confusion_matrix": [
+          [
+            1286,
+            0
+          ],
+          [
+            73,
+            0
+          ]
+        ],
+        "true_negatives": 1286,
+        "false_positives": 0,
+        "false_negatives": 73,
+        "true_positives": 0,
+        "pr_auc": 0.0537,
+        "roc_auc": 0.5,
+        "brier_score": 0.0537,
+        "expected_calibration_error": 0.0537,
+        "is_calibrated": true,
+        "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+      },
+      "dummy_stratified": {
+        "split": "test",
+        "n_samples": 1359,
+        "n_positive": 73,
+        "n_negative": 1286,
+        "class_balance": 0.0537,
+        "precision": 0.0488,
+        "recall": 0.0548,
+        "f1": 0.0516,
+        "confusion_matrix": [
+          [
+            1208,
+            78
+          ],
+          [
+            69,
+            4
+          ]
+        ],
+        "true_negatives": 1208,
+        "false_positives": 78,
+        "false_negatives": 69,
+        "true_positives": 4,
+        "pr_auc": 0.0534,
+        "roc_auc": 0.4971,
+        "brier_score": 0.1082,
+        "expected_calibration_error": 0.1082,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      },
+      "simple_domain_rule": {
+        "split": "test",
+        "n_samples": 1359,
+        "n_positive": 73,
+        "n_negative": 1286,
+        "class_balance": 0.0537,
+        "precision": 0.1589,
+        "recall": 0.9863,
+        "f1": 0.2738,
+        "confusion_matrix": [
+          [
+            905,
+            381
+          ],
+          [
+            1,
+            72
+          ]
+        ],
+        "true_negatives": 905,
+        "false_positives": 381,
+        "false_negatives": 1,
+        "true_positives": 72,
+        "pr_auc": 0.1575,
+        "roc_auc": 0.845,
+        "brier_score": 0.2811,
+        "expected_calibration_error": 0.2811,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      }
+    },
+    "model_comparison": {
+      "random_forest": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 543,
+          "n_positive": 50,
+          "n_negative": 493,
+          "class_balance": 0.0921,
+          "precision": 0.5696,
+          "recall": 0.9,
+          "f1": 0.6977,
+          "confusion_matrix": [
+            [
+              459,
+              34
+            ],
+            [
+              5,
+              45
+            ]
+          ],
+          "true_negatives": 459,
+          "false_positives": 34,
+          "false_negatives": 5,
+          "true_positives": 45,
+          "pr_auc": 0.7654,
+          "roc_auc": 0.9584,
+          "brier_score": 0.0528,
+          "expected_calibration_error": 0.0662,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "precision": 0.4646,
+          "recall": 0.8082,
+          "f1": 0.59,
+          "confusion_matrix": [
+            [
+              1218,
+              68
+            ],
+            [
+              14,
+              59
+            ]
+          ],
+          "true_negatives": 1218,
+          "false_positives": 68,
+          "false_negatives": 14,
+          "true_positives": 59,
+          "pr_auc": 0.6288,
+          "roc_auc": 0.9689,
+          "brier_score": 0.0411,
+          "expected_calibration_error": 0.0534,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "gradient_boosting": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 543,
+          "n_positive": 50,
+          "n_negative": 493,
+          "class_balance": 0.0921,
+          "precision": 0.6923,
+          "recall": 0.54,
+          "f1": 0.6067,
+          "confusion_matrix": [
+            [
+              481,
+              12
+            ],
+            [
+              23,
+              27
+            ]
+          ],
+          "true_negatives": 481,
+          "false_positives": 12,
+          "false_negatives": 23,
+          "true_positives": 27,
+          "pr_auc": 0.7698,
+          "roc_auc": 0.969,
+          "brier_score": 0.0408,
+          "expected_calibration_error": 0.0275,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "precision": 0.55,
+          "recall": 0.4521,
+          "f1": 0.4962,
+          "confusion_matrix": [
+            [
+              1259,
+              27
+            ],
+            [
+              40,
+              33
+            ]
+          ],
+          "true_negatives": 1259,
+          "false_positives": 27,
+          "false_negatives": 40,
+          "true_positives": 33,
+          "pr_auc": 0.6043,
+          "roc_auc": 0.9611,
+          "brier_score": 0.0338,
+          "expected_calibration_error": 0.0196,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "logistic_regression": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 543,
+          "n_positive": 50,
+          "n_negative": 493,
+          "class_balance": 0.0921,
+          "precision": 0.363,
+          "recall": 0.98,
+          "f1": 0.5297,
+          "confusion_matrix": [
+            [
+              407,
+              86
+            ],
+            [
+              1,
+              49
+            ]
+          ],
+          "true_negatives": 407,
+          "false_positives": 86,
+          "false_negatives": 1,
+          "true_positives": 49,
+          "pr_auc": 0.8407,
+          "roc_auc": 0.9721,
+          "brier_score": 0.1148,
+          "expected_calibration_error": 0.1775,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "precision": 0.2823,
+          "recall": 0.9589,
+          "f1": 0.4361,
+          "confusion_matrix": [
+            [
+              1108,
+              178
+            ],
+            [
+              3,
+              70
+            ]
+          ],
+          "true_negatives": 1108,
+          "false_positives": 178,
+          "false_negatives": 3,
+          "true_positives": 70,
+          "pr_auc": 0.6383,
+          "roc_auc": 0.9676,
+          "brier_score": 0.0919,
+          "expected_calibration_error": 0.1379,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        }
+      }
+    },
+    "best_model_test_metrics": {
+      "split": "test",
+      "n_samples": 1359,
+      "n_positive": 73,
+      "n_negative": 1286,
+      "class_balance": 0.0537,
+      "precision": 0.4646,
+      "recall": 0.8082,
+      "f1": 0.59,
+      "confusion_matrix": [
+        [
+          1218,
+          68
+        ],
+        [
+          14,
+          59
+        ]
+      ],
+      "true_negatives": 1218,
+      "false_positives": 68,
+      "false_negatives": 14,
+      "true_positives": 59,
+      "pr_auc": 0.6288,
+      "roc_auc": 0.9689,
+      "brier_score": 0.0411,
+      "expected_calibration_error": 0.0534,
+      "is_calibrated": true,
+      "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+    },
+    "feature_importance": {
+      "soil_moisture_mean": 0.2842,
+      "humidity_mean": 0.2018,
+      "temperature_2m_min": 0.0983,
+      "temperature_2m_mean": 0.0855,
+      "temp_max_rolling_3d": 0.0667,
+      "elevation": 0.054,
+      "precip_lag1": 0.0521,
+      "precip_rolling_7d": 0.0374,
+      "precip_rolling_3d": 0.0342,
+      "wind_speed_10m_max": 0.0217,
+      "et0_fao_evapotranspiration": 0.0198,
+      "temperature_2m_max": 0.0178,
+      "day_of_year": 0.0145,
+      "month": 0.0054,
+      "is_dry_season": 0.0043,
+      "humidity_max": 0.0023
+    },
+    "trained_at": "2026-09-27T17:01:21.476896",
+    "limitations": [
+      "Etiquetas sintéticas derivadas de umbrales en datos de reanálisis ERA5 de Open-Meteo.",
+      "No reemplaza validación empírica con estaciones de campo de SENAMHI.",
+      "Representatividad geográfica centrada en Cerro de Pasco, Yanahuanca y Oxapampa.",
+      "Las probabilidades son puntajes de riesgo del ensamble y no probabilidades calibradas estrictas."
+    ]
+  },
+  "snow": {
+    "phenomenon": "snow",
+    "target_label": "snow",
+    "label_type": "proxy_rule_based_era5",
+    "status": "trained",
+    "selected_model": "logistic_regression",
+    "selection_reason": "Mejor F1 en validación (0.7970)",
+    "features_used": [
+      "temperature_2m_mean",
+      "temperature_2m_min",
+      "temperature_2m_max",
+      "wind_speed_10m_max",
+      "elevation",
+      "month",
+      "day_of_year",
+      "is_winter",
+      "temp_min_lag1",
+      "precip_lag1",
+      "humidity_mean",
+      "humidity_max",
+      "precip_rolling_3d"
+    ],
+    "n_features": 13,
+    "data_summary": {
+      "train_samples": 3654,
+      "train_positive": 1376,
+      "train_negative": 2278,
+      "val_samples": 362,
+      "val_positive": 192,
+      "test_samples": 906,
+      "test_positive": 363,
+      "test_negative": 543,
+      "train_period": "<= 2024-12-31",
+      "val_period": "2024-12-31 a 2025-06-30",
+      "test_period": "> 2025-06-30"
+    },
+    "baselines": {
+      "dummy_most_frequent": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 363,
+        "n_negative": 543,
+        "class_balance": 0.4007,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "confusion_matrix": [
+          [
+            543,
+            0
+          ],
+          [
+            363,
+            0
+          ]
+        ],
+        "true_negatives": 543,
+        "false_positives": 0,
+        "false_negatives": 363,
+        "true_positives": 0,
+        "pr_auc": 0.4007,
+        "roc_auc": 0.5,
+        "brier_score": 0.4007,
+        "expected_calibration_error": 0.4007,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      },
+      "dummy_stratified": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 363,
+        "n_negative": 543,
+        "class_balance": 0.4007,
+        "precision": 0.4337,
+        "recall": 0.3967,
+        "f1": 0.4144,
+        "confusion_matrix": [
+          [
+            355,
+            188
+          ],
+          [
+            219,
+            144
+          ]
+        ],
+        "true_negatives": 355,
+        "false_positives": 188,
+        "false_negatives": 219,
+        "true_positives": 144,
+        "pr_auc": 0.4138,
+        "roc_auc": 0.5252,
+        "brier_score": 0.4492,
+        "expected_calibration_error": 0.4492,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      },
+      "simple_domain_rule": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 363,
+        "n_negative": 543,
+        "class_balance": 0.4007,
+        "precision": 0.4211,
+        "recall": 0.022,
+        "f1": 0.0419,
+        "confusion_matrix": [
+          [
+            532,
+            11
+          ],
+          [
+            355,
+            8
+          ]
+        ],
+        "true_negatives": 532,
+        "false_positives": 11,
+        "false_negatives": 355,
+        "true_positives": 8,
+        "pr_auc": 0.4011,
+        "roc_auc": 0.5009,
+        "brier_score": 0.404,
+        "expected_calibration_error": 0.404,
+        "is_calibrated": false,
+        "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+      }
+    },
+    "model_comparison": {
+      "random_forest": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 192,
+          "n_negative": 170,
+          "class_balance": 0.5304,
+          "precision": 0.7901,
+          "recall": 0.7448,
+          "f1": 0.7668,
+          "confusion_matrix": [
+            [
+              132,
+              38
+            ],
+            [
+              49,
+              143
+            ]
+          ],
+          "true_negatives": 132,
+          "false_positives": 38,
+          "false_negatives": 49,
+          "true_positives": 143,
+          "pr_auc": 0.8852,
+          "roc_auc": 0.8639,
+          "brier_score": 0.1515,
+          "expected_calibration_error": 0.0627,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "precision": 0.8227,
+          "recall": 0.6777,
+          "f1": 0.7432,
+          "confusion_matrix": [
+            [
+              490,
+              53
+            ],
+            [
+              117,
+              246
+            ]
+          ],
+          "true_negatives": 490,
+          "false_positives": 53,
+          "false_negatives": 117,
+          "true_positives": 246,
+          "pr_auc": 0.8443,
+          "roc_auc": 0.886,
+          "brier_score": 0.1352,
+          "expected_calibration_error": 0.0438,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "gradient_boosting": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 192,
+          "n_negative": 170,
+          "class_balance": 0.5304,
+          "precision": 0.8415,
+          "recall": 0.7188,
+          "f1": 0.7753,
+          "confusion_matrix": [
+            [
+              144,
+              26
+            ],
+            [
+              54,
+              138
+            ]
+          ],
+          "true_negatives": 144,
+          "false_positives": 26,
+          "false_negatives": 54,
+          "true_positives": 138,
+          "pr_auc": 0.8767,
+          "roc_auc": 0.8631,
+          "brier_score": 0.1603,
+          "expected_calibration_error": 0.0803,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "precision": 0.8191,
+          "recall": 0.6364,
+          "f1": 0.7163,
+          "confusion_matrix": [
+            [
+              492,
+              51
+            ],
+            [
+              132,
+              231
+            ]
+          ],
+          "true_negatives": 492,
+          "false_positives": 51,
+          "false_negatives": 132,
+          "true_positives": 231,
+          "pr_auc": 0.831,
+          "roc_auc": 0.8879,
+          "brier_score": 0.1475,
+          "expected_calibration_error": 0.0933,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      },
+      "logistic_regression": {
+        "validation": {
+          "split": "validation",
+          "n_samples": 362,
+          "n_positive": 192,
+          "n_negative": 170,
+          "class_balance": 0.5304,
+          "precision": 0.7594,
+          "recall": 0.8385,
+          "f1": 0.797,
+          "confusion_matrix": [
+            [
+              119,
+              51
+            ],
+            [
+              31,
+              161
+            ]
+          ],
+          "true_negatives": 119,
+          "false_positives": 51,
+          "false_negatives": 31,
+          "true_positives": 161,
+          "pr_auc": 0.8995,
+          "roc_auc": 0.8766,
+          "brier_score": 0.1478,
+          "expected_calibration_error": 0.0767,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "test": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "precision": 0.7904,
+          "recall": 0.7273,
+          "f1": 0.7575,
+          "confusion_matrix": [
+            [
+              473,
+              70
+            ],
+            [
+              99,
+              264
+            ]
+          ],
+          "true_negatives": 473,
+          "false_positives": 70,
+          "false_negatives": 99,
+          "true_positives": 264,
+          "pr_auc": 0.8491,
+          "roc_auc": 0.8931,
+          "brier_score": 0.1304,
+          "expected_calibration_error": 0.0274,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        }
+      }
+    },
+    "best_model_test_metrics": {
+      "split": "test",
+      "n_samples": 906,
+      "n_positive": 363,
+      "n_negative": 543,
+      "class_balance": 0.4007,
+      "precision": 0.7904,
+      "recall": 0.7273,
+      "f1": 0.7575,
+      "confusion_matrix": [
+        [
+          473,
+          70
+        ],
+        [
+          99,
+          264
+        ]
+      ],
+      "true_negatives": 473,
+      "false_positives": 70,
+      "false_negatives": 99,
+      "true_positives": 264,
+      "pr_auc": 0.8491,
+      "roc_auc": 0.8931,
+      "brier_score": 0.1304,
+      "expected_calibration_error": 0.0274,
+      "is_calibrated": true,
+      "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+    },
+    "feature_importance": {},
+    "trained_at": "2026-09-27T17:01:24.207975",
+    "limitations": [
+      "Etiquetas sintéticas derivadas de umbrales en datos de reanálisis ERA5 de Open-Meteo.",
+      "No reemplaza validación empírica con estaciones de campo de SENAMHI.",
+      "Representatividad geográfica centrada en Cerro de Pasco, Yanahuanca y Oxapampa.",
+      "Las probabilidades son puntajes de riesgo del ensamble y no probabilidades calibradas estrictas."
+    ]
+  },
+  "hail": {
+    "phenomenon": "hail",
+    "status": "not_viable_supervised_ml",
+    "message": "El granizo en los Andes centrales es un evento convectivo de microescala no capturado por los códigos WMO globales del reanálisis ERA5 (0 horas registradas en 2020-2026). No es metodológicamente viable entrenar un modelo supervisado. Opera bajo reglas físicas heurísticas documentadas (temperatura > 5°C, humedad relativa > 85%, precipitación convectiva > 10mm).",
+    "recommendation": "Incorporar registros de observaciones físicas de campo mediante la nueva tabla ground_truth_observations para futuro entrenamiento."
+  }
+}

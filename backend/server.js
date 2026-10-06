@@ -65,6 +65,28 @@ app.get('/api/config/maps', (req, res) => {
   });
 });
 
+// ===== HEALTH CHECK (Render & Monitor) =====
+app.get('/api/health', async (req, res) => {
+  try {
+    const { getDb } = require('./config/database');
+    await getDb().query('SELECT 1');
+    res.json({
+      status: 'ok',
+      service: 'agropasco-platform',
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: 'error',
+      service: 'agropasco-platform',
+      database: 'disconnected',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // ===== RUTA DE INFO =====
 app.get('/api', (req, res) => {
   res.json({

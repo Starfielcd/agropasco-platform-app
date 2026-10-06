@@ -485,12 +485,17 @@ function showSetupApprovedPasswordModal(email) {
 
       <form id="setup-approved-pwd-form" onsubmit="handleSetupApprovedPasswordSubmit(event, '${email}')">
         <div class="form-group">
-          <label class="form-label" style="font-size: 12px; font-weight: 700;">Nueva Contraseña</label>
-          <input type="password" id="approved-new-password" class="form-input" placeholder="Mínimo 6 caracteres" required minlength="6" autofocus>
+          <label class="form-label" style="font-size: 12px; font-weight: 700;">Clave Provisional o Código de Autorización</label>
+          <input type="password" id="approved-temp-password" class="form-input" placeholder="Clave temporal entregada por el Administrador" required autofocus>
         </div>
 
         <div class="form-group">
-          <label class="form-label" style="font-size: 12px; font-weight: 700;">Confirmar Contraseña</label>
+          <label class="form-label" style="font-size: 12px; font-weight: 700;">Nueva Contraseña Personal</label>
+          <input type="password" id="approved-new-password" class="form-input" placeholder="Mínimo 6 caracteres" required minlength="6">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 12px; font-weight: 700;">Confirmar Nueva Contraseña</label>
           <input type="password" id="approved-confirm-password" class="form-input" placeholder="Repite la nueva contraseña" required minlength="6">
         </div>
 
@@ -515,8 +520,17 @@ async function handleSetupApprovedPasswordSubmit(e, email) {
   if (e) e.preventDefault();
   const btn = document.getElementById('setup-approved-submit-btn');
   const errorEl = document.getElementById('setup-approved-error');
+  const tempPassword = document.getElementById('approved-temp-password')?.value;
   const pwd = document.getElementById('approved-new-password')?.value;
   const confirmPwd = document.getElementById('approved-confirm-password')?.value;
+
+  if (!tempPassword) {
+    if (errorEl) {
+      errorEl.textContent = 'Debes ingresar tu clave provisional o código de autorización.';
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
 
   if (pwd !== confirmPwd) {
     if (errorEl) {
@@ -537,7 +551,7 @@ async function handleSetupApprovedPasswordSubmit(e, email) {
   if (errorEl) errorEl.classList.add('hidden');
   if (btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
 
-  const res = await api.setupApprovedPassword({ email, newPassword: pwd });
+  const res = await api.setupApprovedPassword({ email, newPassword: pwd, tempPassword });
 
   if (res.success) {
     document.getElementById('setup-approved-pwd-modal')?.remove();

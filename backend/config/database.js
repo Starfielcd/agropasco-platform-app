@@ -1,125 +1,216 @@
 /**
- * AgroPasco — Configuración de Base de Datos SQLite
+ * AgroPasco — Configuración de Base de Datos PostgreSQL
  * Inicialización de tablas y datos semilla
+ *
+ * Migración desde SQLite:
+ *   - Usa node-postgres (pg) con Pool de conexiones
+ *   - dbRun/dbGet/dbAll convierten ? → $N automáticamente
+ *   - dbRun detecta INSERTs y agrega RETURNING id para compatibilidad con lastID
+ *   - Tipos adaptados: SERIAL, TIMESTAMPTZ, BOOLEAN, JSONB, DOUBLE PRECISION
  */
 
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const { advisoryKnowledge } = require('../data/advisory-knowledge');
 
-const DB_PATH = process.env.DB_PATH
-  ? (path.isAbsolute(process.env.DB_PATH) ? process.env.DB_PATH : path.resolve(__dirname, '..', process.env.DB_PATH))
-  : path.join(__dirname, '..', 'agropasco.db');
+// ===== Conexión =====
+const DATABASE_URL = process.env.DATABASE_URL;
 
-let db;
-
-function getDb() {
-  if (!db) {
-    db = new sqlite3.Database(DB_PATH, (err) => {
-      if (err) console.error('Error al conectar con la base de datos:', err.message);
-    });
-    db.run('PRAGMA journal_mode = WAL');
-    db.run('PRAGMA foreign_keys = ON');
+function checkDatabaseUrl() {
+  if (!process.env.DATABASE_URL) {
+    console.error('❌ DATABASE_URL no está configurada. Configura la variable de entorno con la cadena de conexión PostgreSQL.');
+    process.exit(1);
   }
-  return db;
 }
 
-// Promisify db methods
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+const pool = new Pool({
+  connectionString: DATABASE_URL || 'postgresql://localhost:5432/agropasco_db',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
+
+pool.on('error', (err) => {
+  if (process.env.DATABASE_URL) {
+    console.error('Error inesperado en el pool de PostgreSQL:', err.message);
+  }
+});
+
+// ===== Helpers de compatibilidad =====
+
+/**
+ * Convierte placeholders de estilo SQLite (?) a estilo PostgreSQL ($1, $2, ...).
+ * Solo reemplaza '?' fuera de cadenas de texto delimitadas por comillas simples.
+ */
+function convertPlaceholders(sql) {
+  let index = 0;
+  let inString = false;
+  let result = '';
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'" && (i === 0 || sql[i - 1] !== '\\')) {
+      inString = !inString;
+      result += ch;
+    } else if (ch === '?' && !inString) {
+      index++;
+      result += `$${index}`;
+    } else {
+      result += ch;
+    }
+  }
+  return result;
 }
 
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+/**
+ * Ejecuta un INSERT, UPDATE o DELETE.
+ * Para INSERTs, agrega RETURNING id automáticamente para compatibilidad con lastID.
+ * Retorna { lastID, changes } igual que el wrapper anterior de SQLite.
+ */
+async function dbRun(sql, params = []) {
+  const pgSql = convertPlaceholders(sql);
+  let finalSql = pgSql;
+
+  // Para INSERT, agregar RETURNING id si no existe ya
+  const isInsert = /^\s*INSERT\s+INTO/i.test(pgSql);
+  if (isInsert && !/RETURNING\s+/i.test(pgSql)) {
+    finalSql = pgSql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+  }
+
+  const result = await pool.query(finalSql, params);
+
+  return {
+    lastID: isInsert && result.rows && result.rows.length > 0 ? result.rows[0].id : null,
+    changes: result.rowCount || 0,
+  };
 }
 
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+/**
+ * Ejecuta un SELECT y retorna la primera fila (o undefined).
+ */
+async function dbGet(sql, params = []) {
+  const pgSql = convertPlaceholders(sql);
+  const result = await pool.query(pgSql, params);
+  return result.rows[0] || undefined;
 }
 
-async function initializeDatabase() {
-  console.log('📦 Inicializando base de datos...');
+/**
+ * Ejecuta un SELECT y retorna todas las filas como array.
+ */
+async function dbAll(sql, params = []) {
+  const pgSql = convertPlaceholders(sql);
+  const result = await pool.query(pgSql, params);
+  return result.rows;
+}
+
+/**
+ * Retorna el pool de conexiones (equivalente a getDb para código legado).
+ */
+function getDb() {
+  return pool;
+}
+
+// ===== Lista oficial de tablas requeridas en el esquema PostgreSQL =====
+const EXPECTED_SCHEMA_TABLES = [
+  'users',
+  'crops',
+  'crop_logs',
+  'weather_cache',
+  'advisory_tips',
+  'products',
+  'notifications',
+  'parcels',
+  'pest_markers',
+  'advisor_recommendations',
+  'audit_logs',
+  'pest_reports',
+  'pest_report_responses',
+  'support_tickets',
+  'ground_truth_observations',
+  'alert_preferences'
+];
+
+// ===== Inicialización de tablas (esquema final PostgreSQL) =====
+
+/**
+ * Crea las 16 tablas del esquema PostgreSQL oficial sin insertar datos semilla.
+ * Es estrictamente idempotente: utiliza CREATE TABLE IF NOT EXISTS.
+ * Acepta un ejecutor opcional (client o pool), por defecto usa el pool del módulo.
+ */
+async function initializeSchema(executor = pool) {
+  console.log('📦 Creando/verificando esquema PostgreSQL (16 tablas)...');
 
   // ===== TABLA: users =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'farmer' CHECK(role IN ('farmer', 'advisor', 'supermarket', 'admin')),
       location TEXT DEFAULT 'Cerro de Pasco',
       phone TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      status TEXT DEFAULT 'active',
+      is_blocked INTEGER DEFAULT 0,
+      must_change_password INTEGER DEFAULT 0,
+      approved_by INTEGER,
+      rejection_reason TEXT,
+      approved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: crops =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS crops (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       crop_type TEXT NOT NULL,
       variety TEXT,
-      area_hectares REAL DEFAULT 0,
+      area_hectares DOUBLE PRECISION DEFAULT 0,
       planting_date DATE,
       expected_harvest_date DATE,
       status TEXT DEFAULT 'planificado' CHECK(status IN ('planificado', 'sembrado', 'crecimiento', 'floracion', 'maduracion', 'cosechado', 'cancelado')),
       location_detail TEXT,
       altitude_masl INTEGER,
       notes TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      photo_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: crop_logs (trazabilidad) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS crop_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      crop_id INTEGER NOT NULL,
-      action_type TEXT NOT NULL CHECK(action_type IN ('siembra', 'riego', 'fertilizacion', 'fumigacion', 'aporque', 'poda', 'cosecha', 'inspeccion', 'alerta_clima', 'otro')),
+      id SERIAL PRIMARY KEY,
+      crop_id INTEGER NOT NULL REFERENCES crops(id) ON DELETE CASCADE,
+      action_type TEXT NOT NULL CHECK(action_type IN ('siembra', 'riego', 'fertilizacion', 'fumigacion', 'aporque', 'poda', 'cosecha', 'inspeccion', 'alerta_clima', 'deshierbe', 'otro')),
       description TEXT NOT NULL,
       weather_snapshot TEXT,
       photo_url TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (crop_id) REFERENCES crops(id) ON DELETE CASCADE
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: weather_cache =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS weather_cache (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       location TEXT NOT NULL,
-      data_type TEXT NOT NULL DEFAULT 'current' CHECK(data_type IN ('current', 'forecast')),
+      data_type TEXT NOT NULL DEFAULT 'current',
       data_json TEXT NOT NULL,
-      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      fetched_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: advisory_tips =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS advisory_tips (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       crop_type TEXT NOT NULL,
       category TEXT NOT NULL,
       condition TEXT NOT NULL,
@@ -128,148 +219,171 @@ async function initializeDatabase() {
   `);
 
   // ===== TABLA: products (supermercado) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      farmer_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      farmer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       crop_type TEXT NOT NULL,
       quality TEXT DEFAULT 'primera' CHECK(quality IN ('primera', 'segunda', 'gourmet', 'organica', 'premium')),
       origin TEXT DEFAULT 'Región Pasco',
-      stock_kg REAL DEFAULT 0,
-      price_per_kg REAL DEFAULT 0,
+      stock_kg DOUBLE PRECISION DEFAULT 0,
+      price_per_kg DOUBLE PRECISION DEFAULT 0,
       unit TEXT DEFAULT 'kg',
       description TEXT,
       traceability_code TEXT UNIQUE,
       certified_natural INTEGER DEFAULT 0,
       available INTEGER DEFAULT 1,
       harvest_date DATE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE SET NULL
+      validation_status TEXT DEFAULT 'approved',
+      validated_by INTEGER,
+      validation_notes TEXT,
+      validated_at TIMESTAMPTZ,
+      photo_url TEXT,
+      is_natural INTEGER DEFAULT 0,
+      original_price DOUBLE PRECISION DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: notifications =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      type TEXT NOT NULL CHECK(type IN ('alerta_helada', 'alerta_granizo', 'alerta_sequia', 'alerta_lluvia', 'asesoria', 'mercado', 'sistema')),
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
       title TEXT NOT NULL,
       message TEXT NOT NULL,
-      severity TEXT DEFAULT 'info' CHECK(severity IN ('info', 'warning', 'critical')),
+      severity TEXT DEFAULT 'info',
       read INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      parcel_id INTEGER,
+      phenomenon TEXT,
+      model_type TEXT,
+      issued_at TIMESTAMPTZ,
+      valid_until TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: parcels (polígonos de parcelas) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS parcels (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       geo_json TEXT NOT NULL,
-      area_hectares REAL DEFAULT 0,
-      center_lat REAL,
-      center_lng REAL,
+      area_hectares DOUBLE PRECISION DEFAULT 0,
+      center_lat DOUBLE PRECISION,
+      center_lng DOUBLE PRECISION,
       crop_type TEXT,
-      crop_id INTEGER,
+      crop_id INTEGER REFERENCES crops(id) ON DELETE SET NULL,
       planting_date DATE,
       status TEXT DEFAULT 'activa' CHECK(status IN ('activa', 'en_descanso', 'planificada', 'cosechada')),
       altitude_masl INTEGER DEFAULT 4380,
       notes TEXT,
       photo_url TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (crop_id) REFERENCES crops(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: pest_markers (marcadores de plagas georreferenciados) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS pest_markers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      advisor_id INTEGER NOT NULL,
-      parcel_id INTEGER,
-      lat REAL NOT NULL,
-      lng REAL NOT NULL,
+      id SERIAL PRIMARY KEY,
+      advisor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL,
+      lat DOUBLE PRECISION NOT NULL,
+      lng DOUBLE PRECISION NOT NULL,
       pest_type TEXT NOT NULL CHECK(pest_type IN ('insecto', 'hongo', 'bacteria', 'virus', 'maleza', 'nematodo', 'otro')),
       severity TEXT DEFAULT 'moderado' CHECK(severity IN ('leve', 'moderado', 'grave', 'critico')),
       title TEXT NOT NULL,
       description TEXT,
       photo_url TEXT,
       resolved INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: advisor_recommendations =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS advisor_recommendations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      advisor_id INTEGER NOT NULL,
-      farmer_id INTEGER,
-      parcel_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      advisor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      farmer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL,
       category TEXT NOT NULL CHECK(category IN ('fertilizacion', 'riego', 'plagas', 'cosecha', 'rotacion', 'general')),
       title TEXT NOT NULL,
       recommendation TEXT NOT NULL,
       priority TEXT DEFAULT 'normal' CHECK(priority IN ('baja', 'normal', 'alta', 'urgente')),
       status TEXT DEFAULT 'pendiente' CHECK(status IN ('pendiente', 'leida', 'aplicada', 'descartada')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: audit_logs (auditoría del administrador) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       action TEXT NOT NULL,
       entity_type TEXT,
       entity_id INTEGER,
       details TEXT,
       ip_address TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: pest_reports (reportes de plagas agricultor → asesor) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS pest_reports (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      farmer_id INTEGER NOT NULL,
-      parcel_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      farmer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL,
       pest_name TEXT NOT NULL,
       description TEXT,
       photo_url TEXT,
-      location_lat REAL,
-      location_lng REAL,
+      location_lat DOUBLE PRECISION,
+      location_lng DOUBLE PRECISION,
       status TEXT DEFAULT 'pendiente',
       advisor_response TEXT,
-      advisor_id INTEGER,
-      responded_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL,
-      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE SET NULL
+      advisor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      responded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      severity TEXT DEFAULT 'moderado',
+      control_status TEXT DEFAULT 'pendiente',
+      attachment_video_url TEXT,
+      attachment_doc_url TEXT,
+      attachment_doc_name TEXT,
+      feedback_status TEXT,
+      feedback_notes TEXT,
+      feedback_at TIMESTAMPTZ,
+      feedback_media_url TEXT
+    )
+  `);
+
+  // ===== TABLA: pest_report_responses (historial de respuestas del asesor y materiales) =====
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS pest_report_responses (
+      id SERIAL PRIMARY KEY,
+      pest_report_id INTEGER NOT NULL REFERENCES pest_reports(id) ON DELETE CASCADE,
+      advisor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      response_text TEXT NOT NULL,
+      control_status TEXT NOT NULL DEFAULT 'en_proceso',
+      attachment_video_url TEXT,
+      attachment_doc_url TEXT,
+      attachment_doc_name TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // ===== TABLA: support_tickets (soporte técnico y consultas) =====
-  await dbRun(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS support_tickets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       user_name TEXT,
       user_email TEXT,
       category TEXT NOT NULL DEFAULT 'general',
@@ -278,281 +392,40 @@ async function initializeDatabase() {
       status TEXT DEFAULT 'abierto' CHECK(status IN ('abierto', 'en_atencion', 'resuelto')),
       response TEXT,
       escalated_to_dev INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  // ===== MIGRACIÓN: columnas de validación en products =====
-  const productMigrations = [
-    "ALTER TABLE products ADD COLUMN validation_status TEXT DEFAULT 'approved'",
-    "ALTER TABLE products ADD COLUMN validated_by INTEGER",
-    "ALTER TABLE products ADD COLUMN validation_notes TEXT",
-    "ALTER TABLE products ADD COLUMN validated_at DATETIME",
-    "ALTER TABLE products ADD COLUMN photo_url TEXT",
-    "ALTER TABLE products ADD COLUMN is_natural INTEGER DEFAULT 0",
-    "ALTER TABLE products ADD COLUMN original_price REAL DEFAULT 0"
-  ];
-  for (const sql of productMigrations) {
-    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
-  }
-
-  // ===== MIGRACIÓN: columnas adicionales en pest_reports y users =====
-  const additionalMigrations = [
-    "ALTER TABLE pest_reports ADD COLUMN severity TEXT DEFAULT 'moderado'",
-    "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'",
-    "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0"
-  ];
-  for (const sql of additionalMigrations) {
-    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
-  }
-
-  // ===== MIGRACIÓN: columnas para flujo de aprobación de cuentas =====
-  const approvalMigrations = [
-    "ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN approved_by INTEGER",
-    "ALTER TABLE users ADD COLUMN rejection_reason TEXT",
-    "ALTER TABLE users ADD COLUMN approved_at DATETIME"
-  ];
-  for (const sql of approvalMigrations) {
-    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
-  }
-
-  // ===== MIGRACIÓN: Fotos obligatorias y seguimiento de plagas =====
-  const pestAndPhotoMigrations = [
-    "ALTER TABLE parcels ADD COLUMN photo_url TEXT",
-    "ALTER TABLE parcels ADD COLUMN crop_id INTEGER REFERENCES crops(id) ON DELETE SET NULL",
-    "ALTER TABLE crops ADD COLUMN photo_url TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN control_status TEXT DEFAULT 'pendiente'",
-    "ALTER TABLE pest_reports ADD COLUMN attachment_video_url TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN attachment_doc_url TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN attachment_doc_name TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN feedback_status TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN feedback_notes TEXT",
-    "ALTER TABLE pest_reports ADD COLUMN feedback_at DATETIME",
-    "ALTER TABLE pest_reports ADD COLUMN feedback_media_url TEXT"
-  ];
-  for (const sql of pestAndPhotoMigrations) {
-    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
-  }
-
-  // Relajar restricción CHECK de pest_reports si existe
-  try {
-    const tableDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='pest_reports'");
-    if (tableDef && tableDef.sql && tableDef.sql.includes('CHECK(status IN')) {
-      await dbRun('PRAGMA foreign_keys = OFF;');
-      await dbRun('ALTER TABLE pest_reports RENAME TO pest_reports_old;');
-      await dbRun(`
-        CREATE TABLE pest_reports (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          farmer_id INTEGER NOT NULL,
-          parcel_id INTEGER,
-          pest_name TEXT NOT NULL,
-          description TEXT,
-          photo_url TEXT,
-          location_lat REAL,
-          location_lng REAL,
-          status TEXT DEFAULT 'pendiente',
-          advisor_response TEXT,
-          advisor_id INTEGER,
-          responded_at DATETIME,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          severity TEXT DEFAULT 'moderado',
-          control_status TEXT DEFAULT 'pendiente',
-          attachment_video_url TEXT,
-          attachment_doc_url TEXT,
-          attachment_doc_name TEXT,
-          feedback_status TEXT,
-          feedback_notes TEXT,
-          feedback_at DATETIME,
-          feedback_media_url TEXT,
-          FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL,
-          FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE SET NULL
-        )
-      `);
-      await dbRun(`
-        INSERT INTO pest_reports (
-          id, farmer_id, parcel_id, pest_name, description, photo_url,
-          location_lat, location_lng, status, advisor_response, advisor_id,
-          responded_at, created_at, severity, control_status,
-          attachment_video_url, attachment_doc_url, attachment_doc_name,
-          feedback_status, feedback_notes, feedback_at
-        )
-        SELECT
-          id, farmer_id, parcel_id, pest_name, description, photo_url,
-          location_lat, location_lng, status, advisor_response, advisor_id,
-          responded_at, created_at, severity, control_status,
-          attachment_video_url, attachment_doc_url, attachment_doc_name,
-          feedback_status, feedback_notes, feedback_at
-        FROM pest_reports_old;
-      `);
-      await dbRun('DROP TABLE pest_reports_old;');
-      await dbRun('PRAGMA foreign_keys = ON;');
-    }
-  } catch (err) {
-    console.warn('Advertencia en migración de pest_reports:', err.message);
-  }
-
-  // ===== TABLA: pest_report_responses (historial de respuestas del asesor y materiales) =====
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS pest_report_responses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      pest_report_id INTEGER NOT NULL,
-      advisor_id INTEGER NOT NULL,
-      response_text TEXT NOT NULL,
-      control_status TEXT NOT NULL DEFAULT 'en_proceso',
-      attachment_video_url TEXT,
-      attachment_doc_url TEXT,
-      attachment_doc_name TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (pest_report_id) REFERENCES pest_reports(id) ON DELETE CASCADE,
-      FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-  // ===== MIGRACIÓN: Corregir FK de pest_report_responses si apunta a pest_reports_old =====
-  try {
-    const respDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='pest_report_responses'");
-    if (respDef && respDef.sql && respDef.sql.includes('pest_reports_old')) {
-      await dbRun('PRAGMA foreign_keys = OFF;');
-      await dbRun(`
-        CREATE TABLE pest_report_responses_fixed (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          pest_report_id INTEGER NOT NULL,
-          advisor_id INTEGER NOT NULL,
-          response_text TEXT NOT NULL,
-          control_status TEXT NOT NULL DEFAULT 'en_proceso',
-          attachment_video_url TEXT,
-          attachment_doc_url TEXT,
-          attachment_doc_name TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (pest_report_id) REFERENCES pest_reports(id) ON DELETE CASCADE,
-          FOREIGN KEY (advisor_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-      `);
-      await dbRun(`
-        INSERT INTO pest_report_responses_fixed (id, pest_report_id, advisor_id, response_text, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name, created_at)
-        SELECT id, pest_report_id, advisor_id, response_text, control_status, attachment_video_url, attachment_doc_url, attachment_doc_name, created_at
-        FROM pest_report_responses;
-      `);
-      await dbRun('DROP TABLE pest_report_responses;');
-      await dbRun('ALTER TABLE pest_report_responses_fixed RENAME TO pest_report_responses;');
-      await dbRun('PRAGMA foreign_keys = ON;');
-      console.log('✅ Migración: pest_report_responses FK actualizada a pest_reports exitosamente');
-    }
-  } catch (err) {
-    console.warn('Advertencia en migración de pest_report_responses FK:', err.message);
-  }
-
-  // ===== MIGRACIÓN: Ampliar weather_cache para soportar ml_prediction =====
-  try {
-    const wcDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='weather_cache'");
-    if (wcDef && wcDef.sql && wcDef.sql.includes("CHECK(data_type IN ('current', 'forecast'))")) {
-      await dbRun('PRAGMA foreign_keys = OFF;');
-      await dbRun(`
-        CREATE TABLE weather_cache_v2 (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          location TEXT NOT NULL,
-          data_type TEXT NOT NULL DEFAULT 'current',
-          data_json TEXT NOT NULL,
-          fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      await dbRun(`
-        INSERT INTO weather_cache_v2 (id, location, data_type, data_json, fetched_at)
-        SELECT id, location, data_type, data_json, fetched_at FROM weather_cache;
-      `);
-      await dbRun('DROP TABLE weather_cache;');
-      await dbRun('ALTER TABLE weather_cache_v2 RENAME TO weather_cache;');
-      await dbRun('PRAGMA foreign_keys = ON;');
-      console.log('✅ Migración: weather_cache ampliada para ML predictions');
-    }
-  } catch (err) {
-    console.warn('Advertencia en migración weather_cache:', err.message);
-  }
-
-  // ===== MIGRACIÓN: Ampliar notifications para soportar tipos ML =====
-  try {
-    const notifDef = await dbGet("SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'");
-    if (notifDef && notifDef.sql && notifDef.sql.includes("CHECK(type IN") && !notifDef.sql.includes('alerta_nevada')) {
-      await dbRun('PRAGMA foreign_keys = OFF;');
-      await dbRun(`
-        CREATE TABLE notifications_v2 (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          type TEXT NOT NULL,
-          title TEXT NOT NULL,
-          message TEXT NOT NULL,
-          severity TEXT DEFAULT 'info',
-          read INTEGER DEFAULT 0,
-          parcel_id INTEGER,
-          phenomenon TEXT,
-          model_type TEXT,
-          issued_at DATETIME,
-          valid_until DATETIME,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
-        )
-      `);
-      await dbRun(`
-        INSERT INTO notifications_v2 (id, user_id, type, title, message, severity, read, created_at)
-        SELECT id, user_id, type, title, message, severity, read, created_at FROM notifications;
-      `);
-      await dbRun('DROP TABLE notifications;');
-      await dbRun('ALTER TABLE notifications_v2 RENAME TO notifications;');
-      await dbRun('PRAGMA foreign_keys = ON;');
-      console.log('✅ Migración: notifications ampliada para ML (parcel_id, phenomenon, model_type)');
-    }
-  } catch (err) {
-    console.warn('Advertencia en migración notifications:', err.message);
-  }
-
-  // Añadir columnas ML a notifications si no existen (para tabla sin CHECK)
-  const notifMlMigrations = [
-    "ALTER TABLE notifications ADD COLUMN parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL",
-    "ALTER TABLE notifications ADD COLUMN phenomenon TEXT",
-    "ALTER TABLE notifications ADD COLUMN model_type TEXT",
-    "ALTER TABLE notifications ADD COLUMN issued_at DATETIME",
-    "ALTER TABLE notifications ADD COLUMN valid_until DATETIME",
-  ];
-  for (const sql of notifMlMigrations) {
-    try { await dbRun(sql); } catch (e) { /* columna ya existe */ }
-  }
-
-  // ===== TABLA: ground_truth_observations (Observaciones verificadas en campo / SENAMHI) =====
-  await dbRun(`
+  // ===== TABLA: ground_truth_observations =====
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS ground_truth_observations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      parcel_id INTEGER,
-      observed_at DATETIME NOT NULL,
-      latitude REAL,
-      longitude REAL,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      parcel_id INTEGER REFERENCES parcels(id) ON DELETE SET NULL,
+      observed_at TIMESTAMPTZ NOT NULL,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
       altitude_masl INTEGER,
       phenomenon TEXT NOT NULL CHECK(phenomenon IN ('frost', 'heavy_rain', 'snow', 'hail', 'drought', 'strong_winds')),
       severity TEXT DEFAULT 'moderado' CHECK(severity IN ('leve', 'moderado', 'severo', 'extremo')),
       source TEXT NOT NULL DEFAULT 'farmer_report' CHECK(source IN ('farmer_report', 'senamhi_station', 'field_advisor', 'satellite_validated')),
       verification_method TEXT DEFAULT 'visual_inspection' CHECK(verification_method IN ('visual_inspection', 'thermometer', 'pluviometer', 'official_report')),
       station_id TEXT,
-      temperature_recorded REAL,
-      precipitation_recorded_mm REAL,
-      crop_damage_percentage REAL,
+      temperature_recorded DOUBLE PRECISION,
+      precipitation_recorded_mm DOUBLE PRECISION,
+      crop_damage_percentage DOUBLE PRECISION,
       notes TEXT,
       photo_url TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  // ===== TABLA: alert_preferences (Preferencias de alertas meteorológicas por usuario) =====
-  await dbRun(`
+  // ===== TABLA: alert_preferences =====
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS alert_preferences (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER UNIQUE NOT NULL,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       frost_enabled INTEGER DEFAULT 1,
       heavy_rain_enabled INTEGER DEFAULT 1,
       snow_enabled INTEGER DEFAULT 1,
@@ -560,15 +433,34 @@ async function initializeDatabase() {
       min_risk_level TEXT DEFAULT 'moderate' CHECK(min_risk_level IN ('low', 'moderate', 'high')),
       in_app_enabled INTEGER DEFAULT 1,
       email_enabled INTEGER DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  // ===== SEED DATA =====
-  await seedData();
+  console.log('✅ Esquema PostgreSQL creado/verificado correctamente (16 tablas).');
+}
 
-  console.log('✅ Base de datos inicializada correctamente');
+/**
+ * Inicialización completa para desarrollo/servidor:
+ * 1. Inicializa el esquema limpio (16 tablas, idempotente)
+ * 2. Aplica datos semilla iniciales SOLO en entornos no-producción
+ *
+ * En NODE_ENV=production se omite seedData para proteger los datos
+ * reales de Supabase de sobrescrituras accidentales.
+ */
+async function initializeDatabase() {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    console.log('🔒 Modo PRODUCCIÓN: inicializando solo esquema (seedData omitido).');
+    await initializeSchema();
+    console.log('✅ Esquema PostgreSQL verificado en modo producción.');
+  } else {
+    console.log('📦 Inicializando base de datos PostgreSQL con datos semilla...');
+    await initializeSchema();
+    await seedData();
+    console.log('✅ Base de datos PostgreSQL inicializada correctamente');
+  }
 }
 
 async function seedData() {
@@ -620,31 +512,43 @@ async function seedData() {
     console.log(`👑 Sucesión administrativa activa. Administrador en funciones: ${activeAdmin.email}`);
   }
 
-  // ===== Seed: Agricultor de referencia (para pruebas) =====
-  const farmerExists = await dbGet("SELECT id FROM users WHERE email = 'agricultor@agropasco.pe'");
-  if (!farmerExists) {
-    await dbRun(
-      `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
-       VALUES (?, ?, ?, 'farmer', ?, ?, 'active', 0, 0)`,
-      ['Agricultor de Pasco', 'agricultor@agropasco.pe', defaultHash, 'Yanahuanca, Pasco', '963987638']
-    );
-  }
+  // ===== Seed: Agricultor de referencia (SOLO en entornos NO producción) =====
+  if (process.env.NODE_ENV !== 'production') {
+    const farmerExists = await dbGet("SELECT id FROM users WHERE email = 'agricultor@agropasco.pe'");
+    if (!farmerExists) {
+      await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, location, phone, status, is_blocked, must_change_password)
+         VALUES (?, ?, ?, 'farmer', ?, ?, 'active', 0, 0)`,
+        ['Agricultor de Pasco', 'agricultor@agropasco.pe', defaultHash, 'Yanahuanca, Pasco', '963987638']
+      );
+    }
 
-  // Seed sample support tickets if table empty
-  const existingTickets = await dbGet('SELECT COUNT(*) as count FROM support_tickets');
-  if (!existingTickets || existingTickets.count === 0) {
-    await dbRun(`
-      INSERT INTO support_tickets (user_name, user_email, category, subject, message, status, response, created_at)
-      VALUES
-      ('Pedro Villegas', 'pedro.villegas@gmail.com', 'login', 'Problema para recordar contraseña', 'Olvidé mi contraseña de agricultor y necesito ingresar para ver mis parcelas.', 'en_atencion', 'Se ha generado una clave provisional y notificado al agricultor.', datetime('now', '-2 hours')),
-      ('Rosa Mendoza', 'rosa.m@agro.pe', 'registro', 'Duda sobre registro de parcela en Yanahuanca', '¿Cómo puedo asociar la altitud automáticamente al dibujar mi parcela?', 'resuelto', 'El sistema detecta automáticamente la altitud mediante GPS y Open-Elevation al seleccionar el punto.', datetime('now', '-1 day')),
-      ('Juan Ramos', 'juan.ramos.pasco@gmail.com', 'tecnico', 'Error al cargar fotografía de papa con gorgojo', 'La conexión en campo es lenta y quisiera saber si la foto se guardó correctamente.', 'abierto', NULL, datetime('now', '-30 minutes'))
-    `);
+    // Seed sample support tickets if table empty (solo desarrollo)
+    const existingTickets = await dbGet('SELECT COUNT(*) as count FROM support_tickets');
+    if (!existingTickets || existingTickets.count === 0 || parseInt(existingTickets.count) === 0) {
+      await dbRun(`
+        INSERT INTO support_tickets (user_name, user_email, category, subject, message, status, response, created_at)
+        VALUES
+        ('Pedro Villegas', 'pedro.villegas@gmail.com', 'login', 'Problema para recordar contraseña', 'Olvidé mi contraseña de agricultor y necesito ingresar para ver mis parcelas.', 'en_atencion', 'Se ha generado una clave provisional y notificado al agricultor.', NOW() - INTERVAL '2 hours')
+      `);
+      await dbRun(`
+        INSERT INTO support_tickets (user_name, user_email, category, subject, message, status, response, created_at)
+        VALUES
+        ('Rosa Mendoza', 'rosa.m@agro.pe', 'registro', 'Duda sobre registro de parcela en Yanahuanca', '¿Cómo puedo asociar la altitud automáticamente al dibujar mi parcela?', 'resuelto', 'El sistema detecta automáticamente la altitud mediante GPS y Open-Elevation al seleccionar el punto.', NOW() - INTERVAL '1 day')
+      `);
+      await dbRun(`
+        INSERT INTO support_tickets (user_name, user_email, category, subject, message, status, response, created_at)
+        VALUES
+        ('Juan Ramos', 'juan.ramos.pasco@gmail.com', 'tecnico', 'Error al cargar fotografía de papa con gorgojo', 'La conexión en campo es lenta y quisiera saber si la foto se guardó correctamente.', 'abierto', NULL, NOW() - INTERVAL '30 minutes')
+      `);
+    }
+  } else {
+    console.log('🔒 Producción: agricutor de referencia y tickets de muestra omitidos.');
   }
 
   // Check if advisory tips already seeded
   const existing = await dbGet('SELECT COUNT(*) as count FROM advisory_tips');
-  if (existing && existing.count > 0) return;
+  if (existing && parseInt(existing.count) > 0) return;
 
   console.log('🌱 Insertando datos semilla...');
 
@@ -668,15 +572,28 @@ async function seedData() {
     { name: 'Papa Nativa Peruanita', crop_type: 'papa', quality: 'gourmet', origin: 'Yanahuanca, Pasco', stock_kg: 600, price_per_kg: 4.20, traceability_code: 'AP-PPRU-2026-008', certified_natural: 1, description: 'Papa peruanita de Yanahuanca, piel bicolor, textura cremosa para gastronomía gourmet.' },
   ];
 
-  for (const prod of sampleProducts) {
-    await dbRun(
-      `INSERT INTO products (name, crop_type, quality, origin, stock_kg, price_per_kg, traceability_code, certified_natural, description, harvest_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, date('now', '-' || abs(random() % 30) || ' days'))`,
-      [prod.name, prod.crop_type, prod.quality, prod.origin, prod.stock_kg, prod.price_per_kg, prod.traceability_code, prod.certified_natural, prod.description]
-    );
+  if (process.env.NODE_ENV !== 'production') {
+    for (const prod of sampleProducts) {
+      await dbRun(
+        `INSERT INTO products (name, crop_type, quality, origin, stock_kg, price_per_kg, traceability_code, certified_natural, description, harvest_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE - (floor(random() * 30))::int * INTERVAL '1 day')`,
+        [prod.name, prod.crop_type, prod.quality, prod.origin, prod.stock_kg, prod.price_per_kg, prod.traceability_code, prod.certified_natural, prod.description]
+      );
+    }
+  } else {
+    console.log('🔒 Producción: productos de muestra omitidos.');
   }
 
   console.log('✅ Datos semilla insertados: ' + advisoryKnowledge.length + ' consejos, ' + sampleProducts.length + ' productos');
 }
 
-module.exports = { getDb, dbRun, dbGet, dbAll, initializeDatabase };
+module.exports = {
+  getDb,
+  dbRun,
+  dbGet,
+  dbAll,
+  initializeSchema,
+  seedData,
+  initializeDatabase,
+  EXPECTED_SCHEMA_TABLES
+};

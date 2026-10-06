@@ -21,7 +21,7 @@ async function listUsers(req, res) {
 
     if (role) { sql += ' AND role = ?'; params.push(role); }
     if (status) { sql += ' AND status = ?'; params.push(status); }
-    if (search) { sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+    if (search) { sql += ' AND (name ILIKE ? OR email ILIKE ? OR phone ILIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
 
     sql += ' ORDER BY created_at DESC';
 

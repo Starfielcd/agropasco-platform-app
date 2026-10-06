@@ -1,8 +1,9 @@
-# AgroPasco — Blueprint de Despliegue en Render (Infrastructure as Code)
-# =====================================================================
-# Define los dos servicios desacoplados:
+# AgroPasco — Blueprint de Despliegue en Render (Infrastructure as Code - Free Tier)
+# ===================================================================================
+# Define los dos servicios desacoplados en el plan gratuito de Render:
 #   1. agropasco-ml-service: Microservicio Python FastAPI de Machine Learning
 #   2. agropasco-platform: Backend Node.js Express + Frontend SPA
+# Base de datos: PostgreSQL externa (Supabase Free Tier)
 
 services:
   # -------------------------------------------------------------
@@ -12,7 +13,7 @@ services:
     name: agropasco-ml-service
     runtime: python
     region: oregon
-    plan: starter
+    plan: free
     rootDir: backend/ml-service
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
@@ -31,16 +32,12 @@ services:
     name: agropasco-platform
     runtime: node
     region: oregon
-    plan: starter
+    plan: free
     rootDir: .
     buildCommand: npm install && cd backend && npm install
     startCommand: cd backend && node server.js
     healthCheckPath: /api/health
     autoDeploy: true
-    disk:
-      name: agropasco-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -48,8 +45,8 @@ services:
         value: 5000
       - key: JWT_SECRET
         generateValue: true
-      - key: DB_PATH
-        value: /var/data/agropasco.db
+      - key: DATABASE_URL
+        sync: false
       - key: ML_SERVICE_URL
         fromService:
           type: web

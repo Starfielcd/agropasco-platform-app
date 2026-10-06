@@ -1,0 +1,641 @@
+{
+  "cerro_de_pasco": {
+    "location_key": "cerro_de_pasco",
+    "location_name": "Cerro de Pasco",
+    "zone": "Zona Alta / Puna",
+    "province": "Pasco",
+    "filename": "Cerro_de_Pasco _Zona_alta_ Heladas.csv",
+    "generated_at": "2026-09-27T17:01:07.731416",
+    "metadata": {
+      "latitude": -10.650263,
+      "longitude": -76.25772,
+      "elevation": 4337.0,
+      "utc_offset_seconds": -18000,
+      "timezone": "America/Lima",
+      "timezone_abbreviation": "GMT-5"
+    },
+    "hourly": {
+      "num_records": 59064,
+      "num_columns": 6,
+      "columns": [
+        "time",
+        "temperature_2m",
+        "relative_humidity_2m",
+        "precipitation",
+        "weather_code",
+        "soil_moisture_0_to_7cm"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m": "float64",
+        "relative_humidity_2m": "int64",
+        "precipitation": "float64",
+        "weather_code": "int64",
+        "soil_moisture_0_to_7cm": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 23:00:00"
+      },
+      "frequency": "hourly",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "weather_code": 0,
+        "soil_moisture_0_to_7cm": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m": {
+          "min": -5.6,
+          "max": 16.3,
+          "mean": 4.546942299878098,
+          "std": 3.568520190355048
+        },
+        "relative_humidity_2m": {
+          "min": 9.0,
+          "max": 100.0,
+          "mean": 80.70401598266288,
+          "std": 19.95701219963455
+        },
+        "precipitation": {
+          "min": 0.0,
+          "max": 7.4,
+          "mean": 0.15966578626574562,
+          "std": 0.4661674090665206
+        },
+        "weather_code": {
+          "min": 0.0,
+          "max": 75.0,
+          "mean": 19.27758025193011,
+          "std": 25.51436755289377
+        },
+        "soil_moisture_0_to_7cm": {
+          "min": 0.039,
+          "max": 0.446,
+          "mean": 0.32702216240010823,
+          "std": 0.09461777174393647
+        }
+      }
+    },
+    "daily": {
+      "num_records": 2461,
+      "num_columns": 8,
+      "columns": [
+        "time",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "temperature_2m_mean",
+        "precipitation_sum",
+        "rain_sum",
+        "wind_speed_10m_max",
+        "et0_fao_evapotranspiration"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m_max": "float64",
+        "temperature_2m_min": "float64",
+        "temperature_2m_mean": "float64",
+        "precipitation_sum": "float64",
+        "rain_sum": "float64",
+        "wind_speed_10m_max": "float64",
+        "et0_fao_evapotranspiration": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 00:00:00"
+      },
+      "frequency": "daily",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m_max": 0,
+        "temperature_2m_min": 0,
+        "temperature_2m_mean": 0,
+        "precipitation_sum": 0,
+        "rain_sum": 0,
+        "wind_speed_10m_max": 0,
+        "et0_fao_evapotranspiration": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m_max": {
+          "min": 3.0,
+          "max": 16.3,
+          "mean": 10.37895164567249,
+          "std": 1.6965279818468606
+        },
+        "temperature_2m_min": {
+          "min": -5.6,
+          "max": 4.7,
+          "mean": 0.3115806582689964,
+          "std": 1.8157441475733538
+        },
+        "temperature_2m_mean": {
+          "min": 1.1,
+          "max": 8.0,
+          "mean": 4.526533929297034,
+          "std": 0.923249240634449
+        },
+        "precipitation_sum": {
+          "min": 0.0,
+          "max": 21.4,
+          "mean": 3.831978870377895,
+          "std": 3.942969108606258
+        },
+        "rain_sum": {
+          "min": 0.0,
+          "max": 18.2,
+          "mean": 2.7743193823648924,
+          "std": 2.7318965824089743
+        },
+        "wind_speed_10m_max": {
+          "min": 6.6,
+          "max": 29.9,
+          "mean": 14.892645266151971,
+          "std": 3.0897718019848015
+        },
+        "et0_fao_evapotranspiration": {
+          "min": 1.09,
+          "max": 5.5,
+          "mean": 3.0196749288906948,
+          "std": 0.6751931792051573
+        }
+      }
+    },
+    "event_analysis": {
+      "frost": {
+        "hours_below_0c": 4412,
+        "days_with_min_below_0c": 940,
+        "days_with_min_below_minus3c": 142,
+        "total_days": 2461,
+        "percentage_frost_days": 38.2,
+        "label_type": "proxy_rule_based",
+        "rule": "temperature_2m_min <= 0.0°C",
+        "note": "Etiqueta derivada de regla meteorológica, NO de observación verificada en campo."
+      },
+      "heavy_rain": {
+        "days_above_20mm": 6,
+        "days_above_50mm": 0,
+        "hours_above_10mm": 0,
+        "total_days": 2461,
+        "percentage_heavy_rain_days": 0.24,
+        "label_type": "proxy_rule_based",
+        "rule": "precipitation_sum >= 20.0 mm/día"
+      },
+      "snow": {
+        "hours_with_snow_code": 3999,
+        "days_with_snow_code": 1355,
+        "total_days": 2461,
+        "wmo_codes_used": [
+          71,
+          73,
+          75,
+          77
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "Basado en código WMO del modelo meteorológico, NO en observación directa.",
+        "viability": "possible"
+      },
+      "hail": {
+        "hours_with_hail_code": 0,
+        "wmo_codes_used": [
+          96,
+          99
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "El granizo es un fenómeno muy localizado. Datos insuficientes para ML.",
+        "viability": "not_viable"
+      }
+    }
+  },
+  "yanahuanca": {
+    "location_key": "yanahuanca",
+    "location_name": "Yanahuanca",
+    "zone": "Zona Andina",
+    "province": "Daniel Alcides Carrión",
+    "filename": "Yanahuanca_Daniel_Alcides_Carrión _Zona Andina.csv",
+    "generated_at": "2026-09-27T17:01:09.510875",
+    "metadata": {
+      "latitude": -10.5096655,
+      "longitude": -76.51984,
+      "elevation": 3219.0,
+      "utc_offset_seconds": -18000,
+      "timezone": "America/Lima",
+      "timezone_abbreviation": "GMT-5"
+    },
+    "hourly": {
+      "num_records": 59064,
+      "num_columns": 6,
+      "columns": [
+        "time",
+        "temperature_2m",
+        "relative_humidity_2m",
+        "precipitation",
+        "weather_code",
+        "soil_moisture_0_to_7cm"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m": "float64",
+        "relative_humidity_2m": "int64",
+        "precipitation": "float64",
+        "weather_code": "int64",
+        "soil_moisture_0_to_7cm": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 23:00:00"
+      },
+      "frequency": "hourly",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "weather_code": 0,
+        "soil_moisture_0_to_7cm": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m": {
+          "min": -2.1,
+          "max": 24.7,
+          "mean": 11.378569009887581,
+          "std": 4.272728005167716
+        },
+        "relative_humidity_2m": {
+          "min": 10.0,
+          "max": 100.0,
+          "mean": 76.39855072463769,
+          "std": 19.80337976777492
+        },
+        "precipitation": {
+          "min": 0.0,
+          "max": 7.6,
+          "mean": 0.13096133008262226,
+          "std": 0.4029417715678958
+        },
+        "weather_code": {
+          "min": 0.0,
+          "max": 75.0,
+          "mean": 17.940589868617092,
+          "std": 23.737729854938973
+        },
+        "soil_moisture_0_to_7cm": {
+          "min": 0.034,
+          "max": 0.444,
+          "mean": 0.3031091189218475,
+          "std": 0.08933769893301768
+        }
+      }
+    },
+    "daily": {
+      "num_records": 2461,
+      "num_columns": 8,
+      "columns": [
+        "time",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "temperature_2m_mean",
+        "precipitation_sum",
+        "rain_sum",
+        "wind_speed_10m_max",
+        "et0_fao_evapotranspiration"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m_max": "float64",
+        "temperature_2m_min": "float64",
+        "temperature_2m_mean": "float64",
+        "precipitation_sum": "float64",
+        "rain_sum": "float64",
+        "wind_speed_10m_max": "float64",
+        "et0_fao_evapotranspiration": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 00:00:00"
+      },
+      "frequency": "daily",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m_max": 0,
+        "temperature_2m_min": 0,
+        "temperature_2m_mean": 0,
+        "precipitation_sum": 0,
+        "rain_sum": 0,
+        "wind_speed_10m_max": 0,
+        "et0_fao_evapotranspiration": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m_max": {
+          "min": 10.7,
+          "max": 24.7,
+          "mean": 17.732385209264528,
+          "std": 1.6975866297113231
+        },
+        "temperature_2m_min": {
+          "min": -2.1,
+          "max": 11.6,
+          "mean": 5.921048354327509,
+          "std": 2.9262124646565435
+        },
+        "temperature_2m_mean": {
+          "min": 6.7,
+          "max": 14.5,
+          "mean": 11.36200731409996,
+          "std": 1.125838022810129
+        },
+        "precipitation_sum": {
+          "min": 0.0,
+          "max": 23.7,
+          "mean": 3.1430719219829335,
+          "std": 3.6814197495623007
+        },
+        "rain_sum": {
+          "min": 0.0,
+          "max": 22.9,
+          "mean": 2.9390491670052823,
+          "std": 3.344655813410883
+        },
+        "wind_speed_10m_max": {
+          "min": 3.8,
+          "max": 22.1,
+          "mean": 11.551198699715563,
+          "std": 2.188897424850842
+        },
+        "et0_fao_evapotranspiration": {
+          "min": 1.24,
+          "max": 6.34,
+          "mean": 3.7947744819179197,
+          "std": 0.7198688339866588
+        }
+      }
+    },
+    "event_analysis": {
+      "frost": {
+        "hours_below_0c": 248,
+        "days_with_min_below_0c": 62,
+        "days_with_min_below_minus3c": 0,
+        "total_days": 2461,
+        "percentage_frost_days": 2.52,
+        "label_type": "proxy_rule_based",
+        "rule": "temperature_2m_min <= 0.0°C",
+        "note": "Etiqueta derivada de regla meteorológica, NO de observación verificada en campo."
+      },
+      "heavy_rain": {
+        "days_above_20mm": 8,
+        "days_above_50mm": 0,
+        "hours_above_10mm": 0,
+        "total_days": 2461,
+        "percentage_heavy_rain_days": 0.33,
+        "label_type": "proxy_rule_based",
+        "rule": "precipitation_sum >= 20.0 mm/día"
+      },
+      "snow": {
+        "hours_with_snow_code": 1002,
+        "days_with_snow_code": 576,
+        "total_days": 2461,
+        "wmo_codes_used": [
+          71,
+          73,
+          75,
+          77
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "Basado en código WMO del modelo meteorológico, NO en observación directa.",
+        "viability": "possible"
+      },
+      "hail": {
+        "hours_with_hail_code": 0,
+        "wmo_codes_used": [
+          96,
+          99
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "El granizo es un fenómeno muy localizado. Datos insuficientes para ML.",
+        "viability": "not_viable"
+      }
+    }
+  },
+  "oxapampa": {
+    "location_key": "oxapampa",
+    "location_name": "Oxapampa",
+    "zone": "Selva Alta",
+    "province": "Oxapampa",
+    "filename": "Oxapampa_Zona_Selva_Alta_Lluvias_e_Humedad.csv",
+    "generated_at": "2026-09-27T17:01:11.277403",
+    "metadata": {
+      "latitude": -10.650263,
+      "longitude": -75.38394,
+      "elevation": 1817.0,
+      "utc_offset_seconds": -18000,
+      "timezone": "America/Lima",
+      "timezone_abbreviation": "GMT-5"
+    },
+    "hourly": {
+      "num_records": 59064,
+      "num_columns": 6,
+      "columns": [
+        "time",
+        "temperature_2m",
+        "relative_humidity_2m",
+        "precipitation",
+        "weather_code",
+        "soil_moisture_0_to_7cm"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m": "float64",
+        "relative_humidity_2m": "int64",
+        "precipitation": "float64",
+        "weather_code": "int64",
+        "soil_moisture_0_to_7cm": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 23:00:00"
+      },
+      "frequency": "hourly",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "weather_code": 0,
+        "soil_moisture_0_to_7cm": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m": {
+          "min": 6.6,
+          "max": 25.8,
+          "mean": 16.720559054584857,
+          "std": 3.1019570380256223
+        },
+        "relative_humidity_2m": {
+          "min": 36.0,
+          "max": 100.0,
+          "mean": 90.40704997968305,
+          "std": 12.18949598116517
+        },
+        "precipitation": {
+          "min": 0.0,
+          "max": 15.3,
+          "mean": 0.46531728294731134,
+          "std": 1.19390217711301
+        },
+        "weather_code": {
+          "min": 0.0,
+          "max": 65.0,
+          "mean": 28.116856291480428,
+          "std": 25.820103440873186
+        },
+        "soil_moisture_0_to_7cm": {
+          "min": 0.403,
+          "max": 0.546,
+          "mean": 0.4905035216036841,
+          "std": 0.018941110803504576
+        }
+      }
+    },
+    "daily": {
+      "num_records": 2461,
+      "num_columns": 8,
+      "columns": [
+        "time",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "temperature_2m_mean",
+        "precipitation_sum",
+        "rain_sum",
+        "wind_speed_10m_max",
+        "et0_fao_evapotranspiration"
+      ],
+      "dtypes": {
+        "time": "datetime64[ns]",
+        "temperature_2m_max": "float64",
+        "temperature_2m_min": "float64",
+        "temperature_2m_mean": "float64",
+        "precipitation_sum": "float64",
+        "rain_sum": "float64",
+        "wind_speed_10m_max": "float64",
+        "et0_fao_evapotranspiration": "float64"
+      },
+      "date_range": {
+        "start": "2020-01-01 00:00:00",
+        "end": "2026-09-26 00:00:00"
+      },
+      "frequency": "daily",
+      "missing_values": {
+        "time": 0,
+        "temperature_2m_max": 0,
+        "temperature_2m_min": 0,
+        "temperature_2m_mean": 0,
+        "precipitation_sum": 0,
+        "rain_sum": 0,
+        "wind_speed_10m_max": 0,
+        "et0_fao_evapotranspiration": 0
+      },
+      "duplicated_rows": 0,
+      "duplicated_timestamps": 0,
+      "statistics": {
+        "temperature_2m_max": {
+          "min": 14.9,
+          "max": 25.8,
+          "mean": 21.701747257212514,
+          "std": 1.6442264703162408
+        },
+        "temperature_2m_min": {
+          "min": 6.6,
+          "max": 16.6,
+          "mean": 13.003006907761073,
+          "std": 1.3926166732926701
+        },
+        "temperature_2m_mean": {
+          "min": 12.6,
+          "max": 19.8,
+          "mean": 16.734579439252336,
+          "std": 0.9227625741103184
+        },
+        "precipitation_sum": {
+          "min": 0.0,
+          "max": 79.2,
+          "mean": 11.167614790735474,
+          "std": 10.919435363518469
+        },
+        "rain_sum": {
+          "min": 0.0,
+          "max": 79.2,
+          "mean": 11.167614790735474,
+          "std": 10.919435363518469
+        },
+        "wind_speed_10m_max": {
+          "min": 3.9,
+          "max": 12.5,
+          "mean": 7.7742381145875665,
+          "std": 1.3468733284131023
+        },
+        "et0_fao_evapotranspiration": {
+          "min": 0.69,
+          "max": 5.36,
+          "mean": 3.0272206420154406,
+          "std": 0.7397986402573203
+        }
+      }
+    },
+    "event_analysis": {
+      "frost": {
+        "hours_below_0c": 0,
+        "days_with_min_below_0c": 0,
+        "days_with_min_below_minus3c": 0,
+        "total_days": 2461,
+        "percentage_frost_days": 0.0,
+        "label_type": "proxy_rule_based",
+        "rule": "temperature_2m_min <= 0.0°C",
+        "note": "Etiqueta derivada de regla meteorológica, NO de observación verificada en campo."
+      },
+      "heavy_rain": {
+        "days_above_20mm": 422,
+        "days_above_50mm": 26,
+        "hours_above_10mm": 96,
+        "total_days": 2461,
+        "percentage_heavy_rain_days": 17.15,
+        "label_type": "proxy_rule_based",
+        "rule": "precipitation_sum >= 20.0 mm/día"
+      },
+      "snow": {
+        "hours_with_snow_code": 0,
+        "days_with_snow_code": 0,
+        "total_days": 2461,
+        "wmo_codes_used": [
+          71,
+          73,
+          75,
+          77
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "Basado en código WMO del modelo meteorológico, NO en observación directa.",
+        "viability": "limited"
+      },
+      "hail": {
+        "hours_with_hail_code": 0,
+        "wmo_codes_used": [
+          96,
+          99
+        ],
+        "label_type": "proxy_wmo_code",
+        "note": "El granizo es un fenómeno muy localizado. Datos insuficientes para ML.",
+        "viability": "not_viable"
+      }
+    }
+  }
+}

@@ -15,11 +15,11 @@ async function seedParcelsAndFeatures() {
   if (!cropCount || cropCount.count === 0) {
     console.log('Insertando cultivos de muestra...');
     await dbRun(`INSERT INTO crops (user_id, name, crop_type, variety, planting_date, area_hectares, status, location_detail, altitude_masl)
-      VALUES (?, 'Papa Huayro Orgánica', 'papa', 'Huayro', date('now', '-90 days'), 1.5, 'crecimiento', 'Sector Tambopampa, Yanahuanca', 3180)`, [farmerId]);
+      VALUES (?, 'Papa Huayro Orgánica', 'papa', 'Huayro', CURRENT_DATE - INTERVAL '90 days', 1.5, 'crecimiento', 'Sector Tambopampa, Yanahuanca', 3180)`, [farmerId]);
     await dbRun(`INSERT INTO crops (user_id, name, crop_type, variety, planting_date, area_hectares, status, location_detail, altitude_masl)
-      VALUES (?, 'Maca Amarilla de Altura', 'maca', 'Amarilla', date('now', '-120 days'), 0.8, 'floracion', 'Meseta de Ninacaca, Pasco', 4140)`, [farmerId]);
+      VALUES (?, 'Maca Amarilla de Altura', 'maca', 'Amarilla', CURRENT_DATE - INTERVAL '120 days', 0.8, 'floracion', 'Meseta de Ninacaca, Pasco', 4140)`, [farmerId]);
     await dbRun(`INSERT INTO crops (user_id, name, crop_type, variety, planting_date, area_hectares, status, location_detail, altitude_masl)
-      VALUES (?, 'Café Typica Especial', 'cafe', 'Typica', date('now', '-200 days'), 2.2, 'cosecha', 'Fundo San José, Villa Rica', 1470)`, [farmerId]);
+      VALUES (?, 'Café Typica Especial', 'cafe', 'Typica', CURRENT_DATE - INTERVAL '200 days', 2.2, 'cosecha', 'Fundo San José, Villa Rica', 1470)`, [farmerId]);
   }
 
   // 2. Parcelas para las 3 provincias
@@ -39,7 +39,7 @@ async function seedParcelsAndFeatures() {
       ]]
     });
     await dbRun(`INSERT INTO parcels (user_id, name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, status, altitude_masl, notes)
-      VALUES (?, 'Parcela Tambopampa - Yanahuanca', ?, 1.5, -10.493, -76.513, 'papa', date('now', '-90 days'), 'activa', 3184, 'Provincia Daniel Alcides Carrión. Suelo franco-arcilloso, riego tecnificado y abonos orgánicos.')`,
+      VALUES (?, 'Parcela Tambopampa - Yanahuanca', ?, 1.5, -10.493, -76.513, 'papa', CURRENT_DATE - INTERVAL '90 days', 'activa', 3184, 'Provincia Daniel Alcides Carrión. Suelo franco-arcilloso, riego tecnificado y abonos orgánicos.')`,
       [farmerId, polyDAC]
     );
 
@@ -55,7 +55,7 @@ async function seedParcelsAndFeatures() {
       ]]
     });
     await dbRun(`INSERT INTO parcels (user_id, name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, status, altitude_masl, notes)
-      VALUES (?, 'Parcela Alto Andina - Ninacaca', ?, 0.8, -10.850, -76.110, 'maca', date('now', '-120 days'), 'activa', 4140, 'Provincia de Pasco. Altura extrema óptima para concentración de macamidas.')`,
+      VALUES (?, 'Parcela Alto Andina - Ninacaca', ?, 0.8, -10.850, -76.110, 'maca', CURRENT_DATE - INTERVAL '120 days', 'activa', 4140, 'Provincia de Pasco. Altura extrema óptima para concentración de macamidas.')`,
       [farmerId, polyPasco]
     );
 
@@ -71,7 +71,7 @@ async function seedParcelsAndFeatures() {
       ]]
     });
     await dbRun(`INSERT INTO parcels (user_id, name, geo_json, area_hectares, center_lat, center_lng, crop_type, planting_date, status, altitude_masl, notes)
-      VALUES (?, 'Fundo Cafetalero - Villa Rica', ?, 2.2, -10.738, -75.271, 'cafe', date('now', '-200 days'), 'activa', 1470, 'Provincia de Oxapampa. Selva central con sombra de guaba y manejo ecológico.')`,
+      VALUES (?, 'Fundo Cafetalero - Villa Rica', ?, 2.2, -10.738, -75.271, 'cafe', CURRENT_DATE - INTERVAL '200 days', 'activa', 1470, 'Provincia de Oxapampa. Selva central con sombra de guaba y manejo ecológico.')`,
       [farmerId, polyOxa]
     );
   }
@@ -91,7 +91,7 @@ async function seedParcelsAndFeatures() {
 
     // Plaga Completa (Resuelta con respuesta técnica)
     await dbRun(`INSERT INTO pest_reports (farmer_id, parcel_id, pest_name, description, location_lat, location_lng, status, advisor_response, advisor_id, responded_at)
-      VALUES (?, ?, 'Polilla de la Papa (Phthorimaea operculella)', 'Aparición de galerías en hojas de papa.', -10.495, -76.515, 'resuelto', 'Se aplicó bio-repelente a base de extracto de muña y control etológico con trampas de luz solar. Se controló la incidencia al 100%.', ?, datetime('now', '-4 days'))`,
+      VALUES (?, ?, 'Polilla de la Papa (Phthorimaea operculella)', 'Aparición de galerías en hojas de papa.', -10.495, -76.515, 'resuelto', 'Se aplicó bio-repelente a base de extracto de muña y control etológico con trampas de luz solar. Se controló la incidencia al 100%.', ?, NOW() - INTERVAL '4 days')`,
       [farmerId, p1Id, advisorId]
     );
   }
@@ -99,19 +99,19 @@ async function seedParcelsAndFeatures() {
   // 4. Actualizar productos para catálogo de supermercado
   console.log('Configurando productos certificados y pendientes...');
   await dbRun(`UPDATE products SET farmer_id = ?, validated_by = ?, validation_status = 'approved',
-    validated_at = datetime('now', '-2 days'),
+    validated_at = NOW() - INTERVAL '2 days',
     validation_notes = 'Certificación 100% Natural emitida por Asesor Técnico. Historial verificado libre de pesticidas sintéticos.',
     is_natural = 1, certified_natural = 1, original_price = 3.00, price_per_kg = 3.90
     WHERE id = 1`, [farmerId, advisorId]);
 
   await dbRun(`UPDATE products SET farmer_id = ?, validated_by = ?, validation_status = 'approved',
-    validated_at = datetime('now', '-3 days'),
+    validated_at = NOW() - INTERVAL '3 days',
     validation_notes = 'Maca orgánica certificada en meseta andina. +30% bonificación aplicada.',
     is_natural = 1, certified_natural = 1, original_price = 17.00, price_per_kg = 22.10
     WHERE id = 2`, [farmerId, advisorId]);
 
   await dbRun(`UPDATE products SET farmer_id = ?, validated_by = ?, validation_status = 'approved',
-    validated_at = datetime('now', '-1 days'),
+    validated_at = NOW() - INTERVAL '1 day',
     validation_notes = 'Café de especialidad con certificación de origen Villa Rica.',
     is_natural = 0, certified_natural = 0, original_price = 48.00, price_per_kg = 48.00
     WHERE id = 3`, [farmerId, advisorId]);
@@ -130,13 +130,13 @@ async function seedParcelsAndFeatures() {
     const c1 = await dbGet('SELECT id FROM crops ORDER BY id ASC LIMIT 1');
     if (c1) {
       await dbRun(`INSERT INTO crop_logs (crop_id, action_type, description, created_at)
-        VALUES (?, 'siembra', 'Siembra tradicional con semilla seleccionada y guano de isla.', datetime('now', '-90 days'))`, [c1.id]);
+        VALUES (?, 'siembra', 'Siembra tradicional con semilla seleccionada y guano de isla.', NOW() - INTERVAL '90 days')`, [c1.id]);
       await dbRun(`INSERT INTO crop_logs (crop_id, action_type, description, created_at)
-        VALUES (?, 'riego', 'Riego por aspersión con agua de manantial.', datetime('now', '-60 days'))`, [c1.id]);
+        VALUES (?, 'riego', 'Riego por aspersión con agua de manantial.', NOW() - INTERVAL '60 days')`, [c1.id]);
       await dbRun(`INSERT INTO crop_logs (crop_id, action_type, description, created_at)
-        VALUES (?, 'fertilizacion', 'Aplicación de biol orgánico enriquecido con ceniza y ortiga.', datetime('now', '-30 days'))`, [c1.id]);
+        VALUES (?, 'fertilizacion', 'Aplicación de biol orgánico enriquecido con ceniza y ortiga.', NOW() - INTERVAL '30 days')`, [c1.id]);
       await dbRun(`INSERT INTO crop_logs (crop_id, action_type, description, created_at)
-        VALUES (?, 'deshierbe', 'Control manual de malezas sin uso de agroquímicos sintéticos.', datetime('now', '-15 days'))`, [c1.id]);
+        VALUES (?, 'deshierbe', 'Control manual de malezas sin uso de agroquímicos sintéticos.', NOW() - INTERVAL '15 days')`, [c1.id]);
     }
   }
 

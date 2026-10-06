@@ -20,7 +20,7 @@ async function createNotification(userId, type, title, message, severity = 'info
  */
 async function createBulkAlert(type, title, message, severity, location = 'Cerro de Pasco') {
   const farmers = await dbAll(
-    "SELECT id FROM users WHERE role = 'farmer' AND (location LIKE ? OR location IS NULL)",
+    "SELECT id FROM users WHERE role = 'farmer' AND (location ILIKE ? OR location IS NULL)",
     [`%${location}%`]
   );
 

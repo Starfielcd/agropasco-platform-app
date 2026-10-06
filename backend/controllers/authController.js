@@ -4,6 +4,7 @@
  */
 
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { generateToken } = require('../middleware/auth');
 const { createNotification } = require('../services/notificationService');
@@ -415,12 +416,17 @@ async function getApplicationStatus(req, res) {
 
 /**
  * Permite a un usuario cuya cuenta fue aprobada (status = 'active')
- * establecer o actualizar su contraseña de acceso directamente desde la interfaz,
- * garantizando que nunca quede atrapado si el correo SMTP no llegó.
+ * establecer su contraseña de acceso mediante una prueba de autorización válida:
+ *   - O bien la contraseña temporal asignada (tempPassword)
+ *   - O bien un token firmado de autorización emitido por el sistema / administrador (token)
+ * 
+ * SEGURIDAD (PREVENCIÓN DE ACCOUNT TAKEOVER):
+ * Se prohíbe terminantemente cambiar o establecer contraseñas proporcionando
+ * únicamente el correo electrónico sin factor de autorización.
  */
 async function setupApprovedPassword(req, res) {
   try {
-    const { email, identifier, newPassword } = req.body;
+    const { email, identifier, newPassword, tempPassword, token } = req.body;
     const searchParam = (email || identifier || '').trim().toLowerCase();
 
     if (!searchParam || !newPassword) {
@@ -458,15 +464,85 @@ async function setupApprovedPassword(req, res) {
       });
     }
 
+    // PROTECCIÓN DE SEGURIDAD CONTRA ACCOUNT TAKEOVER:
+    // Exigir factor de autorización (clave provisional o token firmado)
+    if (!tempPassword && !token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Por seguridad, debes ingresar tu clave provisional o el token de autorización emitido por la administración. No es posible configurar contraseñas únicamente con el correo electrónico.'
+      });
+    }
+
+    let isAuthorized = false;
+
+    // 1. Validación mediante clave provisional (tempPassword)
+    if (tempPassword) {
+      if (!user.password_hash) {
+        return res.status(401).json({
+          success: false,
+          error: 'Credencial de autorización no configurada para este usuario.'
+        });
+      }
+      const matchesTemp = await bcrypt.compare(tempPassword, user.password_hash);
+      if (matchesTemp) {
+        isAuthorized = true;
+      } else {
+        return res.status(401).json({
+          success: false,
+          error: 'La clave provisional ingresada es incorrecta.'
+        });
+      }
+    }
+
+    // 2. Validación mediante token firmado (token)
+    if (!isAuthorized && token) {
+      try {
+        const JWT_SECRET = process.env.JWT_SECRET || 'agropasco_secret_key_2026';
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Comprobar explícitamente la identidad del usuario objetivo (id, userId, sub, email)
+        const tokenUserId = decoded.id || decoded.userId || (decoded.sub && !isNaN(parseInt(decoded.sub, 10)) ? parseInt(decoded.sub, 10) : null);
+        const tokenUserEmail = (decoded.email || (decoded.sub && decoded.sub.includes('@') ? decoded.sub : '')).trim().toLowerCase();
+
+        const idMatches = tokenUserId !== null && tokenUserId === user.id;
+        const emailMatches = tokenUserEmail && tokenUserEmail === user.email.toLowerCase();
+
+        if (idMatches || emailMatches) {
+          isAuthorized = true;
+        } else {
+          return res.status(401).json({
+            success: false,
+            error: 'El token de autorización no corresponde a esta cuenta.'
+          });
+        }
+      } catch (jwtErr) {
+        const errorMsg = jwtErr.name === 'TokenExpiredError'
+          ? 'El token de autorización ha expirado.'
+          : 'El token de autorización es inválido.';
+        return res.status(401).json({
+          success: false,
+          error: errorMsg
+        });
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(401).json({
+        success: false,
+        error: 'Autorización insuficiente para configurar la contraseña.'
+      });
+    }
+
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await dbRun(
       'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [passwordHash, user.id]
     );
 
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || '127.0.0.1';
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [user.id, 'SET_APPROVED_PASSWORD', 'user', user.id, `Contraseña configurada por el usuario aprobado "${user.name}" (${user.email}).`, req.ip]
+      [user.id, 'SET_APPROVED_PASSWORD', 'user', user.id, `Contraseña configurada con credencial autorizada por el usuario "${user.name}" (${user.email}).`, clientIp]
     );
 
     res.json({
