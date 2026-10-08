@@ -69,8 +69,8 @@ async function runTests() {
     // Obtener usuarios de prueba de la BD
     const userA = await dbGet('SELECT * FROM users WHERE id = 1'); // Farmer
     const userB = await dbGet('SELECT * FROM users WHERE id = 4'); // Farmer
-    const admin = await dbGet('SELECT * FROM users WHERE role = "admin" LIMIT 1');
-    const advisor = await dbGet('SELECT * FROM users WHERE role = "advisor" LIMIT 1');
+    const admin = await dbGet("SELECT * FROM users WHERE role = 'admin' LIMIT 1");
+    const advisor = await dbGet("SELECT * FROM users WHERE role = 'advisor' LIMIT 1");
 
     assert(userA && userB && admin, 'Usuarios de prueba cargados desde la base de datos');
 

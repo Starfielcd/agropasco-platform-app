@@ -103,7 +103,7 @@ async function toggleUserStatus(req, res) {
       tempPassword = 'AP-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '!';
       const passwordHash = await bcrypt.hash(tempPassword, 12);
       await dbRun(
-        'UPDATE users SET is_blocked = 0, status = "active", password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        "UPDATE users SET is_blocked = 0, status = 'active', password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         [passwordHash, userId]
       );
 
@@ -116,7 +116,7 @@ async function toggleUserStatus(req, res) {
         emailError = mailErr.message;
       }
     } else {
-      await dbRun('UPDATE users SET is_blocked = 1, status = "blocked", updated_at = CURRENT_TIMESTAMP WHERE id = ?', [userId]);
+      await dbRun("UPDATE users SET is_blocked = 1, status = 'blocked', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [userId]);
     }
 
     const actionText = newBlockedState ? 'BLOQUEAR_CUENTA' : 'DESBLOQUEAR_CUENTA';
@@ -162,7 +162,7 @@ async function resetUserPassword(req, res) {
     const passwordHash = await bcrypt.hash(provisionalPassword, 12);
 
     await dbRun(
-      'UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = "active", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      "UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [passwordHash, userId]
     );
 
@@ -208,7 +208,7 @@ async function resendCredentials(req, res) {
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     await dbRun(
-      'UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = "active", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      "UPDATE users SET password_hash = ?, must_change_password = 1, is_blocked = 0, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [passwordHash, userId]
     );
 
