@@ -244,6 +244,64 @@ function parseRetryAfter(headerValue) {
 }
 
 /**
+ * FASE 8L-G20: Normaliza y valida timestamps de caché meteorológica.
+ * Compatible con:
+ *  - Objetos Date nativos de JavaScript (entregados por el driver 'pg' para columnas TIMESTAMPTZ en PostgreSQL).
+ *  - Cadenas ISO 8601 con 'Z' o con huso horario explícito (+/-HH:mm).
+ *  - Cadenas UTC de SQLite en formato 'YYYY-MM-DD HH:mm:ss' (o con milisegundos).
+ *  - Números enteros/flotantes positivos (Unix epoch ms).
+ * Retorna milisegundos Unix (UTC) o null si la entrada es nula, vacía o inválida.
+ * NUNCA genera fechas artificiales ni asume Date.now() ante fallos.
+ * @param {Date|string|number|null|undefined} val Valor de timestamp a normalizar
+ * @returns {number|null} Milisegundos UTC o null
+ */
+function parseCacheTimestamp(val) {
+  if (val === null || val === undefined) return null;
+
+  // 1. Objeto Date nativo (PostgreSQL TIMESTAMPTZ vía driver pg)
+  if (val instanceof Date) {
+    const time = val.getTime();
+    return isNaN(time) ? null : time;
+  }
+
+  // 2. Número (milisegundos Unix)
+  if (typeof val === 'number') {
+    return (Number.isFinite(val) && val > 0) ? val : null;
+  }
+
+  // 3. Cadena de texto
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+
+    // Formato SQLite del proyecto: 'YYYY-MM-DD HH:mm:ss' (almacenado como UTC en SQLite)
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)) {
+      const parsedUtc = Date.parse(trimmed.replace(' ', 'T') + 'Z');
+      return !isNaN(parsedUtc) ? parsedUtc : null;
+    }
+
+    // Verificar si ya contiene zona horaria explícita ('Z' o '+/-HH:mm' o '+/-HHmm' o '+/-HH')
+    const hasTimezone = trimmed.endsWith('Z') || /[+-]\d{2}(:?\d{2})?$/.test(trimmed);
+    if (hasTimezone) {
+      const parsed = Date.parse(trimmed);
+      return !isNaN(parsed) ? parsed : null;
+    }
+
+    // Si contiene 'T' pero carece de zona horaria explícita, interpretar como UTC
+    if (trimmed.includes('T')) {
+      const parsedUtc = Date.parse(trimmed + 'Z');
+      return !isNaN(parsedUtc) ? parsedUtc : null;
+    }
+
+    // Intento genérico para otros formatos parseables
+    const generic = Date.parse(trimmed);
+    return !isNaN(generic) ? generic : null;
+  }
+
+  return null;
+}
+
+/**
  * Extrae una cabecera de forma insensible a mayúsculas/minúsculas.
  * Compatible con Map, Headers de Fetch y objetos planos.
  */
@@ -443,17 +501,24 @@ async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
           ? parsedRetryAfterMs
           : ML_RATE_LIMIT_DEFAULT_COOLDOWN_MS;
 
-        // Evaluar si es factible un reintento síncrono acotado dentro del presupuesto (<= 2s)
-        const canRetrySync = (attempt <= maxRetries && (parsedRetryAfterMs === null || parsedRetryAfterMs <= ML_MAX_RETRY_WAIT_MS));
+        // FASE 8L-G20: Solo permitir reintento síncrono si el proveedor especificó un Retry-After
+        // explícito y acotado dentro del presupuesto (<= 2000ms).
+        // Si no se proporcionó Retry-After (parsedRetryAfterMs === null), NUNCA realizar un reintento ciego;
+        // activar de inmediato el circuit breaker y abortar reintentos para no duplicar llamadas en saturación.
+        const canRetrySync = (
+          attempt <= maxRetries &&
+          parsedRetryAfterMs !== null &&
+          parsedRetryAfterMs > 0 &&
+          parsedRetryAfterMs <= ML_MAX_RETRY_WAIT_MS
+        );
 
         if (canRetrySync) {
-          const delayMs = parsedRetryAfterMs !== null ? parsedRetryAfterMs : baseRetryDelayMs;
-          console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP 429 en ${delayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
-          await sleep(delayMs);
+          console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP 429 en ${parsedRetryAfterMs}ms (según Retry-After)... (intento ${attempt + 1}/${maxRetries + 1})`);
+          await sleep(parsedRetryAfterMs);
           continue;
         }
 
-        // Si excede el presupuesto o no quedan intentos, activar circuit breaker y abortar reintentos
+        // Si excede el presupuesto, falta Retry-After o no quedan intentos, activar circuit breaker y abortar reintentos
         tripRateLimit(cooldownMs, `HTTP 429 de Open-Meteo (${contextLabel})`);
 
         return {
@@ -1166,167 +1231,206 @@ async function cachePrediction(parcelId, data) {
 
 /**
  * Consulta la predicción en caché verificando versión del modelo y TTL diferenciado.
+ * FASE 8L-G20: Compatible con objetos Date de PostgreSQL (TIMESTAMPTZ) y cadenas SQLite.
  */
 async function getCachedPrediction(parcelId) {
+  let row;
   try {
-    const row = await db.dbGet(
+    row = await db.dbGet(
       "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
       [`parcel_${parcelId}`]
     );
-    if (!row || !row.fetched_at || !row.data_json) {
-      return null;
-    }
-
-    let cachedData;
-    try {
-      cachedData = JSON.parse(row.data_json);
-    } catch (_) {
-      return null;
-    }
-
-    if (!cachedData || typeof cachedData !== 'object') {
-      return null;
-    }
-
-    // PASO 3: Validación estricta de versión del modelo
-    // Se rechazan entradas sin versionado o con versiones antiguas/incompatibles (cache miss)
-    const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
-    const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
-
-    if (!isNativeML && !isRuleFallback) {
-      return null; // Versión incompatible o ausente -> cache miss sin borrar el registro SQL
-    }
-
-    // Parsear timestamp de fetched_at con soporte UTC
-    const dateStr = row.fetched_at.includes('T')
-      ? (row.fetched_at.endsWith('Z') ? row.fetched_at : row.fetched_at + 'Z')
-      : row.fetched_at.replace(' ', 'T') + 'Z';
-    const fetchedAt = new Date(dateStr).getTime();
-    if (isNaN(fetchedAt)) {
-      return null;
-    }
-
-    const ageMs = Date.now() - fetchedAt;
-    if (ageMs < 0) {
-      return null; // Desviación de reloj
-    }
-
-    // PASO 4: TTL diferenciado
-    // Inferencia ML nativa: máximo 60 minutos
-    // Reglas de fallback: máximo 5 minutos
-    const allowedTtlMs = isRuleFallback ? RULE_CACHE_DURATION_MS : ML_CACHE_DURATION_MS;
-
-    if (ageMs >= allowedTtlMs) {
-      return null; // Expirado -> cache miss
-    }
-
-    return cachedData;
-  } catch (err) {
+  } catch (dbErr) {
+    console.error(`[CACHE_DB_ERROR] Parcela ${parcelId}: Fallo al consultar weather_cache: ${dbErr.message}`);
     return null;
   }
+
+  if (!row) {
+    return null; // Registro inexistente (cache miss legítimo)
+  }
+
+  if (!row.data_json) {
+    console.warn(`[CACHE_EMPTY_DATA] Parcela ${parcelId}: Registro sin data_json en weather_cache.`);
+    return null;
+  }
+
+  let cachedData;
+  try {
+    cachedData = JSON.parse(row.data_json);
+  } catch (jsonErr) {
+    console.warn(`[CACHE_JSON_CORRUPT] Parcela ${parcelId}: JSON corrupto en weather_cache: ${jsonErr.message}`);
+    return null;
+  }
+
+  if (!cachedData || typeof cachedData !== 'object') {
+    console.warn(`[CACHE_INVALID_OBJECT] Parcela ${parcelId}: Payload de caché inválido.`);
+    return null;
+  }
+
+  // PASO 3: Validación estricta de versión del modelo
+  // Se rechazan entradas sin versionado o con versiones antiguas/incompatibles (cache miss)
+  const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
+  const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
+
+  if (!isNativeML && !isRuleFallback) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.info(`[CACHE_VERSION_MISMATCH] Parcela ${parcelId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
+    }
+    return null; // Versión incompatible o ausente -> cache miss sin borrar el registro SQL
+  }
+
+  // Parsear timestamp de fetched_at con normalización robusta (PostgreSQL Date, SQLite string, ISO 8601)
+  const fetchedAt = parseCacheTimestamp(row.fetched_at);
+  if (fetchedAt === null) {
+    console.warn(`[CACHE_INVALID_DATE] Parcela ${parcelId}: Timestamp fetched_at inválido o no reconocido.`);
+    return null;
+  }
+
+  const ageMs = Date.now() - fetchedAt;
+  if (ageMs < 0) {
+    console.warn(`[CACHE_CLOCK_SKEW] Parcela ${parcelId}: Timestamp en el futuro detectado.`);
+    return null; // Desviación de reloj
+  }
+
+  // PASO 4: TTL diferenciado
+  // Inferencia ML nativa: máximo 60 minutos
+  // Reglas de fallback: máximo 5 minutos
+  const allowedTtlMs = isRuleFallback ? RULE_CACHE_DURATION_MS : ML_CACHE_DURATION_MS;
+
+  if (ageMs >= allowedTtlMs) {
+    return null; // Expirado por TTL -> cache miss legítimo
+  }
+
+  return cachedData;
 }
 
 /**
  * Recupera de forma segura el último registro de predicción en caché para una parcela,
  * verificando compatibilidad de versión, horizonte restante y antigüedad máxima (24h).
+ * FASE 8L-G20: Compatible con objetos Date de PostgreSQL (TIMESTAMPTZ) y cadenas SQLite.
  * @param {number} parcelId ID de la parcela
  * @param {object} triggerError Error original que motivó el fallback (e.g. 429, timeout)
  * @returns {object|null} Resultado formateado con is_stale: true o null si no es recuperable
  */
 async function getStalePrediction(parcelId, triggerError = {}) {
+  let row;
   try {
-    const row = await db.dbGet(
+    row = await db.dbGet(
       "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
       [`parcel_${parcelId}`]
     );
-    if (!row || !row.fetched_at || !row.data_json) {
-      return null;
-    }
-
-    let cachedData;
-    try {
-      cachedData = JSON.parse(row.data_json);
-    } catch (_) {
-      return null;
-    }
-
-    if (!cachedData || typeof cachedData !== 'object') {
-      return null;
-    }
-
-    // 1. Validación estricta de compatibilidad de versión del modelo
-    const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
-    const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
-    if (!isNativeML && !isRuleFallback) {
-      return null; // Versión obsoleta o ausente -> rechazar
-    }
-
-    // 2. Parsear timestamp fetched_at con soporte UTC
-    const dateStr = row.fetched_at.includes('T')
-      ? (row.fetched_at.endsWith('Z') ? row.fetched_at : row.fetched_at + 'Z')
-      : row.fetched_at.replace(' ', 'T') + 'Z';
-    const fetchedAt = new Date(dateStr).getTime();
-    if (isNaN(fetchedAt)) {
-      return null;
-    }
-
-    const ageMs = Date.now() - fetchedAt;
-    if (ageMs < 0) {
-      return null; // Desviación de reloj
-    }
-
-    // 3. Antigüedad máxima absoluta (24 horas)
-    if (ageMs > ML_STALE_CACHE_MAX_AGE_MS) {
-      return null; // Excede 24 horas -> completamente vencido
-    }
-
-    // 4. Verificación de horizonte futuro restante
-    if (cachedData.valid_until) {
-      const validUntilMs = new Date(cachedData.valid_until).getTime();
-      if (!isNaN(validUntilMs) && Date.now() >= validUntilMs) {
-        return null; // Horizonte vencido
-      }
-    }
-
-    // Comprobar que en el horizonte aún haya fechas válidas (hoy o futuras)
-    const todayStr = new Date().toISOString().split('T')[0];
-    const summaryDates = cachedData.forecast_summary?.dates || [];
-    if (summaryDates.length > 0) {
-      const hasFutureOrToday = summaryDates.some(d => d >= todayStr);
-      if (!hasFutureOrToday) {
-        return null; // Todas las fechas corresponden a días transcurridos
-      }
-    }
-
-    const ageMinutes = Math.max(1, Math.round(ageMs / 60000));
-    const ageHours = (ageMs / 3600000).toFixed(1);
-    const staleReason = triggerError.rate_limited || triggerError.http_status === 429
-      ? 'rate_limit_fallback'
-      : triggerError.fallback === 'timeout'
-        ? 'timeout_fallback'
-        : 'service_unavailable';
-
-    const timeLabel = ageMinutes < 60 ? `${ageMinutes} min` : `${ageHours} h`;
-    const warningMessage = `Pronóstico emitido previamente (${timeLabel} atrás). Servicio meteorológico externo con alta demanda temporal.`;
-
-    const staleData = {
-      ...cachedData,
-      is_stale: true,
-      source: 'cache_stale',
-      last_updated: row.fetched_at,
-      stale_age_minutes: ageMinutes,
-      stale_reason: staleReason,
-      coverage_warning: warningMessage
-    };
-
-    return {
-      success: true,
-      data: staleData,
-      source: 'cache_stale'
-    };
-  } catch (err) {
+  } catch (dbErr) {
+    console.error(`[STALE_CACHE_DB_ERROR] Parcela ${parcelId}: Error consultando weather_cache para respaldo: ${dbErr.message}`);
     return null;
   }
+
+  if (!row) {
+    return null; // Registro inexistente en base de datos
+  }
+
+  if (!row.data_json) {
+    console.warn(`[STALE_CACHE_EMPTY] Parcela ${parcelId}: Registro sin data_json en respaldo.`);
+    return null;
+  }
+
+  let cachedData;
+  try {
+    cachedData = JSON.parse(row.data_json);
+  } catch (jsonErr) {
+    console.warn(`[STALE_CACHE_JSON_CORRUPT] Parcela ${parcelId}: JSON corrupto en respaldo: ${jsonErr.message}`);
+    return null;
+  }
+
+  if (!cachedData || typeof cachedData !== 'object') {
+    return null;
+  }
+
+  // 1. Validación estricta de compatibilidad de versión del modelo
+  const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
+  const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
+  if (!isNativeML && !isRuleFallback) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.info(`[STALE_CACHE_VERSION_REJECTED] Parcela ${parcelId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
+    }
+    return null; // Versión obsoleta o ausente -> rechazar
+  }
+
+  // 2. Parsear timestamp fetched_at con soporte universal (PostgreSQL Date, SQLite string, ISO 8601)
+  const fetchedAt = parseCacheTimestamp(row.fetched_at);
+  if (fetchedAt === null) {
+    console.warn(`[STALE_CACHE_INVALID_DATE] Parcela ${parcelId}: Timestamp fetched_at inválido en respaldo.`);
+    return null;
+  }
+
+  const ageMs = Date.now() - fetchedAt;
+  if (ageMs < 0) {
+    console.warn(`[STALE_CACHE_CLOCK_SKEW] Parcela ${parcelId}: Timestamp en el futuro detectado.`);
+    return null; // Desviación de reloj
+  }
+
+  // 3. Antigüedad máxima absoluta (24 horas)
+  if (ageMs > ML_STALE_CACHE_MAX_AGE_MS) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.info(`[STALE_CACHE_EXPIRED_AGE] Parcela ${parcelId}: Antigüedad excede 24h (${Math.round(ageMs / 3600000)}h).`);
+    }
+    return null; // Excede 24 horas -> completamente vencido
+  }
+
+  // 4. Verificación de horizonte futuro restante
+  if (cachedData.valid_until) {
+    const validUntilMs = parseCacheTimestamp(cachedData.valid_until);
+    if (validUntilMs !== null && Date.now() >= validUntilMs) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.info(`[STALE_CACHE_HORIZON_EXPIRED] Parcela ${parcelId}: Horizonte valid_until vencido.`);
+      }
+      return null; // Horizonte vencido
+    }
+  }
+
+  // Comprobar que en el horizonte aún haya fechas válidas (hoy o futuras)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const summaryDates = cachedData.forecast_summary?.dates || [];
+  if (summaryDates.length > 0) {
+    const hasFutureOrToday = summaryDates.some(d => d >= todayStr);
+    if (!hasFutureOrToday) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.info(`[STALE_CACHE_NO_FUTURE_DATES] Parcela ${parcelId}: Todas las fechas del pronóstico son anteriores a hoy.`);
+      }
+      return null; // Todas las fechas corresponden a días transcurridos
+    }
+  }
+
+  const ageMinutes = Math.max(1, Math.round(ageMs / 60000));
+  const ageHours = (ageMs / 3600000).toFixed(1);
+  const staleReason = triggerError.rate_limited || triggerError.http_status === 429
+    ? 'rate_limit_fallback'
+    : triggerError.fallback === 'timeout'
+      ? 'timeout_fallback'
+      : 'service_unavailable';
+
+  const timeLabel = ageMinutes < 60 ? `${ageMinutes} min` : `${ageHours} h`;
+  const warningMessage = `Pronóstico emitido previamente (${timeLabel} atrás). Servicio meteorológico externo con alta demanda temporal.`;
+
+  // Normalizar last_updated en formato ISO string
+  const lastUpdatedStr = row.fetched_at instanceof Date
+    ? row.fetched_at.toISOString()
+    : (typeof row.fetched_at === 'string' ? row.fetched_at : new Date(fetchedAt).toISOString());
+
+  const staleData = {
+    ...cachedData,
+    is_stale: true,
+    source: 'cache_stale',
+    last_updated: lastUpdatedStr,
+    stale_age_minutes: ageMinutes,
+    stale_reason: staleReason,
+    coverage_warning: warningMessage
+  };
+
+  return {
+    success: true,
+    data: staleData,
+    source: 'cache_stale'
+  };
 }
 
 module.exports = {
@@ -1344,6 +1448,7 @@ module.exports = {
   cachePrediction,
   getCachedPrediction,
   getStalePrediction,
+  parseCacheTimestamp,
   parseRetryAfter,
   tripRateLimit,
   clearRateLimit,
