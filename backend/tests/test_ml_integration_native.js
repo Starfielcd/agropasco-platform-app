@@ -50,6 +50,7 @@ function it(description, fn) {
 
 async function itAsync(description, fn) {
   try {
+    mlService.clearInFlightRequests();
     await fn();
     passedTests++;
     console.log(`  ✅ PASSED: ${description}`);
@@ -402,6 +403,7 @@ async function runTestSuite() {
 
     const statuses = [400, 403, 429, 500, 503];
     for (const s of statuses) {
+      mlService.clearRateLimit();
       global.fetch = async () => ({
         ok: false,
         status: s,

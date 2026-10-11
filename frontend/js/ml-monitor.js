@@ -38,6 +38,10 @@ async function renderMLMonitorPage() {
   const modelsData = modelsRes?.data || {};
   const mlStatus = modelsData.ml_service || 'offline';
   const modelsList = modelsData.models || {};
+  const rateLimitStatus = modelsData.rate_limit || {};
+  const anyStale = predictions.some(p => (p.data?.is_stale || p.is_stale));
+  const anyUnavailable = predictions.some(p => (!p.success && p.success !== undefined));
+  const isWeatherLimited = rateLimitStatus.active || anyUnavailable;
 
   return `
     <div class="page-content">
@@ -57,8 +61,11 @@ async function renderMLMonitorPage() {
           <button class="btn btn-secondary btn-sm" onclick="openCreateObservationModal()" style="font-size: 12px;">
             📝 Registrar Evento
           </button>
-          <span class="badge badge-${mlStatus === 'online' ? 'green' : 'amber'}" style="font-size: 12px;">
-            ${mlStatus === 'online' ? '⚡ Servicio ML Activo' : '⚙️ Modo Reglas'}
+          <span class="badge badge-${mlStatus === 'online' ? 'green' : 'amber'}" style="font-size: 12px;" title="Estado del motor de Machine Learning en Node.js">
+            ${mlStatus === 'online' ? '⚡ Motor ML: Listo (Node.js)' : '⚙️ Modo Reglas'}
+          </span>
+          <span class="badge badge-${isWeatherLimited ? 'amber' : anyStale ? 'amber' : 'green'}" style="font-size: 12px;" title="Estado de la conexión al proveedor meteorológico">
+            ${isWeatherLimited ? '⛅ Fuente Meteorológica: Límite Temporal' : anyStale ? '🕒 Fuente Meteorológica: Respaldo Activo' : '⛅ Fuente Meteorológica: Conectada'}
           </span>
           ${isAdmin ? `
             <button class="btn btn-primary btn-sm" onclick="triggerMLAlerts()" id="btn-generate-alerts" style="font-size: 12px;">
@@ -70,6 +77,21 @@ async function renderMLMonitorPage() {
 
       <!-- Models Status Cards -->
       ${renderModelsStatusBar(modelsList)}
+
+      ${anyStale ? `
+        <!-- Stale Cache Active Alert Banner -->
+        <div class="card" style="margin-top: 20px; margin-bottom: -10px; border-left: 4px solid var(--amber-400); background: rgba(245, 158, 11, 0.08); padding: 12px 16px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 22px;">🕒</span>
+            <div>
+              <div style="font-weight: 700; font-size: 13.5px; color: var(--amber-400);">Respaldo Seguro de Pronóstico Meteorológico Activo</div>
+              <div class="text-sm text-muted" style="margin-top: 2px;">
+                El servicio meteorológico externo (Open-Meteo) se encuentra con alta demanda temporal. AgroPasco Digital presenta predicciones previas con horizonte de 72 horas vigente y modelos ML locales activos. La fecha y hora de emisión se indica en cada parcela.
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Predictions Grid -->
       <div style="margin-top: 24px;">
@@ -152,13 +174,21 @@ function renderParcelPredictionCard(parcelPred) {
   const farmerName = parcelPred.farmer_name;
 
   if (!parcelPred.success && parcelPred.success !== undefined) {
+    const isRateLimited = (parcelPred.error || '').includes('Límite de solicitudes') || parcelPred.http_status === 429 || parcelPred.fallback === 'api_error';
     return `
-      <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--red-400); opacity: 0.7;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">⚠️</span>
+      <div class="card" style="margin-bottom: 12px; border-left: 4px solid ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; opacity: 0.85;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <span style="font-size: 22px;">${isRateLimited ? '⏳' : '⚠️'}</span>
           <div>
-            <div style="font-weight: 700;">${parcelName}</div>
-            <div class="text-sm text-muted">${parcelPred.error || 'No se pudo obtener predicción'}</div>
+            <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
+            <div class="text-sm" style="color: ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; margin-top: 2px;">
+              ${parcelPred.error || 'Servicio meteorológico temporalmente no disponible.'}
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+              ${isRateLimited
+                ? 'No existen datos previos en caché para esta parcela. El sistema se recuperará automáticamente al cesar el enfriamiento del servicio externo.'
+                : 'Se reintentará la consulta en la próxima actualización programada.'}
+            </div>
           </div>
         </div>
       </div>
@@ -190,21 +220,29 @@ function renderParcelPredictionCard(parcelPred) {
             ${pred?.latitude ? ` · (${pred.latitude.toFixed(4)}, ${pred.longitude.toFixed(4)})` : ''}
           </div>
         </div>
-        <div style="display: flex; gap: 6px; align-items: center;">
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
           <span class="badge badge-${riskMeta.badge}" style="font-weight: 800; font-size: 12px;">
             ${riskMeta.icon} Riesgo ${riskMeta.label}
           </span>
-          <span class="badge badge-${source === 'ml_service' ? 'blue' : 'amber'}" style="font-size: 10px;">
-            ${source === 'ml_service' ? '🔬 ML' : source === 'cache' ? '📦 Cache' : '⚙️ Reglas'}
+          <span class="badge badge-${pred.is_stale ? 'amber' : source === 'ml_service' ? 'blue' : source === 'cache' ? 'blue' : 'amber'}" style="font-size: 10px;">
+            ${pred.is_stale ? '🕒 Caché Previa (Stale)' : source === 'ml_service' ? '🔬 ML Nativo' : source === 'cache' ? '📦 Caché Vigente' : '⚙️ Reglas'}
           </span>
         </div>
       </div>
 
-      ${warning ? `
+      ${pred.is_stale ? `
+        <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; color: var(--amber-400); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span>🕒</span>
+            <span><strong>Pronóstico previo:</strong> Emitido hace ${pred.stale_age_minutes || '?'} min. Proveedor saturado; conservando cálculo ML previo.</span>
+          </div>
+          ${pred.last_updated ? `<span style="font-size: 11px; opacity: 0.85;">Emitido: ${new Date(pred.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+        </div>
+      ` : (warning ? `
         <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.25); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; color: var(--amber-400);">
           ⚠️ ${warning}
         </div>
-      ` : ''}
+      ` : '')}
 
       <!-- Risk Predictions Grid -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">

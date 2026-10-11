@@ -23,6 +23,10 @@ const EXPECTED_MODEL_VERSION = '2.0.0_native';
 const FALLBACK_RULES_VERSION = '2.0.0_fallback_rules';
 const ML_CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hora (60 minutos)
 const RULE_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
+const ML_STALE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 horas máximo para respaldo stale
+const ML_RATE_LIMIT_DEFAULT_COOLDOWN_MS = process.env.NODE_ENV === 'test' ? 500 : 60 * 1000; // 60s en producción, 500ms en pruebas
+const ML_RATE_LIMIT_MAX_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos máximo de enfriamiento
+const ML_MAX_RETRY_WAIT_MS = 2000; // Máximo 2 segundos de espera para reintento síncrono
 const ML_REQUEST_TIMEOUT_MS = 12000; // 12 segundos (optimizado para latencia en frío)
 const ML_RETRY_TIMEOUT_MS = 10000; // 10 segundos para el reintento
 const ML_MAX_RETRIES = 1; // Máximo 1 reintento para errores transitorios
@@ -210,13 +214,143 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Interpreta la cabecera Retry-After según RFC 7231 (segundos o fecha HTTP).
+ * Retorna el retardo en milisegundos, o null si no es válida.
+ * @param {string|null} headerValue Valor de la cabecera Retry-After
+ * @returns {number|null} Milisegundos de espera o null
+ */
+function parseRetryAfter(headerValue) {
+  if (!headerValue || typeof headerValue !== 'string') return null;
+  const trimmed = headerValue.trim();
+  if (!trimmed) return null;
+
+  // Formato 1: Entero en segundos (e.g., "30" o "1")
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = parseInt(trimmed, 10);
+    if (!isNaN(seconds) && seconds >= 0) {
+      return seconds * 1000;
+    }
+  }
+
+  // Formato 2: Fecha HTTP (IMF-fixdate / RFC 2822 / ISO)
+  const dateTimestamp = Date.parse(trimmed);
+  if (!isNaN(dateTimestamp)) {
+    const diffMs = dateTimestamp - Date.now();
+    return Math.max(0, diffMs);
+  }
+
+  return null;
+}
+
+/**
+ * Extrae una cabecera de forma insensible a mayúsculas/minúsculas.
+ * Compatible con Map, Headers de Fetch y objetos planos.
+ */
+function getHeaderCaseInsensitive(headers, name) {
+  if (!headers) return null;
+  if (typeof headers.get === 'function') {
+    return headers.get(name) || headers.get(name.toLowerCase()) || null;
+  }
+  if (typeof headers === 'object') {
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === name.toLowerCase()) return v;
+    }
+  }
+  return null;
+}
+
+// Circuit Breaker / Enfriamiento en memoria para Open-Meteo (proceso Node.js)
+const rateLimitCircuitBreaker = {
+  active: false,
+  until: 0,
+  reason: null,
+  retryAfterMs: 0,
+  trippedAt: 0,
+  trippedCount: 0
+};
+
+/**
+ * Comprueba si el circuit breaker está activo debido a un HTTP 429 reciente.
+ * Se recupera automáticamente una vez transcurrido el tiempo de enfriamiento.
+ */
+function isRateLimitActive() {
+  if (!rateLimitCircuitBreaker.active) return false;
+  if (Date.now() >= rateLimitCircuitBreaker.until) {
+    rateLimitCircuitBreaker.active = false;
+    rateLimitCircuitBreaker.until = 0;
+    rateLimitCircuitBreaker.reason = null;
+    rateLimitCircuitBreaker.retryAfterMs = 0;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Activa el enfriamiento global de solicitudes a Open-Meteo.
+ * @param {number} cooldownMs Duración del enfriamiento en milisegundos
+ * @param {string} reason Causa del enfriamiento
+ */
+function tripRateLimit(cooldownMs, reason = 'HTTP 429 Too Many Requests') {
+  const now = Date.now();
+  const minFloor = process.env.NODE_ENV === 'test' ? 10 : 100;
+  const safeCooldownMs = Math.max(
+    minFloor,
+    Math.min(cooldownMs || ML_RATE_LIMIT_DEFAULT_COOLDOWN_MS, ML_RATE_LIMIT_MAX_COOLDOWN_MS)
+  );
+  rateLimitCircuitBreaker.active = true;
+  // FASE 8L-G16: Preservación monótona del enfriamiento (H-03)
+  // Múltiples respuestas HTTP 429 concurrentes nunca disminuyen el tiempo de enfriamiento activo
+  rateLimitCircuitBreaker.until = Math.max(
+    rateLimitCircuitBreaker.until || 0,
+    now + safeCooldownMs
+  );
+  rateLimitCircuitBreaker.reason = reason;
+  rateLimitCircuitBreaker.retryAfterMs = Math.max(
+    rateLimitCircuitBreaker.retryAfterMs || 0,
+    safeCooldownMs
+  );
+  rateLimitCircuitBreaker.trippedAt = rateLimitCircuitBreaker.trippedAt || now;
+  rateLimitCircuitBreaker.trippedCount++;
+  if (process.env.NODE_ENV !== 'test') {
+    console.warn(`[CIRCUIT_BREAKER_OPEN]: Enfriamiento activo de Open-Meteo por ${Math.round(safeCooldownMs / 1000)}s.`);
+  }
+}
+
+/**
+ * Limpia el estado de rate limit y restablece el circuit breaker.
+ */
+function clearRateLimit() {
+  rateLimitCircuitBreaker.active = false;
+  rateLimitCircuitBreaker.until = 0;
+  rateLimitCircuitBreaker.reason = null;
+  rateLimitCircuitBreaker.retryAfterMs = 0;
+  rateLimitCircuitBreaker.trippedAt = 0;
+}
+
+/**
+ * Retorna el estado actual del circuit breaker de rate limit.
+ */
+function getRateLimitStatus() {
+  const active = isRateLimitActive();
+  const remainingMs = active ? Math.max(0, rateLimitCircuitBreaker.until - Date.now()) : 0;
+  return {
+    active,
+    remainingMs,
+    remainingSec: Math.ceil(remainingMs / 1000),
+    reason: active ? rateLimitCircuitBreaker.reason : null,
+    trippedCount: rateLimitCircuitBreaker.trippedCount
+  };
+}
+
 function clearInFlightRequests() {
   inFlightRequests.clear();
+  clearRateLimit();
 }
 
 /**
  * Ejecuta una consulta HTTP hacia Open-Meteo con manejo de timeout por AbortController,
- * diagnóstico seguro de errores y hasta 1 reintento controlado ante fallos transitorios.
+ * circuit breaker ante rate limits y reintentos controlados según Retry-After.
  * @param {URL|string} openMeteoUrl URL completa con parámetros
  * @param {object} options Opciones de ejecución (timeoutMs, retryTimeoutMs, maxRetries, retryDelayMs, parcelId)
  */
@@ -226,6 +360,22 @@ async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
   const maxRetries = options.maxRetries !== undefined ? options.maxRetries : ML_MAX_RETRIES;
   const baseRetryDelayMs = options.retryDelayMs !== undefined ? options.retryDelayMs : ML_RETRY_DELAY_MS;
   const contextLabel = options.parcelId ? `Parcela ${options.parcelId}` : 'Open-Meteo';
+
+  // Si el circuit breaker está activo, retornar de inmediato sin saturar la red externa
+  if (isRateLimitActive()) {
+    const status = getRateLimitStatus();
+    return {
+      success: false,
+      error: 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.',
+      fallback: 'api_error',
+      http_status: 429,
+      rate_limited: true,
+      circuit_breaker_open: true,
+      retry_after_ms: status.remainingMs,
+      attempts: 0,
+      durationMs: 0
+    };
+  }
 
   let attempt = 0;
   const startTime = Date.now();
@@ -285,31 +435,55 @@ async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
       technicalReason = technicalReason.replace(/[\r\n\t]/g, ' ').trim();
       console.error(`[OPEN_METEO_HTTP_ERROR] ${contextLabel} — HTTP ${response.status} (${response.statusText}): ${technicalReason}`);
 
-      const isRetryableHttp = (response.status === 429 || response.status >= 500);
+      // Manejo especializado para HTTP 429 Too Many Requests
+      if (response.status === 429) {
+        const retryHeader = getHeaderCaseInsensitive(response.headers, 'retry-after');
+        const parsedRetryAfterMs = parseRetryAfter(retryHeader);
+        const cooldownMs = parsedRetryAfterMs !== null && parsedRetryAfterMs > 0
+          ? parsedRetryAfterMs
+          : ML_RATE_LIMIT_DEFAULT_COOLDOWN_MS;
 
-      if (isRetryableHttp && attempt <= maxRetries) {
-        let delayMs = baseRetryDelayMs;
-        const retryAfter = response.headers?.get?.('retry-after');
-        if (retryAfter) {
-          const parsedAfter = parseInt(retryAfter, 10);
-          if (!isNaN(parsedAfter) && parsedAfter > 0 && parsedAfter <= 3) {
-            delayMs = parsedAfter * 1000;
-          }
+        // Evaluar si es factible un reintento síncrono acotado dentro del presupuesto (<= 2s)
+        const canRetrySync = (attempt <= maxRetries && (parsedRetryAfterMs === null || parsedRetryAfterMs <= ML_MAX_RETRY_WAIT_MS));
+
+        if (canRetrySync) {
+          const delayMs = parsedRetryAfterMs !== null ? parsedRetryAfterMs : baseRetryDelayMs;
+          console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP 429 en ${delayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
+          await sleep(delayMs);
+          continue;
         }
-        console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP ${response.status} en ${delayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
-        await sleep(delayMs);
+
+        // Si excede el presupuesto o no quedan intentos, activar circuit breaker y abortar reintentos
+        tripRateLimit(cooldownMs, `HTTP 429 de Open-Meteo (${contextLabel})`);
+
+        return {
+          success: false,
+          error: 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.',
+          fallback: 'api_error',
+          http_status: 429,
+          rate_limited: true,
+          circuit_breaker_open: true,
+          retry_after_ms: cooldownMs,
+          attempts: attempt,
+          durationMs: Date.now() - startTime
+        };
+      }
+
+      // Reintentar para errores de servidor 5xx
+      const isRetryableHttp = (response.status >= 500);
+      if (isRetryableHttp && attempt <= maxRetries) {
+        console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP ${response.status} en ${baseRetryDelayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
+        await sleep(baseRetryDelayMs);
         continue;
       }
 
       return {
         success: false,
-        error: response.status === 429
-          ? 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.'
-          : response.status === 403
-            ? 'Acceso denegado por el servicio meteorológico externo.'
-            : response.status >= 500
-              ? 'Servicio meteorológico externo no disponible temporalmente.'
-              : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
+        error: response.status === 403
+          ? 'Acceso denegado por el servicio meteorológico externo.'
+          : response.status >= 500
+            ? 'Servicio meteorológico externo no disponible temporalmente.'
+            : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
         fallback: 'api_error',
         http_status: response.status,
         attempts: attempt,
@@ -342,12 +516,29 @@ async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
 }
 
 /**
- * Consulta la API de Open-Meteo con manejo exhaustivo de timeouts, reintentos y deduplicación.
+ * Consulta la API de Open-Meteo con manejo exhaustivo de timeouts, reintentos,
+ * circuit breaker y deduplicación en vuelo.
  * @param {number} lat Latitud validada
  * @param {number} lng Longitud validada
  * @param {object} options Opciones de consulta (includeHistory: boolean, timeoutMs: number, parcelId: number)
  */
 async function fetchOpenMeteoForecast(lat, lng, options = {}) {
+  // Comprobación temprana de circuit breaker
+  if (isRateLimitActive()) {
+    const status = getRateLimitStatus();
+    return {
+      success: false,
+      error: 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.',
+      fallback: 'api_error',
+      http_status: 429,
+      rate_limited: true,
+      circuit_breaker_open: true,
+      retry_after_ms: status.remainingMs,
+      attempts: 0,
+      durationMs: 0
+    };
+  }
+
   const includeHistory = options.includeHistory !== false;
   const inFlightKey = `${Number(lat).toFixed(4)}_${Number(lng).toFixed(4)}_${includeHistory ? 'hist' : 'nohist'}`;
 
@@ -442,7 +633,13 @@ async function getPredictionForParcel(parcel) {
   // Obtener pronóstico de Open-Meteo con historial de 7 días para variables lag/rolling
   const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true, parcelId: parcel.id });
   if (!fetchResult.success) {
-    // Si la llamada meteorológica falló (timeout, red, límite HTTP), reportar el error directamente
+    // Si la llamada meteorológica falló (timeout, red, límite HTTP 429, circuit breaker),
+    // intentar recuperación controlada de la última predicción en caché (stale cache)
+    const staleResult = await getStalePrediction(parcel.id, fetchResult);
+    if (staleResult) {
+      return staleResult;
+    }
+    // Si no hay datos previos utilizables en caché, reportar el error directamente
     return fetchResult;
   }
 
@@ -1029,6 +1226,109 @@ async function getCachedPrediction(parcelId) {
   }
 }
 
+/**
+ * Recupera de forma segura el último registro de predicción en caché para una parcela,
+ * verificando compatibilidad de versión, horizonte restante y antigüedad máxima (24h).
+ * @param {number} parcelId ID de la parcela
+ * @param {object} triggerError Error original que motivó el fallback (e.g. 429, timeout)
+ * @returns {object|null} Resultado formateado con is_stale: true o null si no es recuperable
+ */
+async function getStalePrediction(parcelId, triggerError = {}) {
+  try {
+    const row = await db.dbGet(
+      "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
+      [`parcel_${parcelId}`]
+    );
+    if (!row || !row.fetched_at || !row.data_json) {
+      return null;
+    }
+
+    let cachedData;
+    try {
+      cachedData = JSON.parse(row.data_json);
+    } catch (_) {
+      return null;
+    }
+
+    if (!cachedData || typeof cachedData !== 'object') {
+      return null;
+    }
+
+    // 1. Validación estricta de compatibilidad de versión del modelo
+    const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
+    const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
+    if (!isNativeML && !isRuleFallback) {
+      return null; // Versión obsoleta o ausente -> rechazar
+    }
+
+    // 2. Parsear timestamp fetched_at con soporte UTC
+    const dateStr = row.fetched_at.includes('T')
+      ? (row.fetched_at.endsWith('Z') ? row.fetched_at : row.fetched_at + 'Z')
+      : row.fetched_at.replace(' ', 'T') + 'Z';
+    const fetchedAt = new Date(dateStr).getTime();
+    if (isNaN(fetchedAt)) {
+      return null;
+    }
+
+    const ageMs = Date.now() - fetchedAt;
+    if (ageMs < 0) {
+      return null; // Desviación de reloj
+    }
+
+    // 3. Antigüedad máxima absoluta (24 horas)
+    if (ageMs > ML_STALE_CACHE_MAX_AGE_MS) {
+      return null; // Excede 24 horas -> completamente vencido
+    }
+
+    // 4. Verificación de horizonte futuro restante
+    if (cachedData.valid_until) {
+      const validUntilMs = new Date(cachedData.valid_until).getTime();
+      if (!isNaN(validUntilMs) && Date.now() >= validUntilMs) {
+        return null; // Horizonte vencido
+      }
+    }
+
+    // Comprobar que en el horizonte aún haya fechas válidas (hoy o futuras)
+    const todayStr = new Date().toISOString().split('T')[0];
+    const summaryDates = cachedData.forecast_summary?.dates || [];
+    if (summaryDates.length > 0) {
+      const hasFutureOrToday = summaryDates.some(d => d >= todayStr);
+      if (!hasFutureOrToday) {
+        return null; // Todas las fechas corresponden a días transcurridos
+      }
+    }
+
+    const ageMinutes = Math.max(1, Math.round(ageMs / 60000));
+    const ageHours = (ageMs / 3600000).toFixed(1);
+    const staleReason = triggerError.rate_limited || triggerError.http_status === 429
+      ? 'rate_limit_fallback'
+      : triggerError.fallback === 'timeout'
+        ? 'timeout_fallback'
+        : 'service_unavailable';
+
+    const timeLabel = ageMinutes < 60 ? `${ageMinutes} min` : `${ageHours} h`;
+    const warningMessage = `Pronóstico emitido previamente (${timeLabel} atrás). Servicio meteorológico externo con alta demanda temporal.`;
+
+    const staleData = {
+      ...cachedData,
+      is_stale: true,
+      source: 'cache_stale',
+      last_updated: row.fetched_at,
+      stale_age_minutes: ageMinutes,
+      stale_reason: staleReason,
+      coverage_warning: warningMessage
+    };
+
+    return {
+      success: true,
+      data: staleData,
+      source: 'cache_stale'
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
 module.exports = {
   checkMLServiceHealth,
   getModelsStatus,
@@ -1043,10 +1343,20 @@ module.exports = {
   formatFallbackPredictions,
   cachePrediction,
   getCachedPrediction,
+  getStalePrediction,
+  parseRetryAfter,
+  tripRateLimit,
+  clearRateLimit,
+  isRateLimitActive,
+  getRateLimitStatus,
   EXPECTED_MODEL_VERSION,
   FALLBACK_RULES_VERSION,
   ML_CACHE_DURATION_MS,
   RULE_CACHE_DURATION_MS,
+  ML_STALE_CACHE_MAX_AGE_MS,
+  ML_RATE_LIMIT_DEFAULT_COOLDOWN_MS,
+  ML_RATE_LIMIT_MAX_COOLDOWN_MS,
+  ML_MAX_RETRY_WAIT_MS,
   ML_REQUEST_TIMEOUT_MS,
   ML_RETRY_TIMEOUT_MS,
   ML_MAX_RETRIES,

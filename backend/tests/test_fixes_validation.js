@@ -27,6 +27,7 @@
  * - Utiliza mocks en memoria para fetch y operaciones de red.
  */
 
+process.env.NODE_ENV = 'test';
 const fs = require('fs');
 const path = require('path');
 
@@ -266,6 +267,8 @@ async function runValidationSuite() {
   assert(resHttp429.fallback === 'api_error', 'HTTP 429 retorna fallback = api_error');
   assert(resHttp429.http_status === 429, 'HTTP 429 preserva código de estado técnico 429');
   assert(resHttp429.error.includes('Límite de solicitudes alcanzado'), 'Informa adecuadamente al usuario sobre el límite de solicitudes');
+  mlService.clearRateLimit();
+  mlService.clearInFlightRequests();
 
   // 3.5: Simulación de Timeout (AbortError)
   global.fetch = async (url) => {

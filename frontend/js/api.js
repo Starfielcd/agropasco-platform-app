@@ -3,7 +3,7 @@
  * Integración directa con Open-Meteo API (Cerro de Pasco: -10.6674, -76.2567)
  */
 
-const API_URL = (window.location.origin.includes('localhost:') || window.location.origin.includes('127.0.0.1:')) && !window.location.origin.includes(':5000')
+const API_URL = (typeof window !== 'undefined' && window.location && (window.location.origin.includes('localhost:') || window.location.origin.includes('127.0.0.1:')) && !window.location.origin.includes(':5000'))
   ? 'http://localhost:5000/api'
   : '/api';
 const OPEN_METEO_LIVE_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-10.6674&longitude=-76.2567&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_1cm,uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FLima';
@@ -35,12 +35,52 @@ const FIELD_IMAGES = {
   oca: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80'
 };
 
-function getToken() { return localStorage.getItem('agropasco_token'); }
-function setToken(token) { localStorage.setItem('agropasco_token', token); }
-function removeToken() { localStorage.removeItem('agropasco_token'); }
-function getUser() { const u = localStorage.getItem('agropasco_user'); return u ? JSON.parse(u) : null; }
-function setUser(user) { localStorage.setItem('agropasco_user', JSON.stringify(user)); }
-function removeUser() { localStorage.removeItem('agropasco_user'); }
+// Generación / Epoch de sesión global en cliente para invalidación determinista (H-02)
+let _mlSessionEpoch = 1;
+
+function getClientSessionScope() {
+  try {
+    const u = getUser();
+    return u && u.id ? `u_${u.id}_${u.role || 'user'}` : 'anon';
+  } catch (_) {
+    return 'anon';
+  }
+}
+
+function clearMLClientCacheInternal() {
+  _mlSessionEpoch++;
+  if (typeof _mlClientCache !== 'undefined') {
+    _mlClientCache.user = { data: null, timestamp: 0, promise: null, epoch: 0, scope: null };
+    _mlClientCache.all = { data: null, timestamp: 0, promise: null, epoch: 0, scope: null };
+    _mlClientCache.status = { data: null, timestamp: 0, promise: null, epoch: 0, scope: null };
+  }
+}
+
+function getToken() { try { return localStorage.getItem('agropasco_token'); } catch (_) { return null; } }
+function setToken(token) {
+  try { localStorage.setItem('agropasco_token', token); } catch (_) {}
+  clearMLClientCacheInternal();
+}
+function removeToken() {
+  try { localStorage.removeItem('agropasco_token'); } catch (_) {}
+  clearMLClientCacheInternal();
+}
+function getUser() {
+  try {
+    const u = localStorage.getItem('agropasco_user');
+    return u ? JSON.parse(u) : null;
+  } catch (_) {
+    return null;
+  }
+}
+function setUser(user) {
+  try { localStorage.setItem('agropasco_user', JSON.stringify(user)); } catch (_) {}
+  clearMLClientCacheInternal();
+}
+function removeUser() {
+  try { localStorage.removeItem('agropasco_user'); } catch (_) {}
+  clearMLClientCacheInternal();
+}
 
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_URL}${endpoint}`;
@@ -57,9 +97,12 @@ async function apiRequest(endpoint, options = {}) {
     const data = await response.json();
 
     if (response.status === 401 || response.status === 403) {
+      clearMLClientCacheInternal();
       removeToken();
       removeUser();
-      window.location.hash = '#/login';
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.hash = '#/login';
+      }
       return data;
     }
 
@@ -104,6 +147,65 @@ async function getLiveWeatherData() {
     console.warn('Fallback a API local para clima:', err.message);
     return apiRequest('/weather/current');
   }
+}
+
+// Caché ligera en memoria aislada por sesión y usuario (FASE 8L-G16: Corrección H-02)
+const _mlClientCache = {
+  user: { data: null, timestamp: 0, promise: null, epoch: 0, scope: null },
+  all: { data: null, timestamp: 0, promise: null, epoch: 0, scope: null },
+  status: { data: null, timestamp: 0, promise: null, epoch: 0, scope: null }
+};
+
+function fetchCachedML(key, url, ttlMs = 30000) {
+  const now = Date.now();
+  const currentEpoch = _mlSessionEpoch;
+  const currentScope = (key === 'status') ? 'global_status' : getClientSessionScope();
+  const entry = _mlClientCache[key];
+
+  // 1. Verificación estricta de coincidencia de generación y alcance de usuario
+  if (entry.data && entry.epoch === currentEpoch && entry.scope === currentScope && (now - entry.timestamp < ttlMs)) {
+    return Promise.resolve(entry.data);
+  }
+
+  // 2. Si existe una promesa en vuelo de la MISMA sesión y alcance, reutilizarla
+  if (entry.promise && entry.epoch === currentEpoch && entry.scope === currentScope) {
+    return entry.promise;
+  }
+
+  // 3. Si la promesa era de una sesión anterior o alcance distinto, descartarla
+  entry.promise = null;
+  entry.data = null;
+  entry.epoch = currentEpoch;
+  entry.scope = currentScope;
+
+  const capturedEpoch = currentEpoch;
+  const capturedScope = currentScope;
+
+  entry.promise = apiRequest(url)
+    .then(res => {
+      // 4. Protección contra peticiones pendientes: si la sesión cambió mientras la petición
+      // estaba en vuelo (logout, login nuevo, 401), NUNCA repoblar la caché de la nueva sesión
+      const stillSameEpoch = (_mlSessionEpoch === capturedEpoch);
+      const stillSameScope = (getClientSessionScope() === capturedScope || key === 'status');
+
+      if (stillSameEpoch && stillSameScope) {
+        entry.data = res;
+        entry.timestamp = Date.now();
+        entry.epoch = capturedEpoch;
+        entry.scope = capturedScope;
+        return res;
+      }
+
+      // Sesión expirada o cambiada en vuelo: descartar respuesta para evitar fuga entre usuarios
+      return { success: false, session_expired: true, error: 'Sesión invalidada durante la consulta.' };
+    })
+    .finally(() => {
+      if (entry.epoch === capturedEpoch) {
+        entry.promise = null;
+      }
+    });
+
+  return entry.promise;
 }
 
 const api = {
@@ -218,9 +320,12 @@ const api = {
 
   // Machine Learning Meteorológico
   getMLPrediction: (parcelId) => apiRequest(`/ml/predict/${parcelId}`),
-  getMLPredictions: () => apiRequest('/ml/predictions'),
-  getMLPredictionsAll: () => apiRequest('/ml/predictions/all'),
-  getMLModelsStatus: () => apiRequest('/ml/models/status'),
+  getMLPredictions: (force = false) => force ? apiRequest('/ml/predictions') : fetchCachedML('user', '/ml/predictions'),
+  getMLPredictionsAll: (force = false) => force ? apiRequest('/ml/predictions/all') : fetchCachedML('all', '/ml/predictions/all'),
+  getMLModelsStatus: (force = false) => force ? apiRequest('/ml/models/status') : fetchCachedML('status', '/ml/models/status', 15000),
+  clearMLClientCache: () => {
+    clearMLClientCacheInternal();
+  },
   generateMLAlerts: () => apiRequest('/ml/alerts/generate', { method: 'POST' }),
   getMLAdminDashboard: () => apiRequest('/ml/admin/dashboard'),
   getMLAlerts: (unread = false) => apiRequest(`/ml/alerts${unread ? '?unread=true' : ''}`),
@@ -233,6 +338,7 @@ const api = {
 
 // Toast notification system
 function showToast(message, type = 'success') {
+  if (typeof document === 'undefined') return;
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -252,4 +358,21 @@ function showToast(message, type = 'success') {
 
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(100%)'; setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    api,
+    _mlClientCache,
+    fetchCachedML,
+    clearMLClientCacheInternal,
+    getClientSessionScope,
+    getToken,
+    setToken,
+    removeToken,
+    getUser,
+    setUser,
+    removeUser,
+    getMLSessionEpoch: () => _mlSessionEpoch
+  };
 }

@@ -194,6 +194,9 @@ async function handleLogin(e) {
   });
 
   if (result.success) {
+    if (typeof api !== 'undefined' && typeof api.clearMLClientCache === 'function') {
+      api.clearMLClientCache();
+    }
     setToken(result.data.token);
     setUser(result.data.user);
 
@@ -677,6 +680,9 @@ async function handleChangePassword(e) {
 }
 
 function handleLogout() {
+  if (typeof api !== 'undefined' && typeof api.clearMLClientCache === 'function') {
+    api.clearMLClientCache();
+  }
   removeToken();
   removeUser();
   showToast('Sesión cerrada', 'info');

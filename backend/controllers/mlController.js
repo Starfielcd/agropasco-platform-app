@@ -123,12 +123,14 @@ async function modelsStatusEndpoint(req, res) {
   try {
     const health = await checkMLServiceHealth();
     const models = await getModelsStatus();
+    const rateLimit = mlService.getRateLimitStatus ? mlService.getRateLimitStatus() : { active: false };
 
     res.json({
       success: true,
       data: {
         ml_service: health ? 'online' : 'offline',
         ml_service_details: health,
+        rate_limit: rateLimit,
         models: models || {
           frost: { available: false, fallback: 'rule_based', reason: 'Servicio ML no disponible' },
           heavy_rain: { available: false, fallback: 'rule_based', reason: 'Servicio ML no disponible' },
@@ -159,6 +161,7 @@ async function generateAlerts(req, res) {
 
     let alertsCreated = 0;
     let alertsSkipped = 0;
+    let alertsSkippedStale = 0;
 
     const evaluatedParcels = await mlService.mapWithConcurrency(parcels, 2, async (parcel) => {
       const result = await mlService.getPredictionForParcel(parcel);
@@ -167,6 +170,25 @@ async function generateAlerts(req, res) {
 
     for (const { parcel, result } of evaluatedParcels) {
       if (!result.success || !result.data?.predictions) continue;
+
+      // FASE 8L-G16: Salvaguarda de seguridad H-01
+      // Nunca generar alertas agronómicas nuevas desde pronósticos desactualizados (stale)
+      const isStale = Boolean(
+        result.source === 'cache_stale' ||
+        result.data?.source === 'cache_stale' ||
+        result.data?.is_stale === true
+      );
+
+      if (isStale) {
+        // Contabilizar cada alerta individual de riesgo alto o moderado descartada por obsolescencia
+        // para no confundir parcelas omitidas con alertas individuales
+        for (const pred of result.data.predictions) {
+          if (pred.risk_level === 'high' || pred.risk_level === 'moderate') {
+            alertsSkippedStale++;
+          }
+        }
+        continue;
+      }
 
       for (const pred of result.data.predictions) {
         if (pred.risk_level === 'high' || pred.risk_level === 'moderate') {
@@ -254,6 +276,8 @@ async function generateAlerts(req, res) {
         parcels_evaluated: parcels.length,
         alerts_created: alertsCreated,
         alerts_skipped_duplicate: alertsSkipped,
+        alerts_skipped_stale: alertsSkippedStale,
+        alerts_skipped: alertsSkipped + alertsSkippedStale,
         generated_at: new Date().toISOString(),
       },
     });
