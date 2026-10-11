@@ -23,7 +23,11 @@ const EXPECTED_MODEL_VERSION = '2.0.0_native';
 const FALLBACK_RULES_VERSION = '2.0.0_fallback_rules';
 const ML_CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hora (60 minutos)
 const RULE_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
-const ML_REQUEST_TIMEOUT_MS = 10000; // 10 segundos
+const ML_REQUEST_TIMEOUT_MS = 12000; // 12 segundos (optimizado para latencia en frío)
+const ML_RETRY_TIMEOUT_MS = 10000; // 10 segundos para el reintento
+const ML_MAX_RETRIES = 1; // Máximo 1 reintento para errores transitorios
+const ML_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 10 : 1000; // 1s en producción, 10ms en pruebas
+const DEFAULT_CONCURRENCY_LIMIT = 2; // Máximo 2 consultas simultáneas por lote de parcelas
 
 /**
  * Verifica si el servicio / motor ML está disponible.
@@ -199,14 +203,159 @@ function validateCoordinates(rawLat, rawLng) {
   return { valid: true, lat, lng };
 }
 
+// Deduplicación en memoria de solicitudes idénticas en vuelo (coalescing)
+const inFlightRequests = new Map();
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function clearInFlightRequests() {
+  inFlightRequests.clear();
+}
+
 /**
- * Consulta la API de Open-Meteo con manejo exhaustivo de timeouts y códigos de error HTTP.
+ * Ejecuta una consulta HTTP hacia Open-Meteo con manejo de timeout por AbortController,
+ * diagnóstico seguro de errores y hasta 1 reintento controlado ante fallos transitorios.
+ * @param {URL|string} openMeteoUrl URL completa con parámetros
+ * @param {object} options Opciones de ejecución (timeoutMs, retryTimeoutMs, maxRetries, retryDelayMs, parcelId)
+ */
+async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
+  const primaryTimeoutMs = options.timeoutMs || ML_REQUEST_TIMEOUT_MS;
+  const retryTimeoutMs = options.retryTimeoutMs || ML_RETRY_TIMEOUT_MS;
+  const maxRetries = options.maxRetries !== undefined ? options.maxRetries : ML_MAX_RETRIES;
+  const baseRetryDelayMs = options.retryDelayMs !== undefined ? options.retryDelayMs : ML_RETRY_DELAY_MS;
+  const contextLabel = options.parcelId ? `Parcela ${options.parcelId}` : 'Open-Meteo';
+
+  let attempt = 0;
+  const startTime = Date.now();
+
+  while (attempt <= maxRetries) {
+    attempt++;
+    const currentTimeoutMs = attempt === 1 ? primaryTimeoutMs : retryTimeoutMs;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), currentTimeoutMs);
+    const attemptStart = Date.now();
+    let response;
+
+    try {
+      response = await fetch(openMeteoUrl.toString(), {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'AgroPasco-Platform/1.0 (Climate-Monitoring)'
+        }
+      });
+    } catch (netErr) {
+      clearTimeout(timer);
+      const attemptDuration = Date.now() - attemptStart;
+      const isTimeout = netErr.name === 'AbortError';
+      const errorTag = isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR';
+      console.error(`[OPEN_METEO_${errorTag}]: ${isTimeout ? `Tiempo de espera de ${Math.round(currentTimeoutMs / 1000)}s agotado` : netErr.message}`);
+
+      // Reintentar solo si es transitorio y quedan intentos
+      if (attempt <= maxRetries) {
+        console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando conexión tras ${errorTag} en ${baseRetryDelayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
+        await sleep(baseRetryDelayMs);
+        continue;
+      }
+
+      return {
+        success: false,
+        error: isTimeout
+          ? 'Tiempo de espera agotado al consultar el pronóstico meteorológico.'
+          : 'Error de conexión con el servicio meteorológico externo.',
+        fallback: isTimeout ? 'timeout' : 'network_error',
+        attempts: attempt,
+        durationMs: Date.now() - startTime
+      };
+    }
+    clearTimeout(timer);
+
+    const attemptDuration = Date.now() - attemptStart;
+
+    if (!response.ok) {
+      let technicalReason = '';
+      try {
+        const errJson = await response.json();
+        technicalReason = (typeof errJson.reason === 'string' ? errJson.reason : JSON.stringify(errJson)).slice(0, 150);
+      } catch (_) {
+        const errText = await response.text().catch(() => '');
+        technicalReason = errText.slice(0, 150);
+      }
+      technicalReason = technicalReason.replace(/[\r\n\t]/g, ' ').trim();
+      console.error(`[OPEN_METEO_HTTP_ERROR] ${contextLabel} — HTTP ${response.status} (${response.statusText}): ${technicalReason}`);
+
+      const isRetryableHttp = (response.status === 429 || response.status >= 500);
+
+      if (isRetryableHttp && attempt <= maxRetries) {
+        let delayMs = baseRetryDelayMs;
+        const retryAfter = response.headers?.get?.('retry-after');
+        if (retryAfter) {
+          const parsedAfter = parseInt(retryAfter, 10);
+          if (!isNaN(parsedAfter) && parsedAfter > 0 && parsedAfter <= 3) {
+            delayMs = parsedAfter * 1000;
+          }
+        }
+        console.warn(`[OPEN_METEO_RETRY] ${contextLabel}: Reintentando tras HTTP ${response.status} en ${delayMs}ms... (intento ${attempt + 1}/${maxRetries + 1})`);
+        await sleep(delayMs);
+        continue;
+      }
+
+      return {
+        success: false,
+        error: response.status === 429
+          ? 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.'
+          : response.status === 403
+            ? 'Acceso denegado por el servicio meteorológico externo.'
+            : response.status >= 500
+              ? 'Servicio meteorológico externo no disponible temporalmente.'
+              : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
+        fallback: 'api_error',
+        http_status: response.status,
+        attempts: attempt,
+        durationMs: Date.now() - startTime
+      };
+    }
+
+    try {
+      const forecast = await response.json();
+      if (attempt > 1) {
+        console.log(`[OPEN_METEO] ${contextLabel}: Recuperado con éxito en reintento ${attempt} (${attemptDuration}ms)`);
+      }
+      return {
+        success: true,
+        forecast,
+        attempts: attempt,
+        durationMs: Date.now() - startTime
+      };
+    } catch (parseErr) {
+      console.error('[OPEN_METEO_PARSE_ERROR]: Error al parsear JSON de respuesta.');
+      return {
+        success: false,
+        error: 'Respuesta inválida recibida del servicio meteorológico externo.',
+        fallback: 'api_error',
+        attempts: attempt,
+        durationMs: Date.now() - startTime
+      };
+    }
+  }
+}
+
+/**
+ * Consulta la API de Open-Meteo con manejo exhaustivo de timeouts, reintentos y deduplicación.
  * @param {number} lat Latitud validada
  * @param {number} lng Longitud validada
- * @param {object} options Opciones de consulta (includeHistory: boolean, timeoutMs: number)
+ * @param {object} options Opciones de consulta (includeHistory: boolean, timeoutMs: number, parcelId: number)
  */
 async function fetchOpenMeteoForecast(lat, lng, options = {}) {
   const includeHistory = options.includeHistory !== false;
+  const inFlightKey = `${Number(lat).toFixed(4)}_${Number(lng).toFixed(4)}_${includeHistory ? 'hist' : 'nohist'}`;
+
+  // Si ya existe una petición idéntica en vuelo, reutilizar la misma promesa
+  if (inFlightRequests.has(inFlightKey)) {
+    return inFlightRequests.get(inFlightKey);
+  }
+
   const openMeteoUrl = new URL('https://api.open-meteo.com/v1/forecast');
   openMeteoUrl.searchParams.set('latitude', String(lat));
   openMeteoUrl.searchParams.set('longitude', String(lng));
@@ -228,71 +377,24 @@ async function fetchOpenMeteoForecast(lat, lng, options = {}) {
   }
   openMeteoUrl.searchParams.set('forecast_days', '3');
 
-  const controller = new AbortController();
-  const timeoutMs = options.timeoutMs || ML_REQUEST_TIMEOUT_MS;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let response;
-
-  try {
-    response = await fetch(openMeteoUrl.toString(), {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'AgroPasco-Platform/1.0 (Climate-Monitoring)'
-      }
-    });
-  } catch (netErr) {
-    clearTimeout(timeout);
-    const isTimeout = netErr.name === 'AbortError';
-    const errorTag = isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR';
-    console.error(`[OPEN_METEO_${errorTag}]: ${isTimeout ? 'Tiempo de espera de 10s agotado' : netErr.message}`);
-    return {
-      success: false,
-      error: isTimeout
-        ? 'Tiempo de espera agotado al consultar el pronóstico meteorológico.'
-        : 'Error de conexión con el servicio meteorológico externo.',
-      fallback: isTimeout ? 'timeout' : 'network_error'
-    };
-  }
-  clearTimeout(timeout);
-
-  if (!response.ok) {
-    let technicalReason = '';
+  const requestPromise = (async () => {
     try {
-      const errJson = await response.json();
-      technicalReason = (typeof errJson.reason === 'string' ? errJson.reason : JSON.stringify(errJson)).slice(0, 150);
-    } catch (_) {
-      const errText = await response.text().catch(() => '');
-      technicalReason = errText.slice(0, 150);
+      return await executeOpenMeteoRequest(openMeteoUrl, {
+        parcelId: options.parcelId,
+        timeoutMs: options.timeoutMs,
+        retryTimeoutMs: options.retryTimeoutMs,
+        maxRetries: options.maxRetries,
+        retryDelayMs: options.retryDelayMs
+      });
+    } finally {
+      inFlightRequests.delete(inFlightKey);
     }
-    technicalReason = technicalReason.replace(/[\r\n\t]/g, ' ').trim();
-    console.error(`[OPEN_METEO_HTTP_ERROR] — HTTP ${response.status} (${response.statusText}): ${technicalReason}`);
+  })();
 
-    return {
-      success: false,
-      error: response.status === 429
-        ? 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.'
-        : response.status === 403
-          ? 'Acceso denegado por el servicio meteorológico externo.'
-          : response.status >= 500
-            ? 'Servicio meteorológico externo no disponible temporalmente.'
-            : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
-      fallback: 'api_error',
-      http_status: response.status
-    };
-  }
-
-  try {
-    const forecast = await response.json();
-    return { success: true, forecast };
-  } catch (parseErr) {
-    console.error('[OPEN_METEO_PARSE_ERROR]: Error al parsear JSON de respuesta.');
-    return {
-      success: false,
-      error: 'Respuesta inválida recibida del servicio meteorológico externo.',
-      fallback: 'api_error'
-    };
-  }
+  inFlightRequests.set(inFlightKey, requestPromise);
+  return requestPromise;
 }
+
 
 /**
  * Solicita predicción meteorológica para una parcela.
@@ -338,7 +440,7 @@ async function getPredictionForParcel(parcel) {
   }
 
   // Obtener pronóstico de Open-Meteo con historial de 7 días para variables lag/rolling
-  const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true });
+  const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true, parcelId: parcel.id });
   if (!fetchResult.success) {
     // Si la llamada meteorológica falló (timeout, red, límite HTTP), reportar el error directamente
     return fetchResult;
@@ -680,7 +782,7 @@ async function formatAndCacheRuleFallback(parcel, lat, lng, forecast) {
  * Predicción de fallback basada en reglas cuando el servicio ML no está disponible.
  * Consulta Open-Meteo directamente desde Node.js con parámetros estándar de 3 días.
  */
-async function getFallbackPrediction(parcel) {
+async function getFallbackPrediction(parcel, options = {}) {
   try {
     const coordValidation = validateCoordinates(parcel?.center_lat, parcel?.center_lng);
     if (!coordValidation.valid) {
@@ -708,71 +810,18 @@ async function getFallbackPrediction(parcel) {
     openMeteoUrl.searchParams.set('timezone', 'America/Lima');
     openMeteoUrl.searchParams.set('forecast_days', '3');
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    let response;
+    const fetchResult = await executeOpenMeteoRequest(openMeteoUrl, {
+      parcelId: parcel?.id,
+      timeoutMs: options.timeoutMs || ML_REQUEST_TIMEOUT_MS,
+      maxRetries: options.maxRetries !== undefined ? options.maxRetries : ML_MAX_RETRIES,
+      retryDelayMs: options.retryDelayMs !== undefined ? options.retryDelayMs : ML_RETRY_DELAY_MS
+    });
 
-    try {
-      response = await fetch(openMeteoUrl.toString(), {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'AgroPasco-Platform/1.0 (Climate-Monitoring)'
-        }
-      });
-    } catch (netErr) {
-      clearTimeout(timeout);
-      const isTimeout = netErr.name === 'AbortError';
-      const errorTag = isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR';
-      console.error(`[OPEN_METEO_${errorTag}] Parcela ${parcel.id}: ${isTimeout ? 'Tiempo de espera de 10s agotado' : netErr.message}`);
-      return {
-        success: false,
-        error: isTimeout
-          ? 'Tiempo de espera agotado al consultar el pronóstico meteorológico.'
-          : 'Error de conexión con el servicio meteorológico externo.',
-        fallback: isTimeout ? 'timeout' : 'network_error'
-      };
-    }
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      let technicalReason = '';
-      try {
-        const errJson = await response.json();
-        technicalReason = (typeof errJson.reason === 'string' ? errJson.reason : JSON.stringify(errJson)).slice(0, 150);
-      } catch (_) {
-        const errText = await response.text().catch(() => '');
-        technicalReason = errText.slice(0, 150);
-      }
-      technicalReason = technicalReason.replace(/[\r\n\t]/g, ' ').trim();
-
-      console.error(`[OPEN_METEO_HTTP_ERROR] Parcela ${parcel.id} — HTTP ${response.status} (${response.statusText}): ${technicalReason}`);
-
-      return {
-        success: false,
-        error: response.status === 429
-          ? 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.'
-          : response.status === 403
-            ? 'Acceso denegado por el servicio meteorológico externo.'
-            : response.status >= 500
-              ? 'Servicio meteorológico externo no disponible temporalmente.'
-              : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
-        fallback: 'api_error',
-        http_status: response.status
-      };
+    if (!fetchResult.success) {
+      return fetchResult;
     }
 
-    let forecast;
-    try {
-      forecast = await response.json();
-    } catch (parseErr) {
-      console.error(`[OPEN_METEO_PARSE_ERROR] Parcela ${parcel.id}: Error al parsear JSON de respuesta.`);
-      return {
-        success: false,
-        error: 'Respuesta inválida recibida del servicio meteorológico externo.',
-        fallback: 'api_error'
-      };
-    }
-
+    const forecast = fetchResult.forecast;
     return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
   } catch (err) {
     console.error('Error en fallback prediction:', err.message);
@@ -835,25 +884,62 @@ function formatFallbackPredictions(dailyPredictions) {
 }
 
 /**
- * Obtiene predicciones para todas las parcelas activas de un usuario.
+ * Procesa un arreglo de elementos de forma asíncrona con un límite estricto de concurrencia.
+ * Garantiza la preservación del orden original y evita que el fallo de un elemento interrumpa los demás.
+ * @param {Array} items Elementos a procesar
+ * @param {number} limit Máximo de promesas simultáneas (por defecto 2)
+ * @param {Function} asyncFn Función asíncrona a ejecutar por elemento (item, index)
  */
-async function getPredictionsForUser(userId) {
+async function mapWithConcurrency(items, limit = DEFAULT_CONCURRENCY_LIMIT, asyncFn) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const safeLimit = Math.max(1, Math.min(limit || DEFAULT_CONCURRENCY_LIMIT, items.length));
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      try {
+        results[idx] = await asyncFn(items[idx], idx);
+      } catch (workerErr) {
+        results[idx] = {
+          success: false,
+          error: 'Error inesperado procesando la predicción de la parcela.',
+          fallback: 'system_error'
+        };
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < safeLimit; i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Obtiene predicciones para todas las parcelas activas de un usuario con concurrencia controlada.
+ * @param {number} userId ID del usuario
+ * @param {object} options Opciones de ejecución (concurrency: number)
+ */
+async function getPredictionsForUser(userId, options = {}) {
   const parcels = await db.dbAll(
     'SELECT * FROM parcels WHERE user_id = ? AND status = ?',
     [userId, 'activa']
   );
+  if (!parcels || parcels.length === 0) return [];
 
-  const predictions = [];
-  for (const parcel of parcels) {
+  const concurrency = options.concurrency || DEFAULT_CONCURRENCY_LIMIT;
+  return mapWithConcurrency(parcels, concurrency, async (parcel) => {
     const result = await getPredictionForParcel(parcel);
-    predictions.push({
+    return {
       parcel_id: parcel.id,
       parcel_name: parcel.name,
       ...result
-    });
-  }
-
-  return predictions;
+    };
+  });
 }
 
 /**
@@ -951,11 +1037,18 @@ module.exports = {
   getFallbackPrediction,
   validateCoordinates,
   fetchOpenMeteoForecast,
+  executeOpenMeteoRequest,
+  mapWithConcurrency,
+  clearInFlightRequests,
   formatFallbackPredictions,
   cachePrediction,
   getCachedPrediction,
   EXPECTED_MODEL_VERSION,
   FALLBACK_RULES_VERSION,
   ML_CACHE_DURATION_MS,
-  RULE_CACHE_DURATION_MS
+  RULE_CACHE_DURATION_MS,
+  ML_REQUEST_TIMEOUT_MS,
+  ML_RETRY_TIMEOUT_MS,
+  ML_MAX_RETRIES,
+  DEFAULT_CONCURRENCY_LIMIT
 };

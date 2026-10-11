@@ -6,7 +6,7 @@
  */
 
 const { dbGet, dbAll, dbRun } = require('../config/database');
-const { getPredictionForParcel, getPredictionsForUser, checkMLServiceHealth, getModelsStatus } = require('../services/mlService');
+const { getPredictionForParcel, getPredictionsForUser, checkMLServiceHealth, getModelsStatus, mapWithConcurrency } = require('../services/mlService');
 const { createNotification } = require('../services/notificationService');
 
 /**
@@ -90,10 +90,9 @@ async function allPredictions(req, res) {
       ORDER BY p.updated_at DESC
     `);
 
-    const predictions = [];
-    for (const parcel of parcels) {
+    const predictions = await mapWithConcurrency(parcels, 2, async (parcel) => {
       const result = await getPredictionForParcel(parcel);
-      predictions.push({
+      return {
         parcel_id: parcel.id,
         parcel_name: parcel.name,
         farmer_name: parcel.farmer_name,
@@ -101,8 +100,8 @@ async function allPredictions(req, res) {
         altitude_masl: parcel.altitude_masl,
         crop_type: parcel.crop_type,
         ...result,
-      });
-    }
+      };
+    });
 
     res.json({
       success: true,
@@ -160,9 +159,12 @@ async function generateAlerts(req, res) {
     let alertsCreated = 0;
     let alertsSkipped = 0;
 
-    for (const parcel of parcels) {
+    const evaluatedParcels = await mapWithConcurrency(parcels, 2, async (parcel) => {
       const result = await getPredictionForParcel(parcel);
-      
+      return { parcel, result };
+    });
+
+    for (const { parcel, result } of evaluatedParcels) {
       if (!result.success || !result.data?.predictions) continue;
 
       for (const pred of result.data.predictions) {
