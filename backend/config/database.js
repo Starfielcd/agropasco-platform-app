@@ -45,13 +45,24 @@ pool.on('error', (err) => {
  * Solo reemplaza '?' fuera de cadenas de texto delimitadas por comillas simples.
  */
 function convertPlaceholders(sql) {
+  if (!sql || typeof sql !== 'string' || !sql.includes('?')) {
+    return sql;
+  }
   let index = 0;
   let inString = false;
   let result = '';
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
-    if (ch === "'" && (i === 0 || sql[i - 1] !== '\\')) {
-      inString = !inString;
+    if (ch === "'") {
+      let backslashes = 0;
+      let j = i - 1;
+      while (j >= 0 && sql[j] === '\\') {
+        backslashes++;
+        j--;
+      }
+      if (backslashes % 2 === 0) {
+        inString = !inString;
+      }
       result += ch;
     } else if (ch === '?' && !inString) {
       index++;
@@ -69,6 +80,9 @@ function convertPlaceholders(sql) {
  * Retorna { lastID, changes } igual que el wrapper anterior de SQLite.
  */
 async function dbRun(sql, params = []) {
+  if (module.exports && module.exports.dbRun && module.exports.dbRun !== dbRun) {
+    return module.exports.dbRun(sql, params);
+  }
   const pgSql = convertPlaceholders(sql);
   let finalSql = pgSql;
 
@@ -90,6 +104,9 @@ async function dbRun(sql, params = []) {
  * Ejecuta un SELECT y retorna la primera fila (o undefined).
  */
 async function dbGet(sql, params = []) {
+  if (module.exports && module.exports.dbGet && module.exports.dbGet !== dbGet) {
+    return module.exports.dbGet(sql, params);
+  }
   const pgSql = convertPlaceholders(sql);
   const result = await pool.query(pgSql, params);
   return result.rows[0] || undefined;
@@ -99,6 +116,9 @@ async function dbGet(sql, params = []) {
  * Ejecuta un SELECT y retorna todas las filas como array.
  */
 async function dbAll(sql, params = []) {
+  if (module.exports && module.exports.dbAll && module.exports.dbAll !== dbAll) {
+    return module.exports.dbAll(sql, params);
+  }
   const pgSql = convertPlaceholders(sql);
   const result = await pool.query(pgSql, params);
   return result.rows;
@@ -109,6 +129,62 @@ async function dbAll(sql, params = []) {
  */
 function getDb() {
   return pool;
+}
+
+/**
+ * Ejecuta una operación atómica dentro de una transacción PostgreSQL en un cliente dedicado.
+ * Garantiza que todas las consultas utilicen la misma conexión física del pool.
+ * Realiza COMMIT si la función finaliza exitosamente o ROLLBACK si se produce una excepción.
+ * Libera el cliente de vuelta al pool en el bloque finally.
+ * @param {Function} callback Función asíncrona que recibe el contexto transaccional: callback(tx)
+ */
+async function withTransaction(callback) {
+  if (module.exports && module.exports.withTransaction && module.exports.withTransaction !== withTransaction) {
+    return module.exports.withTransaction(callback);
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tx = {
+      client,
+      query: (sql, params) => client.query(sql, params),
+      dbGet: async (sql, params = []) => {
+        const pgSql = convertPlaceholders(sql);
+        const res = await client.query(pgSql, params);
+        return res.rows[0] || undefined;
+      },
+      dbAll: async (sql, params = []) => {
+        const pgSql = convertPlaceholders(sql);
+        const res = await client.query(pgSql, params);
+        return res.rows;
+      },
+      dbRun: async (sql, params = []) => {
+        const pgSql = convertPlaceholders(sql);
+        let finalSql = pgSql;
+        const isInsert = /^\s*INSERT\s+INTO/i.test(pgSql);
+        if (isInsert && !/RETURNING\s+/i.test(pgSql)) {
+          finalSql = pgSql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+        }
+        const res = await client.query(finalSql, params);
+        return {
+          lastID: isInsert && res.rows && res.rows.length > 0 ? res.rows[0].id : null,
+          changes: res.rowCount || 0,
+        };
+      },
+    };
+
+    const result = await callback(tx);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ===== Lista oficial de tablas requeridas en el esquema PostgreSQL =====
@@ -592,6 +668,8 @@ module.exports = {
   dbRun,
   dbGet,
   dbAll,
+  withTransaction,
+  convertPlaceholders,
   initializeSchema,
   seedData,
   initializeDatabase,

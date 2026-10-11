@@ -6,8 +6,9 @@
  */
 
 const { dbGet, dbAll, dbRun } = require('../config/database');
-const { getPredictionForParcel, getPredictionsForUser, checkMLServiceHealth, getModelsStatus, mapWithConcurrency } = require('../services/mlService');
-const { createNotification } = require('../services/notificationService');
+const mlService = require('../services/mlService');
+const { getPredictionForParcel, getPredictionsForUser, checkMLServiceHealth, getModelsStatus, mapWithConcurrency } = mlService;
+const { createNotification, createWeatherAlertAtomically } = require('../services/notificationService');
 
 /**
  * GET /api/ml/predict/:parcelId
@@ -90,8 +91,8 @@ async function allPredictions(req, res) {
       ORDER BY p.updated_at DESC
     `);
 
-    const predictions = await mapWithConcurrency(parcels, 2, async (parcel) => {
-      const result = await getPredictionForParcel(parcel);
+    const predictions = await mlService.mapWithConcurrency(parcels, 2, async (parcel) => {
+      const result = await mlService.getPredictionForParcel(parcel);
       return {
         parcel_id: parcel.id,
         parcel_name: parcel.name,
@@ -159,8 +160,8 @@ async function generateAlerts(req, res) {
     let alertsCreated = 0;
     let alertsSkipped = 0;
 
-    const evaluatedParcels = await mapWithConcurrency(parcels, 2, async (parcel) => {
-      const result = await getPredictionForParcel(parcel);
+    const evaluatedParcels = await mlService.mapWithConcurrency(parcels, 2, async (parcel) => {
+      const result = await mlService.getPredictionForParcel(parcel);
       return { parcel, result };
     });
 
@@ -177,19 +178,6 @@ async function generateAlerts(req, res) {
             hail: 'alerta_granizo',
           };
           const notifType = typeMap[pred.phenomenon] || 'sistema';
-
-          // Check for duplicate alert specifically for this parcel and phenomenon within 6 hours
-          const existing = await dbGet(
-            `SELECT id FROM notifications 
-             WHERE user_id = ? AND type = ? AND title ILIKE ?
-             AND created_at > NOW() - INTERVAL '6 hours'`,
-            [parcel.user_id, notifType, `%${parcel.name}%`]
-          );
-
-          if (existing) {
-            alertsSkipped++;
-            continue;
-          }
 
           // Verificar preferencias del usuario si están configuradas
           const userPrefs = await dbGet('SELECT * FROM alert_preferences WHERE user_id = ?', [parcel.user_id]);
@@ -235,15 +223,27 @@ async function generateAlerts(req, res) {
             pred.confidence_note,
           ].filter(Boolean).join('\n');
 
-          await createNotification(
-            parcel.user_id,
-            typeMap[pred.phenomenon] || 'sistema',
+          // Creación atómica protegida por pg_advisory_xact_lock en PostgreSQL
+          const alertResult = await createWeatherAlertAtomically({
+            userId: parcel.user_id,
+            type: notifType,
             title,
             message,
-            severityMap[pred.risk_level] || 'info'
-          );
+            severity: severityMap[pred.risk_level] || 'info',
+            parcelId: parcel.id,
+            parcelName: parcel.name,
+            phenomenon: pred.phenomenon,
+            modelType: pred.model_type,
+            windowHours: 6
+          });
 
-          alertsCreated++;
+          if (alertResult.created) {
+            alertsCreated++;
+          } else if (alertResult.skipped) {
+            alertsSkipped++;
+          } else if (alertResult.error) {
+            console.warn(`[ML_ALERT_GENERATE] Alerta no generada por error controlado: ${alertResult.error} (${alertResult.reason})`);
+          }
         }
       }
     }
