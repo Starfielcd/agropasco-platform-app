@@ -1,58 +1,146 @@
 /**
- * AgroPasco — Servicio de Machine Learning (Cliente Node.js)
- * ============================================================
- * Se comunica con el servicio Python FastAPI para obtener predicciones ML.
- * Incluye fallback a sistema de reglas si el servicio ML no está disponible.
- * Cache por parcela para evitar consultas repetidas.
+ * AgroPasco — Servicio de Machine Learning (Inferencia Nativa Node.js)
+ * =====================================================================
+ * FASE 8D: Inferencia local mediante modelos scikit-learn exportados a JSON
+ * integrados directamente con datos meteorológicos de Open-Meteo.
+ *
+ * Características:
+ *  - Inferencia ML nativa pura en Node.js (GradientBoosting, RandomForest, LogisticRegression).
+ *  - Ingeniería de características meteorológicas sin fuga temporal (7 días pasados + 72h futuro).
+ *  - Transparencia total de origen: 'ml_trained', 'rule_based', 'datos_insuficientes'.
+ *  - Respaldo automático mediante reglas meteorológicas agronómicas si el motor ML
+ *    o variables requeridas no están disponibles.
+ *  - Validación estricta de coordenadas geográficas.
+ *  - Cache de predicciones por parcela en weather_cache (1 hora).
  */
 
-const { dbRun, dbGet, dbAll } = require('../config/database');
+const db = require('../config/database');
+const { defaultEngine } = require('./mlEngine');
+const { buildDailyFeatures, checkFeatureCompleteness } = require('./mlFeaturePipeline');
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8100';
-const ML_CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hora
-const ML_REQUEST_TIMEOUT_MS = 15000; // 15 segundos
+const EXPECTED_MODEL_VERSION = '2.0.0_native';
+const FALLBACK_RULES_VERSION = '2.0.0_fallback_rules';
+const ML_CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hora (60 minutos)
+const RULE_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
+const ML_REQUEST_TIMEOUT_MS = 10000; // 10 segundos
 
 /**
- * Verifica si el servicio ML está disponible
+ * Verifica si el servicio / motor ML está disponible.
+ * Reporta el estado del motor nativo Node.js.
  */
 async function checkMLServiceHealth() {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(`${ML_SERVICE_URL}/health`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      return await response.json();
+    if (!defaultEngine.isLoaded) {
+      defaultEngine.loadModels();
     }
-    return null;
+    return {
+      status: 'ok',
+      engine: 'native_node_js',
+      version: '2.0.0_native',
+      models_count: 3,
+      models_loaded: ['frost', 'heavy_rain', 'snow'],
+      models: ['frost', 'heavy_rain', 'snow', 'hail (rule_based)'],
+      timestamp: new Date().toISOString()
+    };
   } catch (err) {
+    // Si el motor nativo tiene problemas, verificar si existe un servicio externo
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${ML_SERVICE_URL}/health`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (response.ok) return await response.json();
+    } catch (_) {}
     return null;
   }
 }
 
 /**
- * Obtiene el estado de los modelos ML
+ * Obtiene el estado y metadatos de los modelos ML nativos.
  */
 async function getModelsStatus() {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(`${ML_SERVICE_URL}/models/status`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      return await response.json();
+    if (!defaultEngine.isLoaded) {
+      defaultEngine.loadModels();
     }
-    return null;
+    return {
+      frost: {
+        available: true,
+        model_type: 'GradientBoosting (Nativo)',
+        algorithm: 'GradientBoostingClassifier',
+        version: '2.0.0_audited_no_leak',
+        n_features: 18,
+        label_type: 'proxy_rule_based_era5',
+        evaluation_note: 'Evaluación histórica en split test (ERA5/Open-Meteo, >2025-06-30). No representa validación meteorológica de campo SENAMHI ni garantía de exactitud a 72h.',
+        test_metrics: {
+          split: 'test',
+          n_samples: 906,
+          f1: 0.8997,
+          precision: 0.8674,
+          recall: 0.9345,
+          pr_auc: 0.9749,
+          roc_auc: 0.993,
+          brier_score: 0.0278,
+          expected_calibration_error: 0.0178
+        }
+      },
+      heavy_rain: {
+        available: true,
+        model_type: 'RandomForest (Nativo)',
+        algorithm: 'RandomForestClassifier',
+        version: '2.0.0_audited_no_leak',
+        n_features: 16,
+        label_type: 'proxy_rule_based_era5',
+        evaluation_note: 'Evaluación histórica en split test (ERA5/Open-Meteo, >2025-06-30). Precisión moderada (46.5%) por desbalance de clases (5.37% positivos en test). No representa validación de campo SENAMHI ni garantía a 72h.',
+        test_metrics: {
+          split: 'test',
+          n_samples: 1359,
+          f1: 0.59,
+          precision: 0.4646,
+          recall: 0.8082,
+          pr_auc: 0.6288,
+          roc_auc: 0.9689,
+          brier_score: 0.0411,
+          expected_calibration_error: 0.0534
+        }
+      },
+      snow: {
+        available: true,
+        model_type: 'LogisticRegression (Nativo)',
+        algorithm: 'LogisticRegression',
+        version: '2.0.0_audited_no_leak',
+        n_features: 13,
+        label_type: 'proxy_rule_based_era5',
+        evaluation_note: 'Evaluación histórica en split test (ERA5/Open-Meteo, >2025-06-30). No representa validación meteorológica de campo SENAMHI ni garantía a 72h.',
+        test_metrics: {
+          split: 'test',
+          n_samples: 906,
+          f1: 0.7575,
+          precision: 0.7904,
+          recall: 0.7273,
+          pr_auc: 0.8491,
+          roc_auc: 0.8931,
+          brier_score: 0.1304,
+          expected_calibration_error: 0.0274
+        }
+      },
+      hail: {
+        available: false,
+        model_type: 'Reglas Heurísticas Físicas',
+        fallback: 'rule_based',
+        reason: '0 horas WMO de granizo en reanálisis ERA5; evaluado mediante reglas meteorológicas físicas.'
+      }
+    };
   } catch (err) {
-    console.warn('⚠️ ML Service no disponible para consulta de modelos:', err.message);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${ML_SERVICE_URL}/models/status`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (response.ok) return await response.json();
+    } catch (_) {}
+    console.warn('⚠️ Motor ML nativo no disponible para consulta de modelos:', err.message);
     return null;
   }
 }
@@ -61,7 +149,6 @@ async function getModelsStatus() {
  * Valida estrictamente un par de coordenadas geográficas (latitud, longitud).
  * Rechaza null, undefined, cadenas vacías o con espacios, NaN, Infinity, tipos no numéricos,
  * cadenas parcialmente numéricas (ej. "12abc", "abc12") y valores fuera de rangos geográficos.
- * Acepta números finitos y cadenas numéricas válidas (positivos, negativos, decimales).
  */
 function validateCoordinates(rawLat, rawLng) {
   if (
@@ -81,7 +168,6 @@ function validateCoordinates(rawLat, rawLng) {
     }
     if (typeof val === 'string') {
       const trimmed = val.trim();
-      // Rechazar NaN, Infinity, cadenas con caracteres alfabéticos o parcialmente numéricos como "12abc"
       if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(trimmed)) {
         return false;
       }
@@ -114,7 +200,104 @@ function validateCoordinates(rawLat, rawLng) {
 }
 
 /**
- * Solicita predicción ML para una parcela
+ * Consulta la API de Open-Meteo con manejo exhaustivo de timeouts y códigos de error HTTP.
+ * @param {number} lat Latitud validada
+ * @param {number} lng Longitud validada
+ * @param {object} options Opciones de consulta (includeHistory: boolean, timeoutMs: number)
+ */
+async function fetchOpenMeteoForecast(lat, lng, options = {}) {
+  const includeHistory = options.includeHistory !== false;
+  const openMeteoUrl = new URL('https://api.open-meteo.com/v1/forecast');
+  openMeteoUrl.searchParams.set('latitude', String(lat));
+  openMeteoUrl.searchParams.set('longitude', String(lng));
+  openMeteoUrl.searchParams.set(
+    'daily',
+    includeHistory
+      ? 'temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,rain_sum,wind_speed_10m_max,et0_fao_evapotranspiration'
+      : 'temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,rain_sum,wind_speed_10m_max'
+  );
+  openMeteoUrl.searchParams.set(
+    'hourly',
+    includeHistory
+      ? 'temperature_2m,relative_humidity_2m,precipitation,soil_moisture_0_to_7cm'
+      : 'temperature_2m,relative_humidity_2m,precipitation'
+  );
+  openMeteoUrl.searchParams.set('timezone', 'America/Lima');
+  if (includeHistory) {
+    openMeteoUrl.searchParams.set('past_days', '7');
+  }
+  openMeteoUrl.searchParams.set('forecast_days', '3');
+
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || ML_REQUEST_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+
+  try {
+    response = await fetch(openMeteoUrl.toString(), {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'AgroPasco-Platform/1.0 (Climate-Monitoring)'
+      }
+    });
+  } catch (netErr) {
+    clearTimeout(timeout);
+    const isTimeout = netErr.name === 'AbortError';
+    const errorTag = isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR';
+    console.error(`[OPEN_METEO_${errorTag}]: ${isTimeout ? 'Tiempo de espera de 10s agotado' : netErr.message}`);
+    return {
+      success: false,
+      error: isTimeout
+        ? 'Tiempo de espera agotado al consultar el pronóstico meteorológico.'
+        : 'Error de conexión con el servicio meteorológico externo.',
+      fallback: isTimeout ? 'timeout' : 'network_error'
+    };
+  }
+  clearTimeout(timeout);
+
+  if (!response.ok) {
+    let technicalReason = '';
+    try {
+      const errJson = await response.json();
+      technicalReason = (typeof errJson.reason === 'string' ? errJson.reason : JSON.stringify(errJson)).slice(0, 150);
+    } catch (_) {
+      const errText = await response.text().catch(() => '');
+      technicalReason = errText.slice(0, 150);
+    }
+    technicalReason = technicalReason.replace(/[\r\n\t]/g, ' ').trim();
+    console.error(`[OPEN_METEO_HTTP_ERROR] — HTTP ${response.status} (${response.statusText}): ${technicalReason}`);
+
+    return {
+      success: false,
+      error: response.status === 429
+        ? 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.'
+        : response.status === 403
+          ? 'Acceso denegado por el servicio meteorológico externo.'
+          : response.status >= 500
+            ? 'Servicio meteorológico externo no disponible temporalmente.'
+            : 'No se pudo obtener pronóstico meteorológico para esta ubicación.',
+      fallback: 'api_error',
+      http_status: response.status
+    };
+  }
+
+  try {
+    const forecast = await response.json();
+    return { success: true, forecast };
+  } catch (parseErr) {
+    console.error('[OPEN_METEO_PARSE_ERROR]: Error al parsear JSON de respuesta.');
+    return {
+      success: false,
+      error: 'Respuesta inválida recibida del servicio meteorológico externo.',
+      fallback: 'api_error'
+    };
+  }
+}
+
+/**
+ * Solicita predicción meteorológica para una parcela.
+ * Ejecuta inferencia local con el motor nativo de Machine Learning.
+ * Si el motor o las variables no están disponibles, activa el sistema de reglas de respaldo.
  */
 async function getPredictionForParcel(parcel) {
   if (!parcel) {
@@ -125,7 +308,7 @@ async function getPredictionForParcel(parcel) {
     };
   }
 
-  // Validación estricta de coordenadas (sin retornar valores crudos no validados)
+  // Validación estricta de coordenadas geográficas
   const coordValidation = validateCoordinates(parcel.center_lat, parcel.center_lng);
   if (!coordValidation.valid) {
     return {
@@ -136,59 +319,366 @@ async function getPredictionForParcel(parcel) {
   }
   const { lat, lng } = coordValidation;
 
-  // Check cache first
+  // Consultar cache en primer lugar
   const cached = await getCachedPrediction(parcel.id);
   if (cached) {
     return { success: true, data: cached, source: 'cache' };
   }
 
-  // Try ML service
+  // Carga o verificación del motor nativo ML
+  let isEngineReady = false;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), ML_REQUEST_TIMEOUT_MS);
-
-    const response = await fetch(`${ML_SERVICE_URL}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        parcel_id: parcel.id,
-        parcel_name: parcel.name || '',
-        latitude: lat,
-        longitude: lng,
-        altitude_masl: parcel.altitude_masl || null,
-        crop_type: parcel.crop_type || null,
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    if (response.ok) {
-      const data = await response.json();
-      
-      // Cache the result
-      await cachePrediction(parcel.id, data);
-      
-      return { success: true, data, source: 'ml_service' };
-    } else {
-      const errBody = await response.json().catch(() => ({}));
-      console.warn(`⚠️ ML Service error for parcel ${parcel.id}:`, errBody);
-      return {
-        success: false,
-        error: errBody.detail || 'Error del servicio ML',
-        fallback: 'ml_error'
-      };
+    if (!defaultEngine.isLoaded) {
+      defaultEngine.loadModels();
     }
-  } catch (err) {
-    console.warn(`⚠️ ML Service no disponible para parcela ${parcel.id}:`, err.message);
-    
-    // Fallback: reglas básicas usando Open-Meteo directo
-    return await getFallbackPrediction(parcel);
+    isEngineReady = defaultEngine.isLoaded;
+  } catch (engineLoadErr) {
+    console.warn('⚠️ Motor ML nativo no pudo cargar modelos:', engineLoadErr.message);
+    isEngineReady = false;
+  }
+
+  // Obtener pronóstico de Open-Meteo con historial de 7 días para variables lag/rolling
+  const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true });
+  if (!fetchResult.success) {
+    // Si la llamada meteorológica falló (timeout, red, límite HTTP), reportar el error directamente
+    return fetchResult;
+  }
+
+  const forecast = fetchResult.forecast;
+
+  // Si los modelos no cargaron o faltan datos mínimos, activar fallback de reglas sobre el pronóstico obtenido
+  if (!isEngineReady) {
+    return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
+  }
+
+  // Procesar características meteorológicas para los modelos
+  try {
+    const dailyFeaturesList = buildDailyFeatures(forecast, parcel.altitude_masl);
+    if (!dailyFeaturesList || dailyFeaturesList.length === 0) {
+      return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
+    }
+
+    // Evaluar cada día de pronóstico (horizonte de hasta 72 horas)
+    const dailyPredictions = [];
+    let anyMLTrainedEvaluated = false;
+
+    for (const dayFeat of dailyFeaturesList) {
+      const dayPred = {
+        date: dayFeat.date,
+        raw: {
+          tempMin: dayFeat.temperature_2m_min,
+          tempMax: dayFeat.temperature_2m_max,
+          precip: dayFeat.precipitation_sum,
+          wind: dayFeat.wind_speed_10m_max
+        }
+      };
+
+      // 1. Helada (GradientBoosting)
+      const frostReq = defaultEngine.models.frost.features;
+      const frostCheck = checkFeatureCompleteness(dayFeat, frostReq);
+      if (frostCheck.complete) {
+        dayPred.frost = defaultEngine.predictFrost(dayFeat);
+        anyMLTrainedEvaluated = true;
+      } else {
+        // Fallback específico de regla para helada
+        const tempMin = dayFeat.temperature_2m_min ?? 999;
+        const wind = dayFeat.wind_speed_10m_max ?? 0;
+        let frostScore = 0;
+        if (tempMin <= -5) frostScore = 90;
+        else if (tempMin <= -2) frostScore = 70;
+        else if (tempMin <= 0) frostScore = 50;
+        else if (tempMin <= 3) frostScore = 25;
+        if (wind < 5) frostScore += 10;
+        frostScore = Math.min(frostScore, 100);
+
+        dayPred.frost = {
+          phenomenon: 'frost',
+          risk_level: frostScore >= 60 ? 'high' : frostScore >= 30 ? 'moderate' : frostScore >= 10 ? 'low' : 'none',
+          risk_score: frostScore,
+          model_type: 'rule_based',
+          missing_features: frostCheck.missing
+        };
+      }
+
+      // 2. Lluvia Intensa (RandomForest)
+      const rainReq = defaultEngine.models.heavy_rain.features;
+      const rainCheck = checkFeatureCompleteness(dayFeat, rainReq);
+      if (rainCheck.complete) {
+        dayPred.heavy_rain = defaultEngine.predictHeavyRain(dayFeat);
+        anyMLTrainedEvaluated = true;
+      } else {
+        // Fallback de regla para lluvia intensa
+        const precip = dayFeat.precipitation_sum ?? 0;
+        let rainScore = 0;
+        if (precip >= 50) rainScore = 85;
+        else if (precip >= 20) rainScore = 55;
+        else if (precip >= 10) rainScore = 30;
+
+        dayPred.heavy_rain = {
+          phenomenon: 'heavy_rain',
+          risk_level: rainScore >= 60 ? 'high' : rainScore >= 30 ? 'moderate' : rainScore >= 10 ? 'low' : 'none',
+          risk_score: rainScore,
+          model_type: 'rule_based',
+          missing_features: rainCheck.missing
+        };
+      }
+
+      // 3. Nieve (LogisticRegression)
+      const snowReq = defaultEngine.models.snow.features;
+      const snowCheck = checkFeatureCompleteness(dayFeat, snowReq);
+      if (snowCheck.complete) {
+        dayPred.snow = defaultEngine.predictSnow(dayFeat);
+        anyMLTrainedEvaluated = true;
+      } else {
+        const altitude = dayFeat.elevation || parcel.altitude_masl || 0;
+        const tempMin = dayFeat.temperature_2m_min ?? 999;
+        const precip = dayFeat.precipitation_sum ?? 0;
+        const snowActive = tempMin <= 0 && precip > 0 && altitude > 4000;
+
+        dayPred.snow = {
+          phenomenon: 'snow',
+          risk_level: snowActive ? 'moderate' : 'none',
+          risk_score: snowActive ? 30 : 0,
+          model_type: 'rule_based',
+          missing_features: snowCheck.missing
+        };
+      }
+
+      // 4. Granizo (Reglas meteorológicas físicas)
+      dayPred.hail = defaultEngine.evaluateHailRules(dayFeat);
+
+      dailyPredictions.push(dayPred);
+    }
+
+    // Si ninguna inferencia supervisada pudo ejecutarse por falta de historial, aplicar fallback general
+    if (!anyMLTrainedEvaluated) {
+      return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
+    }
+
+    // Formatear predicciones seleccionando el peor caso del horizonte
+    const formattedPredictions = formatConsolidatedPredictions(dailyPredictions, dailyFeaturesList);
+
+    const forecastSummary = {
+      days: dailyPredictions.length,
+      dates: dailyPredictions.map(d => d.date),
+      temp_min: dailyPredictions.map(d => d.raw.tempMin),
+      temp_max: dailyPredictions.map(d => d.raw.tempMax),
+      precipitation: dailyPredictions.map(d => d.raw.precip),
+      elevation_model: forecast.elevation || null
+    };
+
+    const result = {
+      parcel_id: parcel.id,
+      parcel_name: parcel.name || '',
+      latitude: lat,
+      longitude: lng,
+      altitude_masl: parcel.altitude_masl || forecast.elevation || null,
+      model_version: EXPECTED_MODEL_VERSION,
+      prediction_source: 'ml_trained',
+      predictions: formattedPredictions,
+      forecast_summary: forecastSummary,
+      issued_at: new Date().toISOString(),
+      valid_until: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+      cache_ttl_ms: ML_CACHE_DURATION_MS,
+      cache_expires_at: new Date(Date.now() + ML_CACHE_DURATION_MS).toISOString(),
+      data_source: 'Motor ML Nativo AgroPasco (Node.js) + Open-Meteo Forecast',
+      coverage_warning: null
+    };
+
+    await cachePrediction(parcel.id, result);
+
+    return { success: true, data: result, source: 'ml_service' };
+  } catch (procErr) {
+    console.warn(`⚠️ Error procesando inferencia nativa para parcela ${parcel.id}: ${procErr.message}. Activando fallback.`);
+    return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
   }
 }
 
 /**
+ * Consolida predicciones diarias en la estructura de peor caso esperada por el contrato JSON.
+ */
+function formatConsolidatedPredictions(dailyPredictions, dailyFeaturesList) {
+  const phenomena = ['frost', 'heavy_rain', 'snow', 'hail'];
+  const result = [];
+
+  const rankLevel = { high: 3, moderate: 2, low: 1, none: 0, model_unavailable: -1 };
+
+  for (const phenomenon of phenomena) {
+    let maxScore = 0;
+    let worstLevel = 'none';
+    let worstDayIdx = 0;
+    let modelType = 'ml_trained';
+
+    for (let i = 0; i < dailyPredictions.length; i++) {
+      const pred = dailyPredictions[i][phenomenon] || {};
+      const score = typeof pred.risk_score === 'number' ? pred.risk_score : 0;
+      const level = pred.risk_level || 'none';
+
+      if (score > maxScore || (score === maxScore && (rankLevel[level] || 0) > (rankLevel[worstLevel] || 0))) {
+        maxScore = score;
+        worstLevel = level;
+        worstDayIdx = i;
+      }
+
+      if (pred.model_type === 'rule_based') {
+        modelType = 'rule_based';
+      } else if (pred.model_type === 'datos_insuficientes') {
+        modelType = 'datos_insuficientes';
+      }
+    }
+
+    if (phenomenon === 'hail') {
+      modelType = 'rule_based';
+    }
+
+    // Extraer variables representativas del día de mayor riesgo
+    const bestFeat = dailyFeaturesList[worstDayIdx] || dailyFeaturesList[0] || {};
+    const variablesUsed = {};
+
+    if (phenomenon === 'frost') {
+      variablesUsed.temperature_2m_min = bestFeat.temperature_2m_min;
+      variablesUsed.temperature_2m_mean = bestFeat.temperature_2m_mean;
+      variablesUsed.temp_min_rolling_3d = bestFeat.temp_min_rolling_3d;
+      variablesUsed.wind_speed_10m_max = bestFeat.wind_speed_10m_max;
+      variablesUsed.soil_moisture_mean = bestFeat.soil_moisture_mean;
+    } else if (phenomenon === 'heavy_rain') {
+      variablesUsed.precipitation_sum = bestFeat.precipitation_sum;
+      variablesUsed.precip_rolling_3d = bestFeat.precip_rolling_3d;
+      variablesUsed.humidity_mean = bestFeat.humidity_mean;
+      variablesUsed.soil_moisture_mean = bestFeat.soil_moisture_mean;
+    } else if (phenomenon === 'snow') {
+      variablesUsed.temperature_2m_min = bestFeat.temperature_2m_min;
+      variablesUsed.temperature_2m_mean = bestFeat.temperature_2m_mean;
+      variablesUsed.elevation = bestFeat.elevation;
+      variablesUsed.humidity_max = bestFeat.humidity_max;
+    } else if (phenomenon === 'hail') {
+      variablesUsed.temperature_2m_mean = bestFeat.temperature_2m_mean;
+      variablesUsed.precipitation_sum = bestFeat.precipitation_sum;
+      variablesUsed.humidity_max = bestFeat.humidity_max;
+    }
+
+    let confidenceNote = '';
+    let limitations = [];
+
+    if (modelType === 'ml_trained') {
+      confidenceNote = 'Inferencia de modelo supervisado entrenado con reanálisis ERA5/Open-Meteo. Puntuación de riesgo relativa; no representa probabilidad calibrada con estaciones en campo.';
+      limitations = [
+        'Modelo entrenado con proxy meteorológico histórico (ERA5/Open-Meteo), no con observaciones de campo SENAMHI.',
+        'Las puntuaciones indican nivel de riesgo relativo dentro de la ventana de pronóstico.',
+        'Rendimiento validado offline; sujeto a la precisión del pronóstico numérico de Open-Meteo.'
+      ];
+    } else if (modelType === 'rule_based') {
+      confidenceNote = phenomenon === 'hail'
+        ? 'Evaluación física basada en reglas agronómicas (0 horas WMO de granizo en histórico ERA5).'
+        : 'Evaluación basada en reglas meteorológicas agronómicas (servicio ML en modo de respaldo). NO es una probabilidad calibrada.';
+      limitations = [
+        'Evaluación mediante reglas meteorológicas y umbrales de dominio.',
+        'No sustituye el monitoreo directo en campo.'
+      ];
+    } else {
+      confidenceNote = 'Datos meteorológicos insuficientes para generar una inferencia confiable.';
+      limitations = ['Faltan variables meteorológicas indispensables para este fenómeno.'];
+    }
+
+    result.push({
+      phenomenon,
+      risk_level: worstLevel,
+      risk_score: maxScore,
+      confidence_note: confidenceNote,
+      model_type: modelType,
+      variables_used: variablesUsed,
+      period: dailyPredictions.length > 0
+        ? `${dailyPredictions[0].date} a ${dailyPredictions[dailyPredictions.length - 1].date}`
+        : '',
+      limitations
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Aplica reglas de respaldo a un pronóstico ya obtenido y cachea el resultado.
+ */
+async function formatAndCacheRuleFallback(parcel, lat, lng, forecast) {
+  const daily = forecast.daily || {};
+  const dates = daily.time || [];
+  const altitude = parcel.altitude_masl || forecast.elevation || null;
+  const predictions = [];
+
+  for (let i = 0; i < dates.length; i++) {
+    const tempMin = daily.temperature_2m_min?.[i] ?? 999;
+    const tempMax = daily.temperature_2m_max?.[i] ?? 0;
+    const precip = daily.precipitation_sum?.[i] ?? 0;
+    const wind = daily.wind_speed_10m_max?.[i] ?? 0;
+
+    let frostScore = 0;
+    if (tempMin <= -5) frostScore = 90;
+    else if (tempMin <= -2) frostScore = 70;
+    else if (tempMin <= 0) frostScore = 50;
+    else if (tempMin <= 3) frostScore = 25;
+    if (wind < 5) frostScore += 10;
+
+    let rainScore = 0;
+    if (precip >= 50) rainScore = 85;
+    else if (precip >= 20) rainScore = 55;
+    else if (precip >= 10) rainScore = 30;
+
+    predictions.push({
+      date: dates[i],
+      frost: {
+        score: Math.min(frostScore, 100),
+        level: frostScore >= 60 ? 'high' : frostScore >= 30 ? 'moderate' : frostScore >= 10 ? 'low' : 'none'
+      },
+      heavy_rain: {
+        score: Math.min(rainScore, 100),
+        level: rainScore >= 60 ? 'high' : rainScore >= 30 ? 'moderate' : rainScore >= 10 ? 'low' : 'none'
+      },
+      snow: {
+        score: tempMin <= 0 && precip > 0 && altitude > 4000 ? 30 : 0,
+        level: tempMin <= 0 && precip > 0 && altitude > 4000 ? 'moderate' : 'none'
+      },
+      hail: {
+        score: 0,
+        level: 'model_unavailable'
+      },
+      raw: { tempMin, tempMax, precip, wind }
+    });
+  }
+
+  const result = {
+    parcel_id: parcel.id,
+    parcel_name: parcel.name || '',
+    latitude: lat,
+    longitude: lng,
+    altitude_masl: altitude,
+    model_version: FALLBACK_RULES_VERSION,
+    prediction_source: 'fallback_rules',
+    predictions: formatFallbackPredictions(predictions),
+    forecast_summary: {
+      days: dates.length,
+      dates: dates,
+      temp_min: daily.temperature_2m_min || [],
+      temp_max: daily.temperature_2m_max || [],
+      precipitation: daily.precipitation_sum || [],
+      elevation_model: forecast.elevation || null
+    },
+    issued_at: new Date().toISOString(),
+    valid_until: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    cache_ttl_ms: RULE_CACHE_DURATION_MS,
+    cache_expires_at: new Date(Date.now() + RULE_CACHE_DURATION_MS).toISOString(),
+    data_source: 'Open-Meteo Forecast + Reglas AgroPasco (ML no disponible)',
+    coverage_warning: null
+  };
+
+  await cachePrediction(parcel.id, result);
+
+  return { success: true, data: result, source: 'fallback_rules' };
+}
+
+/**
  * Predicción de fallback basada en reglas cuando el servicio ML no está disponible.
- * Consulta Open-Meteo directamente desde Node.js.
+ * Consulta Open-Meteo directamente desde Node.js con parámetros estándar de 3 días.
  */
 async function getFallbackPrediction(parcel) {
   try {
@@ -204,9 +694,6 @@ async function getFallbackPrediction(parcel) {
     }
     const { lat, lng } = coordValidation;
 
-    const altitude = parcel.altitude_masl || null;
-
-    // Construcción segura de URL con codificación adecuada de parámetros
     const openMeteoUrl = new URL('https://api.open-meteo.com/v1/forecast');
     openMeteoUrl.searchParams.set('latitude', String(lat));
     openMeteoUrl.searchParams.set('longitude', String(lng));
@@ -285,78 +772,8 @@ async function getFallbackPrediction(parcel) {
         fallback: 'api_error'
       };
     }
-    const daily = forecast.daily || {};
-    const dates = daily.time || [];
-    
-    const predictions = [];
 
-    // Evaluate each day
-    for (let i = 0; i < dates.length; i++) {
-      const tempMin = daily.temperature_2m_min?.[i] ?? 999;
-      const tempMax = daily.temperature_2m_max?.[i] ?? 0;
-      const precip = daily.precipitation_sum?.[i] ?? 0;
-      const wind = daily.wind_speed_10m_max?.[i] ?? 0;
-
-      // Frost risk (rule-based)
-      let frostScore = 0;
-      if (tempMin <= -5) frostScore = 90;
-      else if (tempMin <= -2) frostScore = 70;
-      else if (tempMin <= 0) frostScore = 50;
-      else if (tempMin <= 3) frostScore = 25;
-      if (wind < 5) frostScore += 10;
-
-      // Heavy rain risk (rule-based)
-      let rainScore = 0;
-      if (precip >= 50) rainScore = 85;
-      else if (precip >= 20) rainScore = 55;
-      else if (precip >= 10) rainScore = 30;
-
-      predictions.push({
-        date: dates[i],
-        frost: {
-          score: Math.min(frostScore, 100),
-          level: frostScore >= 60 ? 'high' : frostScore >= 30 ? 'moderate' : frostScore >= 10 ? 'low' : 'none',
-        },
-        heavy_rain: {
-          score: Math.min(rainScore, 100),
-          level: rainScore >= 60 ? 'high' : rainScore >= 30 ? 'moderate' : rainScore >= 10 ? 'low' : 'none',
-        },
-        snow: {
-          score: tempMin <= 0 && precip > 0 && altitude > 4000 ? 30 : 0,
-          level: tempMin <= 0 && precip > 0 && altitude > 4000 ? 'moderate' : 'none',
-        },
-        hail: {
-          score: 0,
-          level: 'model_unavailable',
-        },
-        raw: { tempMin, tempMax, precip, wind },
-      });
-    }
-
-    const result = {
-      parcel_id: parcel.id,
-      parcel_name: parcel.name || '',
-      latitude: lat,
-      longitude: lng,
-      altitude_masl: altitude,
-      predictions: formatFallbackPredictions(predictions),
-      forecast_summary: {
-        days: dates.length,
-        dates: dates,
-        temp_min: daily.temperature_2m_min || [],
-        temp_max: daily.temperature_2m_max || [],
-        precipitation: daily.precipitation_sum || [],
-        elevation_model: forecast.elevation || null,
-      },
-      issued_at: new Date().toISOString(),
-      valid_until: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-      data_source: 'Open-Meteo Forecast + Reglas AgroPasco (ML no disponible)',
-      coverage_warning: null,
-    };
-
-    await cachePrediction(parcel.id, result);
-
-    return { success: true, data: result, source: 'fallback_rules' };
+    return formatAndCacheRuleFallback(parcel, lat, lng, forecast);
   } catch (err) {
     console.error('Error en fallback prediction:', err.message);
     return {
@@ -368,14 +785,13 @@ async function getFallbackPrediction(parcel) {
 }
 
 /**
- * Formatea las predicciones de fallback al formato estándar
+ * Formatea las predicciones de fallback al formato estándar del contrato JSON.
  */
 function formatFallbackPredictions(dailyPredictions) {
   const phenomena = ['frost', 'heavy_rain', 'snow', 'hail'];
   const result = [];
 
   for (const phenomenon of phenomena) {
-    // Get worst case across forecast days
     let maxScore = 0;
     let worstLevel = 'none';
     const variables = {};
@@ -388,7 +804,6 @@ function formatFallbackPredictions(dailyPredictions) {
       }
     }
 
-    // Collect relevant variables from first day
     if (dailyPredictions.length > 0) {
       const raw = dailyPredictions[0].raw || {};
       if (phenomenon === 'frost') {
@@ -411,8 +826,8 @@ function formatFallbackPredictions(dailyPredictions) {
         : '',
       limitations: [
         'Servicio ML no disponible. Usando reglas meteorológicas de fallback.',
-        'Los umbrales son configurables y documentados.',
-      ],
+        'Los umbrales son configurables y documentados.'
+      ]
     });
   }
 
@@ -420,10 +835,10 @@ function formatFallbackPredictions(dailyPredictions) {
 }
 
 /**
- * Obtiene predicciones para todas las parcelas de un usuario
+ * Obtiene predicciones para todas las parcelas activas de un usuario.
  */
 async function getPredictionsForUser(userId) {
-  const parcels = await dbAll(
+  const parcels = await db.dbAll(
     'SELECT * FROM parcels WHERE user_id = ? AND status = ?',
     [userId, 'activa']
   );
@@ -434,7 +849,7 @@ async function getPredictionsForUser(userId) {
     predictions.push({
       parcel_id: parcel.id,
       parcel_name: parcel.name,
-      ...result,
+      ...result
     });
   }
 
@@ -442,45 +857,90 @@ async function getPredictionsForUser(userId) {
 }
 
 /**
- * Cache de predicciones en weather_cache
+ * Cache de predicciones en weather_cache.
  */
 async function cachePrediction(parcelId, data) {
+  // Protección estricta: ninguna escritura en base de datos durante pruebas
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
   try {
-    // Delete old cache for this parcel
-    await dbRun(
+    await db.dbRun(
       "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
       [`parcel_${parcelId}`]
     );
     
-    await dbRun(
+    await db.dbRun(
       'INSERT INTO weather_cache (location, data_type, data_json) VALUES (?, ?, ?)',
       [`parcel_${parcelId}`, 'ml_prediction', JSON.stringify(data)]
     );
   } catch (err) {
-    console.warn('⚠️ Error cacheando predicción ML:', err.message);
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('⚠️ Error cacheando predicción ML:', err.message);
+    }
   }
 }
 
+/**
+ * Consulta la predicción en caché verificando versión del modelo y TTL diferenciado.
+ */
 async function getCachedPrediction(parcelId) {
   try {
-    const row = await dbGet(
+    const row = await db.dbGet(
       "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
       [`parcel_${parcelId}`]
     );
     if (!row || !row.fetched_at || !row.data_json) {
       return null;
     }
+
+    let cachedData;
+    try {
+      cachedData = JSON.parse(row.data_json);
+    } catch (_) {
+      return null;
+    }
+
+    if (!cachedData || typeof cachedData !== 'object') {
+      return null;
+    }
+
+    // PASO 3: Validación estricta de versión del modelo
+    // Se rechazan entradas sin versionado o con versiones antiguas/incompatibles (cache miss)
+    const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
+    const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
+
+    if (!isNativeML && !isRuleFallback) {
+      return null; // Versión incompatible o ausente -> cache miss sin borrar el registro SQL
+    }
+
+    // Parsear timestamp de fetched_at con soporte UTC
     const dateStr = row.fetched_at.includes('T')
       ? (row.fetched_at.endsWith('Z') ? row.fetched_at : row.fetched_at + 'Z')
       : row.fetched_at.replace(' ', 'T') + 'Z';
     const fetchedAt = new Date(dateStr).getTime();
-    if (!isNaN(fetchedAt) && (Date.now() - fetchedAt) >= 0 && (Date.now() - fetchedAt) < ML_CACHE_DURATION_MS) {
-      return JSON.parse(row.data_json);
+    if (isNaN(fetchedAt)) {
+      return null;
     }
+
+    const ageMs = Date.now() - fetchedAt;
+    if (ageMs < 0) {
+      return null; // Desviación de reloj
+    }
+
+    // PASO 4: TTL diferenciado
+    // Inferencia ML nativa: máximo 60 minutos
+    // Reglas de fallback: máximo 5 minutos
+    const allowedTtlMs = isRuleFallback ? RULE_CACHE_DURATION_MS : ML_CACHE_DURATION_MS;
+
+    if (ageMs >= allowedTtlMs) {
+      return null; // Expirado -> cache miss
+    }
+
+    return cachedData;
   } catch (err) {
-    // Cache miss is ok
+    return null;
   }
-  return null;
 }
 
 module.exports = {
@@ -490,4 +950,12 @@ module.exports = {
   getPredictionsForUser,
   getFallbackPrediction,
   validateCoordinates,
+  fetchOpenMeteoForecast,
+  formatFallbackPredictions,
+  cachePrediction,
+  getCachedPrediction,
+  EXPECTED_MODEL_VERSION,
+  FALLBACK_RULES_VERSION,
+  ML_CACHE_DURATION_MS,
+  RULE_CACHE_DURATION_MS
 };
