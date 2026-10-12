@@ -164,6 +164,7 @@ function renderModelsStatusBar(modelsList) {
 
 // ===== CARD DE PREDICCIÓN POR PARCELA =====
 function renderParcelPredictionCard(parcelPred) {
+  const parcelId = parcelPred.parcel_id || parcelPred.id;
   const pred = parcelPred.data || parcelPred;
   const predictions = pred?.predictions || [];
   const summary = pred?.forecast_summary || {};
@@ -172,6 +173,27 @@ function renderParcelPredictionCard(parcelPred) {
   const parcelName = pred?.parcel_name || parcelPred.parcel_name || 'Parcela';
   const altitude = pred?.altitude_masl || parcelPred.altitude_masl;
   const farmerName = parcelPred.farmer_name;
+
+  // Defensa de integridad en frontend: si el payload interno pertenece a otra parcela, rechazarlo
+  if (pred?.parcel_id && parcelId && Number(pred.parcel_id) !== Number(parcelId)) {
+    console.warn(`[ML_MONITOR_MISMATCH] Parcela ${parcelId} recibió predicción de parcela ${pred.parcel_id}. Descartando datos.`);
+    return `
+      <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--amber-400); opacity: 0.85;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <span style="font-size: 22px;">⏳</span>
+          <div>
+            <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
+            <div class="text-sm" style="color: var(--amber-400); margin-top: 2px;">
+              Sin historial de pronóstico para esta parcela.
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+              Esperando primera consulta meteorológica para esta parcela.
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   if (!parcelPred.success && parcelPred.success !== undefined) {
     const isRateLimited = (parcelPred.error || '').includes('Límite de solicitudes') || parcelPred.http_status === 429 || parcelPred.fallback === 'api_error';
@@ -186,7 +208,7 @@ function renderParcelPredictionCard(parcelPred) {
             </div>
             <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
               ${isRateLimited
-                ? 'No existen datos previos en caché para esta parcela. El sistema se recuperará automáticamente al cesar el enfriamiento del servicio externo.'
+                ? 'Sin historial de pronóstico para esta parcela. Esperando primera consulta meteorológica al cesar el enfriamiento del servicio externo.'
                 : 'Se reintentará la consulta en la próxima actualización programada.'}
             </div>
           </div>

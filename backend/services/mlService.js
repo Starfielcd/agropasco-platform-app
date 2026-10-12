@@ -302,6 +302,35 @@ function parseCacheTimestamp(val) {
 }
 
 /**
+ * FASE 8L-G28: Genera una huella geográfica determinista y canónica a partir de las coordenadas,
+ * altitud y geometría GeoJSON realmente utilizadas para la inferencia meteorológica.
+ */
+function getGeoFootprint(lat, lng, altitude, geoJson) {
+  const normLat = (lat !== null && lat !== undefined && !isNaN(Number(lat)))
+    ? Number(lat).toFixed(6)
+    : '';
+  const normLng = (lng !== null && lng !== undefined && !isNaN(Number(lng)))
+    ? Number(lng).toFixed(6)
+    : '';
+  const normAlt = (altitude !== null && altitude !== undefined && !isNaN(Number(altitude)))
+    ? String(parseInt(altitude, 10))
+    : '';
+  let normGeo = '';
+  if (geoJson) {
+    if (typeof geoJson === 'string') {
+      try {
+        normGeo = JSON.stringify(JSON.parse(geoJson));
+      } catch (_) {
+        normGeo = geoJson.trim();
+      }
+    } else {
+      normGeo = JSON.stringify(geoJson);
+    }
+  }
+  return `${normLat}|${normLng}|${normAlt}|${normGeo}`;
+}
+
+/**
  * Extrae una cabecera de forma insensible a mayúsculas/minúsculas.
  * Compatible con Map, Headers de Fetch y objetos planos.
  */
@@ -658,11 +687,20 @@ async function fetchOpenMeteoForecast(lat, lng, options = {}) {
  * Si el motor o las variables no están disponibles, activa el sistema de reglas de respaldo.
  */
 async function getPredictionForParcel(parcel) {
-  if (!parcel) {
+  if (!parcel || !parcel.id) {
     return {
       success: false,
-      error: 'Datos de parcela no proporcionados.',
+      error: 'Datos de parcela no proporcionados o ID de parcela ausente.',
       fallback: 'no_coordinates'
+    };
+  }
+
+  const parcelId = parseInt(parcel.id, 10);
+  if (isNaN(parcelId) || parcelId <= 0) {
+    return {
+      success: false,
+      error: 'ID de parcela inválido.',
+      fallback: 'invalid_parcel'
     };
   }
 
@@ -677,8 +715,8 @@ async function getPredictionForParcel(parcel) {
   }
   const { lat, lng } = coordValidation;
 
-  // Consultar cache en primer lugar
-  const cached = await getCachedPrediction(parcel.id);
+  // Consultar cache en primer lugar, verificando que no preceda la creación de la parcela
+  const cached = await getCachedPrediction(parcelId, parcel.created_at);
   if (cached) {
     return { success: true, data: cached, source: 'cache' };
   }
@@ -696,11 +734,12 @@ async function getPredictionForParcel(parcel) {
   }
 
   // Obtener pronóstico de Open-Meteo con historial de 7 días para variables lag/rolling
-  const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true, parcelId: parcel.id });
+  const fetchResult = await fetchOpenMeteoForecast(lat, lng, { includeHistory: true, parcelId: parcelId });
   if (!fetchResult.success) {
     // Si la llamada meteorológica falló (timeout, red, límite HTTP 429, circuit breaker),
-    // intentar recuperación controlada de la última predicción en caché (stale cache)
-    const staleResult = await getStalePrediction(parcel.id, fetchResult);
+    // intentar recuperación controlada de la última predicción en caché (stale cache),
+    // verificando estrictamente identidad de la parcela y que no preceda su creación
+    const staleResult = await getStalePrediction(parcelId, fetchResult, parcel.created_at);
     if (staleResult) {
       return staleResult;
     }
@@ -837,6 +876,8 @@ async function getPredictionForParcel(parcel) {
       latitude: lat,
       longitude: lng,
       altitude_masl: parcel.altitude_masl || forecast.elevation || null,
+      geo_json: parcel.geo_json || null,
+      geo_footprint: getGeoFootprint(lat, lng, parcel.altitude_masl || forecast.elevation || null, parcel.geo_json),
       model_version: EXPECTED_MODEL_VERSION,
       prediction_source: 'ml_trained',
       predictions: formattedPredictions,
@@ -1016,6 +1057,8 @@ async function formatAndCacheRuleFallback(parcel, lat, lng, forecast) {
     latitude: lat,
     longitude: lng,
     altitude_masl: altitude,
+    geo_json: parcel.geo_json || null,
+    geo_footprint: getGeoFootprint(lat, lng, altitude, parcel.geo_json),
     model_version: FALLBACK_RULES_VERSION,
     prediction_source: 'fallback_rules',
     predictions: formatFallbackPredictions(predictions),
@@ -1207,41 +1250,122 @@ async function getPredictionsForUser(userId, options = {}) {
 /**
  * Cache de predicciones en weather_cache.
  */
-async function cachePrediction(parcelId, data) {
-  // Protección estricta: ninguna escritura en base de datos durante pruebas
-  if (process.env.NODE_ENV === 'test') {
+async function cachePrediction(parcelId, data, options = {}) {
+  // Protección estricta: ninguna escritura en base de datos durante pruebas a menos que se autorice explícitamente
+  if (process.env.NODE_ENV === 'test' && !options.allowInTest) {
     return;
   }
+  const cleanId = parseInt(parcelId, 10);
+  if (isNaN(cleanId) || cleanId <= 0) return;
+
+  if (!data || typeof data !== 'object') return;
+
+  // Validación previa de metadatos geográficos indispensables
+  if (data.latitude === undefined || data.longitude === undefined ||
+      isNaN(Number(data.latitude)) || isNaN(Number(data.longitude))) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn(`[CACHE_INVALID_COORDS] Parcela ${cleanId}: Coordenadas ausentes o inválidas en predicción.`);
+    }
+    return;
+  }
+
+  data.parcel_id = cleanId;
+
+  // FASE 8L-G28: Coordinación transaccional con SELECT ... FOR UPDATE (anti-TOCTOU)
   try {
-    await db.dbRun(
-      "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
-      [`parcel_${parcelId}`]
-    );
-    
-    await db.dbRun(
-      'INSERT INTO weather_cache (location, data_type, data_json) VALUES (?, ?, ?)',
-      [`parcel_${parcelId}`, 'ml_prediction', JSON.stringify(data)]
-    );
+    await db.withTransaction(async (tx) => {
+      const currentParcel = await tx.dbGet(
+        'SELECT id, center_lat, center_lng, altitude_masl, geo_json FROM parcels WHERE id = ? FOR UPDATE',
+        [cleanId]
+      );
+
+      // Si la parcela no existe (ej. eliminada de forma concurrente), descartar escritura
+      if (!currentParcel) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_PARCEL_NOT_FOUND] Parcela ${cleanId}: Parcela inexistente. Escritura descartada.`);
+        }
+        return;
+      }
+
+      // Si la parcela carece de coordenadas válidas en base de datos, descartar escritura
+      if (currentParcel.center_lat === null || currentParcel.center_lng === null ||
+          isNaN(Number(currentParcel.center_lat)) || isNaN(Number(currentParcel.center_lng))) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_PARCEL_NO_GEO] Parcela ${cleanId}: Parcela sin coordenadas en base de datos. Escritura descartada.`);
+        }
+        return;
+      }
+
+      // Validación de identidad geográfica completa
+      const latMismatch = Math.abs(Number(currentParcel.center_lat) - Number(data.latitude)) > 1e-4;
+      const lngMismatch = Math.abs(Number(currentParcel.center_lng) - Number(data.longitude)) > 1e-4;
+      const altMismatch = (currentParcel.altitude_masl !== null && currentParcel.altitude_masl !== undefined &&
+                           data.altitude_masl !== null && data.altitude_masl !== undefined)
+        ? Math.abs(Number(currentParcel.altitude_masl) - Number(data.altitude_masl)) > 50
+        : false;
+
+      // Validación de huella geográfica (polígono y geometría)
+      let geoMismatch = false;
+      if (data.geo_footprint) {
+        const currentFootprint = getGeoFootprint(
+          currentParcel.center_lat,
+          currentParcel.center_lng,
+          currentParcel.altitude_masl,
+          currentParcel.geo_json
+        );
+        if (data.geo_footprint !== currentFootprint) {
+          geoMismatch = true;
+        }
+      } else if (data.geo_json !== undefined && data.geo_json !== null) {
+        const strDataGeo = typeof data.geo_json === 'string' ? data.geo_json : JSON.stringify(data.geo_json);
+        const strCurrentGeo = typeof currentParcel.geo_json === 'string' ? currentParcel.geo_json : JSON.stringify(currentParcel.geo_json);
+        if (strDataGeo !== strCurrentGeo) {
+          geoMismatch = true;
+        }
+      }
+
+      if (latMismatch || lngMismatch || altMismatch || geoMismatch) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_OBSOLETE_GEOGRAPHY] Parcela ${cleanId}: Predicción en vuelo descartada por desfase geográfico transaccional.`);
+        }
+        return; // Salir de la transacción sin persistir en weather_cache
+      }
+
+      // Geografía vigente confirmada bajo bloqueo exclusivo: persistir en weather_cache
+      await tx.dbRun(
+        "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
+        [`parcel_${cleanId}`]
+      );
+
+      await tx.dbRun(
+        'INSERT INTO weather_cache (location, data_type, data_json) VALUES (?, ?, ?)',
+        [`parcel_${cleanId}`, 'ml_prediction', JSON.stringify(data)]
+      );
+    });
   } catch (err) {
     if (process.env.NODE_ENV !== 'test') {
-      console.warn('⚠️ Error cacheando predicción ML:', err.message);
+      console.warn('⚠️ Error transaccional cacheando predicción ML:', err.message);
     }
   }
 }
 
 /**
- * Consulta la predicción en caché verificando versión del modelo y TTL diferenciado.
+ * Consulta la predicción en caché verificando versión del modelo, identidad estricta y TTL diferenciado.
  * FASE 8L-G20: Compatible con objetos Date de PostgreSQL (TIMESTAMPTZ) y cadenas SQLite.
+ * FASE 8L-G24: Valida coincidencia exacta de parcel_id y rechaza cachés que precedan la creación de la parcela.
  */
-async function getCachedPrediction(parcelId) {
+async function getCachedPrediction(parcelId, parcelCreatedAt = null, currentGeo = null) {
+  const cleanId = parseInt(parcelId, 10);
+  if (isNaN(cleanId) || cleanId <= 0) return null;
+
   let row;
   try {
     row = await db.dbGet(
       "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
-      [`parcel_${parcelId}`]
+      [`parcel_${cleanId}`]
     );
   } catch (dbErr) {
-    console.error(`[CACHE_DB_ERROR] Parcela ${parcelId}: Fallo al consultar weather_cache: ${dbErr.message}`);
+    console.error(`[CACHE_DB_ERROR] Parcela ${cleanId}: Fallo al consultar weather_cache: ${dbErr.message}`);
     return null;
   }
 
@@ -1250,7 +1374,7 @@ async function getCachedPrediction(parcelId) {
   }
 
   if (!row.data_json) {
-    console.warn(`[CACHE_EMPTY_DATA] Parcela ${parcelId}: Registro sin data_json en weather_cache.`);
+    console.warn(`[CACHE_EMPTY_DATA] Parcela ${cleanId}: Registro sin data_json en weather_cache.`);
     return null;
   }
 
@@ -1258,13 +1382,56 @@ async function getCachedPrediction(parcelId) {
   try {
     cachedData = JSON.parse(row.data_json);
   } catch (jsonErr) {
-    console.warn(`[CACHE_JSON_CORRUPT] Parcela ${parcelId}: JSON corrupto en weather_cache: ${jsonErr.message}`);
+    console.warn(`[CACHE_JSON_CORRUPT] Parcela ${cleanId}: JSON corrupto en weather_cache: ${jsonErr.message}`);
     return null;
   }
 
   if (!cachedData || typeof cachedData !== 'object') {
-    console.warn(`[CACHE_INVALID_OBJECT] Parcela ${parcelId}: Payload de caché inválido.`);
+    console.warn(`[CACHE_INVALID_OBJECT] Parcela ${cleanId}: Payload de caché inválido.`);
     return null;
+  }
+
+  // Validación estricta de identidad de la parcela: si el payload tiene parcel_id, debe coincidir exactamente
+  if (cachedData.parcel_id !== undefined && cachedData.parcel_id !== null) {
+    if (Number(cachedData.parcel_id) !== cleanId) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[CACHE_PARCEL_MISMATCH] Parcela ${cleanId}: payload en caché pertenece a parcela ${cachedData.parcel_id}.`);
+      }
+      return null;
+    }
+  }
+
+  // FASE 8L-G26 y FASE 8L-G28: Validación estricta de coherencia geográfica y de polígono.
+  // Si se proveen coordenadas geográficas actuales, verificar que la predicción no pertenezca a otra ubicación
+  if (currentGeo && (currentGeo.lat !== undefined || currentGeo.lng !== undefined)) {
+    if (cachedData.latitude !== undefined && cachedData.longitude !== undefined) {
+      const latDiff = Math.abs(Number(cachedData.latitude) - Number(currentGeo.lat));
+      const lngDiff = Math.abs(Number(cachedData.longitude) - Number(currentGeo.lng));
+      if (latDiff > 1e-4 || lngDiff > 1e-4) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_GEOGRAPHY_MISMATCH] Parcela ${cleanId}: Registro en caché (${cachedData.latitude}, ${cachedData.longitude}) no coincide con ubicación actual (${currentGeo.lat}, ${currentGeo.lng}). Descartando caché.`);
+        }
+        return null;
+      }
+    }
+    if (currentGeo.altitude !== undefined && currentGeo.altitude !== null && cachedData.altitude_masl !== undefined && cachedData.altitude_masl !== null) {
+      if (Math.abs(Number(cachedData.altitude_masl) - Number(currentGeo.altitude)) > 50) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_ALTITUDE_MISMATCH] Parcela ${cleanId}: Altitud en caché (${cachedData.altitude_masl}) difiere de altitud actual (${currentGeo.altitude}). Descartando caché.`);
+        }
+        return null;
+      }
+    }
+    // FASE 8L-G28: Comprobación de huella de polígono GeoJSON
+    if (currentGeo.geo_json !== undefined && cachedData.geo_footprint) {
+      const expectedFootprint = getGeoFootprint(currentGeo.lat, currentGeo.lng, currentGeo.altitude, currentGeo.geo_json);
+      if (cachedData.geo_footprint !== expectedFootprint) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[CACHE_FOOTPRINT_MISMATCH] Parcela ${cleanId}: Huella de polígono en caché difiere de geometría actual. Descartando caché.`);
+        }
+        return null;
+      }
+    }
   }
 
   // PASO 3: Validación estricta de versión del modelo
@@ -1274,7 +1441,7 @@ async function getCachedPrediction(parcelId) {
 
   if (!isNativeML && !isRuleFallback) {
     if (process.env.NODE_ENV !== 'test') {
-      console.info(`[CACHE_VERSION_MISMATCH] Parcela ${parcelId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
+      console.info(`[CACHE_VERSION_MISMATCH] Parcela ${cleanId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
     }
     return null; // Versión incompatible o ausente -> cache miss sin borrar el registro SQL
   }
@@ -1282,13 +1449,24 @@ async function getCachedPrediction(parcelId) {
   // Parsear timestamp de fetched_at con normalización robusta (PostgreSQL Date, SQLite string, ISO 8601)
   const fetchedAt = parseCacheTimestamp(row.fetched_at);
   if (fetchedAt === null) {
-    console.warn(`[CACHE_INVALID_DATE] Parcela ${parcelId}: Timestamp fetched_at inválido o no reconocido.`);
+    console.warn(`[CACHE_INVALID_DATE] Parcela ${cleanId}: Timestamp fetched_at inválido o no reconocido.`);
     return null;
+  }
+
+  // Validación estricta de creación de la parcela: la caché no puede preceder a la creación de la parcela
+  if (parcelCreatedAt) {
+    const parcelCreatedMs = parseCacheTimestamp(parcelCreatedAt);
+    if (parcelCreatedMs !== null && fetchedAt < (parcelCreatedMs - 2000)) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[CACHE_PREDATES_PARCEL] Parcela ${cleanId}: Registro en caché (${new Date(fetchedAt).toISOString()}) precede la creación de la parcela (${new Date(parcelCreatedMs).toISOString()}). Descartando caché previa ajena.`);
+      }
+      return null;
+    }
   }
 
   const ageMs = Date.now() - fetchedAt;
   if (ageMs < 0) {
-    console.warn(`[CACHE_CLOCK_SKEW] Parcela ${parcelId}: Timestamp en el futuro detectado.`);
+    console.warn(`[CACHE_CLOCK_SKEW] Parcela ${cleanId}: Timestamp en el futuro detectado.`);
     return null; // Desviación de reloj
   }
 
@@ -1308,19 +1486,24 @@ async function getCachedPrediction(parcelId) {
  * Recupera de forma segura el último registro de predicción en caché para una parcela,
  * verificando compatibilidad de versión, horizonte restante y antigüedad máxima (24h).
  * FASE 8L-G20: Compatible con objetos Date de PostgreSQL (TIMESTAMPTZ) y cadenas SQLite.
+ * FASE 8L-G24: Valida coincidencia exacta de parcel_id y rechaza respaldos que precedan la creación de la parcela.
  * @param {number} parcelId ID de la parcela
  * @param {object} triggerError Error original que motivó el fallback (e.g. 429, timeout)
+ * @param {string|Date|null} parcelCreatedAt Timestamp de creación de la parcela
  * @returns {object|null} Resultado formateado con is_stale: true o null si no es recuperable
  */
-async function getStalePrediction(parcelId, triggerError = {}) {
+async function getStalePrediction(parcelId, triggerError = {}, parcelCreatedAt = null, currentGeo = null) {
+  const cleanId = parseInt(parcelId, 10);
+  if (isNaN(cleanId) || cleanId <= 0) return null;
+
   let row;
   try {
     row = await db.dbGet(
       "SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction' ORDER BY fetched_at DESC LIMIT 1",
-      [`parcel_${parcelId}`]
+      [`parcel_${cleanId}`]
     );
   } catch (dbErr) {
-    console.error(`[STALE_CACHE_DB_ERROR] Parcela ${parcelId}: Error consultando weather_cache para respaldo: ${dbErr.message}`);
+    console.error(`[STALE_CACHE_DB_ERROR] Parcela ${cleanId}: Error consultando weather_cache para respaldo: ${dbErr.message}`);
     return null;
   }
 
@@ -1329,7 +1512,7 @@ async function getStalePrediction(parcelId, triggerError = {}) {
   }
 
   if (!row.data_json) {
-    console.warn(`[STALE_CACHE_EMPTY] Parcela ${parcelId}: Registro sin data_json en respaldo.`);
+    console.warn(`[STALE_CACHE_EMPTY] Parcela ${cleanId}: Registro sin data_json en respaldo.`);
     return null;
   }
 
@@ -1337,7 +1520,7 @@ async function getStalePrediction(parcelId, triggerError = {}) {
   try {
     cachedData = JSON.parse(row.data_json);
   } catch (jsonErr) {
-    console.warn(`[STALE_CACHE_JSON_CORRUPT] Parcela ${parcelId}: JSON corrupto en respaldo: ${jsonErr.message}`);
+    console.warn(`[STALE_CACHE_JSON_CORRUPT] Parcela ${cleanId}: JSON corrupto en respaldo: ${jsonErr.message}`);
     return null;
   }
 
@@ -1345,12 +1528,54 @@ async function getStalePrediction(parcelId, triggerError = {}) {
     return null;
   }
 
+  // Validación estricta de identidad: si el payload tiene parcel_id, debe coincidir exactamente
+  if (cachedData.parcel_id !== undefined && cachedData.parcel_id !== null) {
+    if (Number(cachedData.parcel_id) !== cleanId) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[STALE_CACHE_PARCEL_MISMATCH] Parcela ${cleanId}: payload en respaldo pertenece a parcela ${cachedData.parcel_id}.`);
+      }
+      return null;
+    }
+  }
+
+  // FASE 8L-G26 y FASE 8L-G28: Validación estricta de coherencia geográfica y de polígono en respaldo stale.
+  if (currentGeo && (currentGeo.lat !== undefined || currentGeo.lng !== undefined)) {
+    if (cachedData.latitude !== undefined && cachedData.longitude !== undefined) {
+      const latDiff = Math.abs(Number(cachedData.latitude) - Number(currentGeo.lat));
+      const lngDiff = Math.abs(Number(cachedData.longitude) - Number(currentGeo.lng));
+      if (latDiff > 1e-4 || lngDiff > 1e-4) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[STALE_CACHE_GEOGRAPHY_MISMATCH] Parcela ${cleanId}: Respaldo en caché (${cachedData.latitude}, ${cachedData.longitude}) no coincide con ubicación actual (${currentGeo.lat}, ${currentGeo.lng}). Descartando respaldo.`);
+        }
+        return null;
+      }
+    }
+    if (currentGeo.altitude !== undefined && currentGeo.altitude !== null && cachedData.altitude_masl !== undefined && cachedData.altitude_masl !== null) {
+      if (Math.abs(Number(cachedData.altitude_masl) - Number(currentGeo.altitude)) > 50) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[STALE_CACHE_ALTITUDE_MISMATCH] Parcela ${cleanId}: Altitud en respaldo (${cachedData.altitude_masl}) difiere de altitud actual (${currentGeo.altitude}). Descartando respaldo.`);
+        }
+        return null;
+      }
+    }
+    // FASE 8L-G28: Comprobación de huella de polígono GeoJSON
+    if (currentGeo.geo_json !== undefined && cachedData.geo_footprint) {
+      const expectedFootprint = getGeoFootprint(currentGeo.lat, currentGeo.lng, currentGeo.altitude, currentGeo.geo_json);
+      if (cachedData.geo_footprint !== expectedFootprint) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn(`[STALE_CACHE_FOOTPRINT_MISMATCH] Parcela ${cleanId}: Huella de polígono en respaldo difiere de geometría actual. Descartando respaldo.`);
+        }
+        return null;
+      }
+    }
+  }
+
   // 1. Validación estricta de compatibilidad de versión del modelo
   const isNativeML = cachedData.model_version === EXPECTED_MODEL_VERSION;
   const isRuleFallback = cachedData.model_version === FALLBACK_RULES_VERSION;
   if (!isNativeML && !isRuleFallback) {
     if (process.env.NODE_ENV !== 'test') {
-      console.info(`[STALE_CACHE_VERSION_REJECTED] Parcela ${parcelId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
+      console.info(`[STALE_CACHE_VERSION_REJECTED] Parcela ${cleanId}: Versión incompatible (${cachedData.model_version || 'sin versión'}).`);
     }
     return null; // Versión obsoleta o ausente -> rechazar
   }
@@ -1358,20 +1583,31 @@ async function getStalePrediction(parcelId, triggerError = {}) {
   // 2. Parsear timestamp fetched_at con soporte universal (PostgreSQL Date, SQLite string, ISO 8601)
   const fetchedAt = parseCacheTimestamp(row.fetched_at);
   if (fetchedAt === null) {
-    console.warn(`[STALE_CACHE_INVALID_DATE] Parcela ${parcelId}: Timestamp fetched_at inválido en respaldo.`);
+    console.warn(`[STALE_CACHE_INVALID_DATE] Parcela ${cleanId}: Timestamp fetched_at inválido en respaldo.`);
     return null;
+  }
+
+  // Validación estricta de creación de la parcela: el respaldo no puede preceder a la creación de la parcela
+  if (parcelCreatedAt) {
+    const parcelCreatedMs = parseCacheTimestamp(parcelCreatedAt);
+    if (parcelCreatedMs !== null && fetchedAt < (parcelCreatedMs - 2000)) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[STALE_CACHE_PREDATES_PARCEL] Parcela ${cleanId}: Respaldo en caché (${new Date(fetchedAt).toISOString()}) precede la creación de la parcela (${new Date(parcelCreatedMs).toISOString()}). Descartando respaldo ajeno.`);
+      }
+      return null;
+    }
   }
 
   const ageMs = Date.now() - fetchedAt;
   if (ageMs < 0) {
-    console.warn(`[STALE_CACHE_CLOCK_SKEW] Parcela ${parcelId}: Timestamp en el futuro detectado.`);
+    console.warn(`[STALE_CACHE_CLOCK_SKEW] Parcela ${cleanId}: Timestamp en el futuro detectado.`);
     return null; // Desviación de reloj
   }
 
   // 3. Antigüedad máxima absoluta (24 horas)
   if (ageMs > ML_STALE_CACHE_MAX_AGE_MS) {
     if (process.env.NODE_ENV !== 'test') {
-      console.info(`[STALE_CACHE_EXPIRED_AGE] Parcela ${parcelId}: Antigüedad excede 24h (${Math.round(ageMs / 3600000)}h).`);
+      console.info(`[STALE_CACHE_EXPIRED_AGE] Parcela ${cleanId}: Antigüedad excede 24h (${Math.round(ageMs / 3600000)}h).`);
     }
     return null; // Excede 24 horas -> completamente vencido
   }
@@ -1448,6 +1684,7 @@ module.exports = {
   cachePrediction,
   getCachedPrediction,
   getStalePrediction,
+  getGeoFootprint,
   parseCacheTimestamp,
   parseRetryAfter,
   tripRateLimit,

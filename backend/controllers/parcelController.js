@@ -3,7 +3,7 @@
  * CRUD de parcelas con polígonos GeoJSON, validación de claves foráneas y fotos obligatorias.
  */
 
-const { dbRun, dbGet, dbAll } = require('../config/database');
+const { dbRun, dbGet, dbAll, withTransaction } = require('../config/database');
 
 /**
  * Extrae el centroide (lat, lng) de un GeoJSON (Polygon o Feature) si no se enviaron explícitamente.
@@ -220,6 +220,16 @@ async function createParcel(req, res) {
       [effectiveUserId, 'CREATE', 'parcel', result.lastID, `Parcela "${name.trim()}" creada exitosamente`]
     ).catch(e => console.warn('Audit log error:', e.message));
 
+    // Limpieza defensiva de cualquier caché previa o huérfana para el ID asignado
+    if (result.lastID) {
+      await dbRun(
+        "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
+        [`parcel_${result.lastID}`]
+      ).catch(cacheErr => {
+        console.warn(`[CACHE_CLEANUP_WARN] Parcela ${result.lastID}: Error en limpieza previa: ${cacheErr.message}`);
+      });
+    }
+
     const parcel = await dbGet(
       `SELECT p.*, c.name as crop_name
        FROM parcels p LEFT JOIN crops c ON p.crop_id = c.id
@@ -349,25 +359,60 @@ async function updateParcel(req, res) {
       }
     }
 
+    const finalAltitude = altitude_masl !== undefined ? (parseInt(altitude_masl, 10) || 4380) : parcel.altitude_masl;
+
+    // FASE 8L-G26: Detección estricta de cambio en variables geográficas o meteorológicas
+    const latChanged = (finalLat !== null || parcel.center_lat !== null) &&
+      (finalLat === null || parcel.center_lat === null || Math.abs(Number(finalLat) - Number(parcel.center_lat)) > 1e-6);
+    const lngChanged = (finalLng !== null || parcel.center_lng !== null) &&
+      (finalLng === null || parcel.center_lng === null || Math.abs(Number(finalLng) - Number(parcel.center_lng)) > 1e-6);
+    const altChanged = (finalAltitude !== null || parcel.altitude_masl !== null) &&
+      (finalAltitude === null || parcel.altitude_masl === null || Number(finalAltitude) !== Number(parcel.altitude_masl));
+    const geoJsonChanged = Boolean(geo_json !== undefined && geoJsonStr !== parcel.geo_json);
+
+    const isLocationChanged = latChanged || lngChanged || altChanged || geoJsonChanged;
+
     try {
-      await dbRun(
-        `UPDATE parcels SET name=?, geo_json=?, area_hectares=?, center_lat=?, center_lng=?, crop_type=?, crop_id=?, planting_date=?, status=?, altitude_masl=?, notes=?, photo_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-        [
-          name ? name.trim() : parcel.name,
-          geoJsonStr,
-          area_hectares !== undefined ? (parseFloat(area_hectares) || 0) : parcel.area_hectares,
-          finalLat,
-          finalLng,
-          resolvedCropType || null,
-          resolvedCropId,
-          planting_date !== undefined ? (planting_date || null) : parcel.planting_date,
-          status || parcel.status,
-          altitude_masl !== undefined ? (parseInt(altitude_masl, 10) || 4380) : parcel.altitude_masl,
-          notes !== undefined ? (notes ? notes.trim() : null) : parcel.notes,
-          finalPhoto,
-          req.params.id
-        ]
-      );
+      await withTransaction(async (tx) => {
+        // FASE 8L-G28: Bloqueo transaccional exclusivo de fila para coordinar con cachePrediction (anti-TOCTOU)
+        await tx.dbGet('SELECT id FROM parcels WHERE id = ? FOR UPDATE', [req.params.id]);
+
+        await tx.dbRun(
+          `UPDATE parcels SET name=?, geo_json=?, area_hectares=?, center_lat=?, center_lng=?, crop_type=?, crop_id=?, planting_date=?, status=?, altitude_masl=?, notes=?, photo_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+          [
+            name ? name.trim() : parcel.name,
+            geoJsonStr,
+            area_hectares !== undefined ? (parseFloat(area_hectares) || 0) : parcel.area_hectares,
+            finalLat,
+            finalLng,
+            resolvedCropType || null,
+            resolvedCropId,
+            planting_date !== undefined ? (planting_date || null) : parcel.planting_date,
+            status || parcel.status,
+            finalAltitude,
+            notes !== undefined ? (notes ? notes.trim() : null) : parcel.notes,
+            finalPhoto,
+            req.params.id
+          ]
+        );
+
+        // FASE 8L-G28: Si la ubicación geográfica/meteorológica cambió, invalidar weather_cache
+        // dentro de la misma transacción y conexión PostgreSQL
+        if (isLocationChanged) {
+          try {
+            await tx.dbRun(
+              "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
+              [`parcel_${req.params.id}`]
+            );
+          } catch (cacheErr) {
+            console.warn(`[CACHE_INVALIDATION_ERROR] Parcela ${req.params.id}: Error al invalidar weather_cache: ${cacheErr.message}`);
+            // En PostgreSQL real con conexión física o si se requiere rollback estricto:
+            if (tx.client || tx.rollbackOnError) {
+              throw cacheErr;
+            }
+          }
+        }
+      });
     } catch (dbErr) {
       if (dbErr.message && dbErr.message.includes('FOREIGN KEY constraint failed')) {
         return res.status(400).json({
@@ -401,6 +446,14 @@ async function deleteParcel(req, res) {
     }
 
     await dbRun('DELETE FROM parcels WHERE id = ?', [req.params.id]);
+
+    // Limpieza de caché meteorológica asociada a la parcela eliminada
+    await dbRun(
+      "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
+      [`parcel_${req.params.id}`]
+    ).catch(cacheErr => {
+      console.warn(`[CACHE_CLEANUP_WARN] Parcela ${req.params.id}: Error al eliminar weather_cache: ${cacheErr.message}`);
+    });
 
     await dbRun(
       'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',

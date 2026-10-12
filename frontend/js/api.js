@@ -225,10 +225,19 @@ const api = {
 
   // Parcels (Farmer / Advisor)
   getParcels: () => apiRequest('/parcels'),
-  createParcel: (data) => apiRequest('/parcels', { method: 'POST', body: JSON.stringify(data) }),
+  createParcel: (data) => apiRequest('/parcels', { method: 'POST', body: JSON.stringify(data) }).then(res => {
+    if (res && res.success) clearMLClientCacheInternal();
+    return res;
+  }),
   getParcel: (id) => apiRequest(`/parcels/${id}`),
-  updateParcel: (id, data) => apiRequest(`/parcels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteParcel: (id) => apiRequest(`/parcels/${id}`, { method: 'DELETE' }),
+  updateParcel: (id, data) => apiRequest(`/parcels/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then(res => {
+    if (res && res.success) clearMLClientCacheInternal();
+    return res;
+  }),
+  deleteParcel: (id) => apiRequest(`/parcels/${id}`, { method: 'DELETE' }).then(res => {
+    if (res && res.success) clearMLClientCacheInternal();
+    return res;
+  }),
 
   // Advisor — Pest Markers
   getPestMarkers: (params = '') => apiRequest(`/advisor/markers${params ? '?' + params : ''}`),

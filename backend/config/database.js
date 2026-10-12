@@ -142,6 +142,17 @@ async function withTransaction(callback) {
   if (module.exports && module.exports.withTransaction && module.exports.withTransaction !== withTransaction) {
     return module.exports.withTransaction(callback);
   }
+  // Compatibilidad con pruebas unitarias que simulan dbRun/dbGet en memoria sin PostgreSQL activo
+  if (module.exports && (module.exports.dbRun !== dbRun || module.exports.dbGet !== dbGet)) {
+    const mockTx = {
+      client: null,
+      query: (sql, params) => (module.exports.query ? module.exports.query(sql, params) : pool.query(sql, params)),
+      dbGet: (sql, params) => module.exports.dbGet(sql, params),
+      dbAll: (sql, params) => module.exports.dbAll(sql, params),
+      dbRun: (sql, params) => module.exports.dbRun(sql, params),
+    };
+    return await callback(mockTx);
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
