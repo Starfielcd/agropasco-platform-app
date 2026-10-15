@@ -15,3 +15,12 @@ backend/data/weather-history/processed/
 backend/ml-service/__pycache__/
 backend/ml-service/.venv/
 *.pyc
+
+# Local Data Dumps and Scratch
+backend/data/csv_backup/
+backend/data/export_data.json
+backend/data/phytosanitary/active_notices.json
+scratch/
+.env.*
+!*.env.example
+!backend/.env.example

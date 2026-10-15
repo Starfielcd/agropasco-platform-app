@@ -54,6 +54,9 @@ function clearMLClientCacheInternal() {
     _mlClientCache.all = { data: null, timestamp: 0, promise: null, epoch: 0, scope: null };
     _mlClientCache.status = { data: null, timestamp: 0, promise: null, epoch: 0, scope: null };
   }
+  if (typeof clearAdvisoryChatState === 'function') {
+    try { clearAdvisoryChatState(); } catch (_) {}
+  }
 }
 
 function getToken() { try { return localStorage.getItem('agropasco_token'); } catch (_) { return null; } }
@@ -95,6 +98,10 @@ async function apiRequest(endpoint, options = {}) {
   try {
     const response = await fetch(url, { ...options, headers });
     const data = await response.json();
+
+    if (data && typeof data === 'object') {
+      data.httpStatus = response.status;
+    }
 
     if (response.status === 401 || response.status === 403) {
       clearMLClientCacheInternal();
@@ -326,6 +333,11 @@ const api = {
   getRecommendationsAI: (cropId) => apiRequest(`/ai/recommend/${cropId}`),
   getFrostRisk: () => apiRequest('/ai/frost-risk'),
   getIrrigationPlan: (cropId) => apiRequest(`/ai/irrigation/${cropId}`),
+  sendAdvisoryChat: (data, options = {}) => apiRequest('/ai/advisory-chat', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    ...options
+  }),
 
   // Machine Learning Meteorológico
   getMLPrediction: (parcelId) => apiRequest(`/ml/predict/${parcelId}`),

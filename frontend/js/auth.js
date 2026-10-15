@@ -683,6 +683,9 @@ function handleLogout() {
   if (typeof api !== 'undefined' && typeof api.clearMLClientCache === 'function') {
     api.clearMLClientCache();
   }
+  if (typeof clearAdvisoryChatState === 'function') {
+    try { clearAdvisoryChatState(); } catch (_) {}
+  }
   removeToken();
   removeUser();
   showToast('Sesión cerrada', 'info');

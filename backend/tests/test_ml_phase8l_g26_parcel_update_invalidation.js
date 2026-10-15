@@ -158,7 +158,15 @@ async function runSuite() {
       { phenomenon: 'frost', risk_level: 'high', risk_score: 85, model_type: 'ml_trained' },
       { phenomenon: 'heavy_rain', risk_level: 'low', risk_score: 15, model_type: 'ml_trained' }
     ],
-    forecast_summary: { days: 3, dates: ['2026-10-11', '2026-10-12', '2026-10-13'], temp_min: [-2, 0, 1] },
+    forecast_summary: {
+      days: 3,
+      dates: [
+        new Date().toISOString().split('T')[0],
+        new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        new Date(Date.now() + 172800000).toISOString().split('T')[0]
+      ],
+      temp_min: [-2, 0, 1]
+    },
     issued_at: new Date().toISOString(),
     valid_until: new Date(Date.now() + 72 * 3600000).toISOString(),
     cache_ttl_ms: 3600000

@@ -1,8 +1,16 @@
 const router = require('express').Router();
-const { recommend, frostRisk, irrigationPlan } = require('../controllers/aiController');
+const { authenticateToken } = require('../middleware/auth');
+const { aiRateLimiter } = require('../middleware/aiRateLimiter');
+const { recommend, frostRisk, irrigationPlan, advisoryChat } = require('../controllers/aiController');
 
-router.get('/recommend/:cropId', recommend);
+// Rutas privadas de cultivo protegidas por JWT
+router.get('/recommend/:cropId', authenticateToken, recommend);
+router.get('/irrigation/:cropId', authenticateToken, irrigationPlan);
+
+// Endpoint conversacional del asistente agrícola (FASE 9-L04: protegido por JWT y Rate Limiting)
+router.post('/advisory-chat', authenticateToken, aiRateLimiter, advisoryChat);
+
+// Métrica meteorológica regional general (pública)
 router.get('/frost-risk', frostRisk);
-router.get('/irrigation/:cropId', irrigationPlan);
 
 module.exports = router;
