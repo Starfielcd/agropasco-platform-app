@@ -377,13 +377,16 @@ DIRECTIVAS ESTRICTAS DE SEGURIDAD Y PRECISIÓN:
 6. Si tu respuesta se apoya en la evidencia documental provista, cita utilizando únicamente los identificadores asignados (ej. [CITA-1]). No cites fuentes que no figuren en dicho bloque.
 7. Emite siempre tu respuesta en formato JSON estructurado con los campos: "reply" (string conciso), "warnings" (array de strings), "suggested_actions" (array de strings) y "requires_human_advisor" (boolean).`;
 
-    // 7. Invocación controlada al servicio LLM (con fallback determinista)
+    // 7. Invocación controlada al Agente Inteligente / LLM (con fallback determinista)
     const advisory = await llmService.generateAdvisory({
       systemPrompt,
       userMessage: cleanMessage,
       contextData: contextResult.llm_context,
       evidenceData,
       options: {
+        useAgent: true,
+        authContext: { userId: req.user.id, userRole: req.user.role },
+        parcelId: contextResult.parcel_id || null,
         conversationHistory: cleanHistory,
         evidenceData
       }
@@ -429,6 +432,8 @@ DIRECTIVAS ESTRICTAS DE SEGURIDAD Y PRECISIÓN:
         requires_human_advisor: advisory.requires_human_advisor || ragRequiresHuman,
         is_fallback: advisory.is_fallback,
         provenance: advisory.provenance,
+        tool_used: advisory.tool_used || null,
+        tool_executions: advisory.tool_executions || [],
         parcel_id: contextResult.parcel_id,
         weather_status: contextResult.weather_status,
         data_adequacy: contextResult.data_adequacy,

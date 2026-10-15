@@ -510,6 +510,7 @@ async function generateAdvisory({
 }) {
   const config = options.config || getConfig();
   const circuitBreaker = options.circuitBreaker || defaultCircuitBreaker;
+  const throttler = options.throttler || defaultOutboundThrottler;
   const fetchFn = options.fetchFn || globalThis.fetch;
   const effectiveEvidence = (Array.isArray(evidenceData) && evidenceData.length > 0)
     ? evidenceData
@@ -520,13 +521,33 @@ async function generateAdvisory({
     return generateDeterministicFallback(contextData, userMessage, 'llm_disabled_by_config');
   }
 
+  // 1b. Si se solicita ejecución con Agente Inteligente (Tool Calling)
+  if (options.useAgent || (options.authContext && options.authContext.userId)) {
+    const { runAgriculturalAgent } = require('../agents/agriculturalAgent');
+    return runAgriculturalAgent({
+      userMessage,
+      authContext: options.authContext,
+      parcelId: options.parcelId,
+      contextData,
+      evidenceData: effectiveEvidence,
+      conversationHistory: options.conversationHistory,
+      options: {
+        ...options,
+        systemPrompt,
+        config,
+        circuitBreaker,
+        throttler,
+        fetchFn
+      }
+    });
+  }
+
   // 2. Si el Circuit Breaker está abierto -> Fallback inmediato sin hacer llamadas
   if (circuitBreaker.isOpen()) {
     return generateDeterministicFallback(contextData, userMessage, 'circuit_breaker_open');
   }
 
   // 2b. Control de cuotas salientes defensivo para el proveedor (15 RPM / Concurrencia)
-  const throttler = options.throttler || defaultOutboundThrottler;
   const throttleCheck = throttler.canExecute();
   if (!throttleCheck.allowed) {
     if (process.env.NODE_ENV !== 'test') {
@@ -593,5 +614,6 @@ module.exports = {
   callGeminiAdapter,
   callOpenAIAdapter,
   generateDeterministicFallback,
-  generateAdvisory
+  generateAdvisory,
+  runAgriculturalAgent: (params) => require('../agents/agriculturalAgent').runAgriculturalAgent(params)
 };

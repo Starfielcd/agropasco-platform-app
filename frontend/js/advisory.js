@@ -148,8 +148,8 @@ async function renderAdvisoryPage() {
               <h3 class="advisory-chat-title">
                 <span>🌾</span> Asistente Técnico AgroPasco
               </h3>
-              <span class="badge badge-amber" style="font-size: 11.5px; font-weight: 700;">
-                🔒 Modo Local — Reglas Técnicas
+              <span id="advisory-chat-status-badge" class="badge badge-gray" style="font-size: 11.5px; font-weight: 700;">
+                🌾 Asistente Técnico
               </span>
             </div>
             <div class="advisory-chat-header-actions">
@@ -607,6 +607,12 @@ function resetAdvisoryChat() {
   const sendBtn = document.getElementById('advisory-send-btn');
   if (sendBtn) sendBtn.disabled = false;
 
+  const statusBadge = document.getElementById('advisory-chat-status-badge');
+  if (statusBadge) {
+    statusBadge.className = 'badge badge-gray';
+    statusBadge.textContent = '🌾 Asistente Técnico';
+  }
+
   if (messagesContainer) {
     messagesContainer.innerHTML = `
       <div class="chat-msg chat-msg-assistant">
@@ -790,6 +796,7 @@ function appendTypingIndicator(container) {
  * la procedencia, estado meteorológico, advertencias y acciones sugeridas.
  */
 function appendAssistantMessageBubble(data, container) {
+  const targetContainer = container || (typeof document !== 'undefined' ? document.getElementById('advisory-chat-messages') : null);
   const msgEl = document.createElement('div');
   msgEl.className = 'chat-msg chat-msg-assistant';
 
@@ -825,6 +832,28 @@ function appendAssistantMessageBubble(data, container) {
     provBadge.title = 'Respuesta generada por asistente IA';
   }
   metaBar.appendChild(provBadge);
+
+  // 1b. Badge de herramienta consultada por el Agente (AGENT01)
+  if (data.tool_used === 'get_parcel_weather_risk' || (Array.isArray(data.tool_executions) && data.tool_executions.length > 0)) {
+    const toolBadge = document.createElement('span');
+    toolBadge.className = 'chat-tool-badge';
+    toolBadge.innerHTML = '<span>🔧</span> Herramienta: Consulta meteorológica de parcela';
+    toolBadge.title = 'El agente consultó internamente el estado meteorológico y riesgos de la parcela para fundamentar esta respuesta.';
+    metaBar.appendChild(toolBadge);
+  }
+
+  // 1c. Sincronizar badge de estado del encabezado
+  const statusBadge = document.getElementById('advisory-chat-status-badge');
+  if (statusBadge) {
+    if (data.is_fallback) {
+      statusBadge.className = 'badge badge-amber';
+      statusBadge.textContent = '📌 Reglas Técnicas Locales';
+    } else {
+      statusBadge.className = 'badge badge-green';
+      statusBadge.textContent = '🤖 Conectado a Gemini IA';
+    }
+  }
+
   bubble.appendChild(metaBar);
 
   // 2. Banner de estado meteorológico (Fase 9-L05B: Corrección 2 y 3)
@@ -1118,8 +1147,9 @@ function appendAssistantMessageBubble(data, container) {
   content.appendChild(bubble);
   msgEl.appendChild(avatar);
   msgEl.appendChild(content);
-
-  container.appendChild(msgEl);
+  if (targetContainer) {
+    targetContainer.appendChild(msgEl);
+  }
 }
 
 /**

@@ -16,6 +16,7 @@ Sistema web full-stack que conecta agricultores, asesores técnicos, supermercad
 - [Roles del Sistema](#-roles-del-sistema)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [API Endpoints](#-api-endpoints)
+- [Agente Inteligente de Asesoría Agrícola (MVP)](#-agente-inteligente-de-asesoría-agrícola-mvp)
 - [Despliegue en Render](#-despliegue-en-render)
 
 ---
@@ -352,6 +353,76 @@ python -X utf8 backend/ml-service/test_ml_full_suite.py
 
 # Pruebas de Node.js (Integración, seguridad RBAC, alertas y resiliencia)
 node backend/tests/test_ml_full_system.js
+```
+
+---
+
+## 🤖 Agente Inteligente de Asesoría Agrícola (MVP)
+
+### Descripción y Alcance
+El **Agente Inteligente de Asesoría Agrícola AgroPasco** es un sistema conversacional de asistencia técnica para agricultores altoandinos basado en **Google Gemini** con selección controlada de herramientas (**Tool Calling / Function Calling**). Interpreta consultas agronómicas en lenguaje natural, detecta cuándo requiere telemetría meteorológica y de riesgos de una parcela registrada, invoca herramientas internas autorizadas en el backend de Node.js y sintetiza recomendaciones fundamentadas en datos reales.
+
+> [!NOTE]
+> **Estado de Despliegue:** Implementado y probado localmente. Pendiente de despliegue a producción.
+
+### Herramienta Disponible (Solo Lectura)
+- **`get_parcel_weather_risk`**:
+  - **Función:** Consulta la información meteorológica consolidada y la evaluación de riesgos de heladas, nevadas, lluvias intensas o granizo para una parcela específica.
+  - **Fuentes internas reutilizadas:** Servicio `aiContextBuilder`, caché meteorológica verificada de `Open-Meteo` y predicciones de `mlService`.
+  - **Datos devueltos:** Identificador de parcela, nombre de parcela, cultivo vinculado, variedad, etapa fenológica, altitud (msnm), zona aproximada, temperaturas (actual, mínima, máxima), precipitación, riesgos porcentuales calculados, procedencia de datos (`open_meteo_verified_cache`, `open_meteo_stale_cache`), estado de actualización y advertencias sobre datos faltantes.
+
+### Integración con Google Gemini
+- **Modelo:** `gemini-3.5-flash-lite` (Google AI Studio / Vertex AI compatible).
+- **Flujo de 2 Turnos:**
+  1. **Turno 1 (Selección):** El backend envía la consulta del agricultor junto con la declaración estructurada de `get_parcel_weather_risk`. Si el usuario hace una pregunta general (ej. "¿Cómo prevenir heladas?"), Gemini responde directamente con texto. Si la pregunta involucra el estado de su terreno, Gemini emite un `functionCall`.
+  2. **Ejecución Local Segura:** El backend valida argumentos, comprueba la autorización RBAC y ejecuta la consulta de solo lectura.
+  3. **Turno 2 (Síntesis):** El backend retorna el `functionResponse` a Gemini con `responseMimeType: 'application/json'` para forzar una respuesta estructurada conforme al contrato oficial (`reply`, `warnings`, `suggested_actions`, `requires_human_advisor`).
+- **Resiliencia y Circuit Breaker:**
+  - Fallback determinista local ante indisponibilidad, timeout o HTTP 429/500 de la API externa.
+  - Control de concurrencia y limitador saliente (máximo 14 RPM).
+
+### Autorización y Validación de Propiedad de Parcelas (Anti-IDOR)
+- **Autenticación:** Token JWT obligatorio verificado por `authenticateToken`.
+- **Aislamiento Multi-Tenant:**
+  - El rol `farmer` únicamente puede ejecutar la herramienta sobre parcelas de las cuales es propietario legítimo (`user_id = req.user.id`).
+  - Cualquier intento de consultar parcelas pertenecientes a otro usuario devuelve un error controlado (HTTP 404 / `PARCEL_NOT_FOUND_OR_UNAUTHORIZED`), garantizando cero fuga de datos o coordenadas entre agricultores.
+  - Los roles `advisor` y `admin` tienen autorización técnica para supervisar parcelas registradas en la región.
+- **Validación de Argumentos:** `parcel_id` se valida estrictamente como número entero positivo. Entradas no válidas (strings, números negativos, nulos) son neutralizadas en el backend sin llegar al motor de base de datos.
+
+### Limitaciones del MVP
+- **Límite de Invocación:** Máximo 1 ejecución de herramienta por consulta de usuario.
+- **Solo Lectura:** La herramienta no realiza mutaciones en base de datos (`CERO INSERT/UPDATE/DELETE`).
+- **Protección de Privacidad:** No se transmiten nombres propios, DNIs, teléfonos ni coordenadas geográficas exactas hacia el modelo LLM.
+- **Modo Offline:** Si `LLM_ENABLED=false`, el sistema conmuta automáticamente al motor de reglas locales estandarizadas.
+
+### Requisitos de Configuración
+Para habilitar el agente en el entorno local (`backend/.env`):
+```env
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash-lite
+LLM_API_KEY=tu_clave_de_google_ai_studio
+LLM_ENABLED=true
+LLM_TIMEOUT_MS=20000
+LLM_MAX_OUTPUT_TOKENS=450
+RAG_ENABLED=false
+```
+
+### Ejecución de Pruebas Automatizadas
+La suite de pruebas automatizadas utiliza mocks locales completos (cero consumo de cuota de Gemini y cero llamadas de red externas):
+```bash
+# Ejecutar suite del Agente Inteligente (25 verificaciones)
+node backend/tests/test_agricultural_agent_phase10.js
+
+# Ejecutar suites completas de regresión de IA
+node backend/tests/test_llm_service_phase9_l03.js
+node backend/tests/test_ai_context_and_chat_phase9_l04.js
+node backend/tests/test_advisory_chat_frontend_phase9_l05.js
+node backend/tests/test_rag_retrieval_and_advisory_phase9_l07.js
+node backend/tests/test_rag_retrieval_and_advisory_phase9_l07b.js
+node backend/tests/test_rag_retrieval_and_advisory_phase9_l07c.js
+node backend/tests/test_llm_rag_end_to_end_phase9_llm02.js
+node backend/tests/test_llm_provider_and_corpus_phase9_llm03.js
+node backend/tests/test_llm_final_quality_phase9_llm04.js
 ```
 
 ---

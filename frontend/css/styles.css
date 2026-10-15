@@ -763,6 +763,7 @@ a:hover { color: var(--green-400); }
 .badge-red { background: rgba(239, 68, 68, 0.15); color: var(--red-400); }
 .badge-blue { background: rgba(59, 130, 246, 0.15); color: var(--blue-400); }
 .badge-purple { background: rgba(168, 85, 247, 0.15); color: var(--purple-400); }
+.badge-gray { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.25); }
 
 /* ===== CROP CARDS ===== */
 .crop-card {
@@ -2419,6 +2420,19 @@ a:hover { color: var(--green-400); }
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.chat-tool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* Preguntas rápidas (Sugerencias) */
