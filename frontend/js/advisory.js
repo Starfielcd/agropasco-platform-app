@@ -856,19 +856,106 @@ function appendAssistantMessageBubble(data, container) {
 
   bubble.appendChild(metaBar);
 
-  // 2. Banner de estado meteorológico (Fase 9-L05B: Corrección 2 y 3)
+  // 1d. Tarjeta de información contextual de parcela (si aplica)
+  if (data.parcel_id || data.context_used) {
+    const parcelCard = document.createElement('div');
+    parcelCard.className = 'chat-parcel-card';
+
+    let pName = null;
+    if (Array.isArray(data.tool_executions) && data.tool_executions[0]?.result?.parcel_name) {
+      pName = data.tool_executions[0].result.parcel_name;
+    } else if (data.parcel_id && Array.isArray(cachedUserParcels)) {
+      const found = cachedUserParcels.find(p => p.id === data.parcel_id);
+      if (found) pName = found.name;
+    }
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'chat-parcel-card-title';
+    const parcelIcon = document.createElement('span');
+    parcelIcon.textContent = '🗺️';
+    const parcelNameStrong = document.createElement('strong');
+    parcelNameStrong.textContent = pName ? pName : (data.parcel_id ? `Parcela #${data.parcel_id}` : 'Consulta Regional Pasco');
+    titleDiv.appendChild(parcelIcon);
+    titleDiv.appendChild(parcelNameStrong);
+    parcelCard.appendChild(titleDiv);
+
+    const chipsGrid = document.createElement('div');
+    chipsGrid.className = 'chat-parcel-chips-grid';
+
+    const cu = data.context_used || {};
+    if (cu.crop_type) {
+      const cropChip = document.createElement('span');
+      cropChip.className = 'chat-parcel-chip';
+      const varText = (cu.variety && cu.variety !== 'no_especificada') ? ` (${cu.variety})` : '';
+      cropChip.textContent = `🥔 Cultivo: ${cu.crop_type}${varText}`;
+      chipsGrid.appendChild(cropChip);
+    }
+
+    const validStage = (cu.phenological_stage && cu.phenological_stage !== 'general' && cu.phenological_stage !== 'desconocida' && cu.phenological_stage !== 'no_especificada')
+      ? cu.phenological_stage
+      : 'Etapa no especificada';
+    const stageChip = document.createElement('span');
+    stageChip.className = 'chat-parcel-chip';
+    stageChip.textContent = `🌱 Etapa: ${validStage}`;
+    chipsGrid.appendChild(stageChip);
+
+    if (cu.altitude_masl) {
+      const altChip = document.createElement('span');
+      altChip.className = 'chat-parcel-chip';
+      const zoneText = cu.approximate_zone ? ` · ${cu.approximate_zone}` : '';
+      altChip.textContent = `⛰️ Altitud: ${cu.altitude_masl} msnm${zoneText}`;
+      chipsGrid.appendChild(altChip);
+    }
+
+    parcelCard.appendChild(chipsGrid);
+    bubble.appendChild(parcelCard);
+  }
+
+  // 2. Banner de estado meteorológico y nivel de riesgo respaldado
+  let weatherRiskPct = null;
+  let weatherTempMin = null;
+  if (Array.isArray(data.tool_executions) && data.tool_executions.length > 0) {
+    const execWeather = data.tool_executions[0]?.result?.weather;
+    if (execWeather && typeof execWeather.frost_risk_pct === 'number') {
+      weatherRiskPct = execWeather.frost_risk_pct;
+    }
+    if (execWeather && typeof execWeather.temp_min_c === 'number') {
+      weatherTempMin = execWeather.temp_min_c;
+    }
+  }
+
   if (data.weather_status === 'fresh') {
     const weatherNotice = document.createElement('div');
     weatherNotice.className = 'chat-weather-banner fresh';
     const iconSpan = document.createElement('span');
     iconSpan.textContent = '🌤️';
     const textDiv = document.createElement('div');
+    textDiv.style.flex = '1';
     const strongEl = document.createElement('strong');
     strongEl.textContent = 'Pronóstico vigente: ';
     const textSpan = document.createElement('span');
     textSpan.textContent = 'disponible y dentro de su periodo de validez.';
     textDiv.appendChild(strongEl);
     textDiv.appendChild(textSpan);
+
+    if (weatherRiskPct !== null) {
+      const riskBadge = document.createElement('div');
+      riskBadge.style.marginTop = '6px';
+      const badgeSpan = document.createElement('span');
+      if (weatherRiskPct >= 60) {
+        badgeSpan.className = 'chat-risk-badge risk-high';
+        badgeSpan.textContent = `🚨 Riesgo Alto de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
+      } else if (weatherRiskPct >= 30) {
+        badgeSpan.className = 'chat-risk-badge risk-moderate';
+        badgeSpan.textContent = `⚠️ Riesgo Moderado de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
+      } else {
+        badgeSpan.className = 'chat-risk-badge risk-low';
+        badgeSpan.textContent = `🛡️ Riesgo Bajo de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
+      }
+      riskBadge.appendChild(badgeSpan);
+      textDiv.appendChild(riskBadge);
+    }
+
     weatherNotice.appendChild(iconSpan);
     weatherNotice.appendChild(textDiv);
     bubble.appendChild(weatherNotice);
@@ -899,6 +986,15 @@ function appendAssistantMessageBubble(data, container) {
     textSpan.textContent = 'No hay un pronóstico meteorológico válido disponible para esta parcela. La orientación será de carácter general.';
     textDiv.appendChild(strongEl);
     textDiv.appendChild(textSpan);
+
+    const riskBadge = document.createElement('div');
+    riskBadge.style.marginTop = '6px';
+    const badgeSpan = document.createElement('span');
+    badgeSpan.className = 'chat-risk-badge risk-none';
+    badgeSpan.textContent = 'ℹ️ Sin telemetría de helada disponible';
+    riskBadge.appendChild(badgeSpan);
+    textDiv.appendChild(riskBadge);
+
     weatherNotice.appendChild(iconSpan);
     weatherNotice.appendChild(textDiv);
     bubble.appendChild(weatherNotice);
@@ -919,21 +1015,32 @@ function appendAssistantMessageBubble(data, container) {
     bubble.appendChild(weatherNotice);
   }
 
-  // 3. Cuerpo principal de la respuesta (reply)
-  const replyP = document.createElement('div');
-  replyP.style.lineHeight = '1.6';
-  replyP.style.fontSize = '14.5px';
-  // Formatear saltos de línea de forma segura con textContent
+  // 3. Tarjeta destacada de la recomendación técnica (reply)
+  const replyCard = document.createElement('div');
+  replyCard.className = 'chat-reply-card';
+
+  const replyHeader = document.createElement('div');
+  replyHeader.className = 'chat-reply-card-header';
+  const headerIcon = document.createElement('span');
+  headerIcon.textContent = '📋';
+  const headerText = document.createElement('span');
+  headerText.textContent = 'Orientación Agronómica';
+  replyHeader.appendChild(headerIcon);
+  replyHeader.appendChild(headerText);
+  replyCard.appendChild(replyHeader);
+
+  const replyBody = document.createElement('div');
+  replyBody.className = 'chat-reply-card-body';
   const lines = (data.reply || '').split('\n');
-  lines.forEach((line, idx) => {
+  lines.forEach((line) => {
     if (line.trim() !== '') {
       const p = document.createElement('p');
-      p.style.margin = idx === lines.length - 1 ? '0' : '0 0 8px';
-      p.textContent = line;
-      replyP.appendChild(p);
+      p.textContent = line; // Protección anti-XSS estricta
+      replyBody.appendChild(p);
     }
   });
-  bubble.appendChild(replyP);
+  replyCard.appendChild(replyBody);
+  bubble.appendChild(replyCard);
 
   // 4. Advertencias técnicas combinadas (warnings)
   if (Array.isArray(data.warnings) && data.warnings.length > 0) {
@@ -949,7 +1056,14 @@ function appendAssistantMessageBubble(data, container) {
     ul.className = 'chat-warnings-list';
     data.warnings.forEach(w => {
       const li = document.createElement('li');
-      li.textContent = w;
+      li.className = 'chat-warning-item';
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'chat-warning-icon';
+      iconSpan.textContent = '⚠️';
+      const textSpan = document.createElement('span');
+      textSpan.textContent = w;
+      li.appendChild(iconSpan);
+      li.appendChild(textSpan);
       ul.appendChild(li);
     });
     warningsBox.appendChild(ul);
@@ -968,9 +1082,16 @@ function appendAssistantMessageBubble(data, container) {
 
     const ul = document.createElement('ul');
     ul.className = 'chat-actions-list';
-    data.suggested_actions.forEach(act => {
+    data.suggested_actions.forEach((act, idx) => {
       const li = document.createElement('li');
-      li.textContent = act;
+      li.className = 'chat-action-item';
+      const numSpan = document.createElement('span');
+      numSpan.className = 'chat-action-num';
+      numSpan.textContent = String(idx + 1);
+      const textSpan = document.createElement('span');
+      textSpan.textContent = act;
+      li.appendChild(numSpan);
+      li.appendChild(textSpan);
       ul.appendChild(li);
     });
     actionsBox.appendChild(ul);

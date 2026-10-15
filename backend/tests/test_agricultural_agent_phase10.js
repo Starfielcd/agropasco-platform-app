@@ -454,9 +454,8 @@ async function runSuite() {
       }
 
       if (turnCount === 2) {
-        // Turn 2: Backend envió functionResponse a Gemini
         const lastContent = reqBody.contents[reqBody.contents.length - 1];
-        if (lastContent && lastContent.role === 'function') {
+        if (lastContent && (lastContent.role === 'user' || lastContent.role === 'function')) {
           const fnPart = lastContent.parts[0];
           if (fnPart && fnPart.functionResponse && fnPart.functionResponse.name === 'get_parcel_weather_risk') {
             turn2ReceivedFunctionResponse = true;

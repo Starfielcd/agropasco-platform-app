@@ -280,12 +280,12 @@ async function runAgriculturalAgent({
       });
 
       // 8. Turno 2: Entregar resultado de la herramienta a Gemini y solicitar JSON final
-      contents.push({
+      contents.push(candidate1.content || {
         role: 'model',
         parts: [{ functionCall: call }]
       });
       contents.push({
-        role: 'function',
+        role: 'user',
         parts: [{
           functionResponse: {
             name: toolName,
