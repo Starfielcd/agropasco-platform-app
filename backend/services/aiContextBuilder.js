@@ -227,11 +227,40 @@ async function buildAgriculturalContext({ userId, userRole, parcelId = null }) {
     }
   }
 
+  // Intento 2b: Si no hay predicción específica previa, verificar si el grid geográfico dispone de pronóstico compartido
+  if (!rawPrediction && currentGeo.lat && currentGeo.lng) {
+    try {
+      const weatherCacheService = require('./weatherCacheService');
+      const shared = await weatherCacheService.getSharedForecast(currentGeo.lat, currentGeo.lng, { allowStale: true });
+      if (shared && shared.forecast) {
+        weatherStatus = shared.isStale ? 'stale' : 'fresh';
+        isStale = shared.isStale;
+        const curr = shared.forecast.current || {};
+        const daily = shared.forecast.daily || {};
+        rawPrediction = {
+          predictions: {},
+          weather_snapshot: {
+            temperature: curr.temperature_2m ?? null,
+            temp_min: daily.temperature_2m_min?.[0] ?? null,
+            temp_max: daily.temperature_2m_max?.[0] ?? null
+          },
+          valid_until: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+          last_updated: shared.fetchedAt
+        };
+        if (shared.isStale) {
+          warnings.push('Atención: La información meteorológica utilizada corresponde a un respaldo regional previo y debe tomarse con cautela.');
+        }
+      }
+    } catch (_) {
+      // Degradación silenciosa si la caché no está disponible
+    }
+  }
+
   // Intento 3: Sin información meteorológica válida
   if (!rawPrediction) {
     weatherStatus = 'missing_weather';
     isStale = false;
-    warnings.push('No hay información meteorológica reciente en caché para esta parcela. Las sugerencias se basan únicamente en pautas agronómicas generales.');
+    warnings.push('No hay información meteorológica reciente en caché para esta parcela (estamos preparando la información). Las sugerencias se basan únicamente en pautas agronómicas generales.');
   }
 
   const metrics = extractPredictionMetrics(rawPrediction);

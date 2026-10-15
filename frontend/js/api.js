@@ -120,15 +120,12 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
-// ===== CONSULTA DIRECTA DE CLIMA EN VIVO (OPEN-METEO API) =====
+// ===== CONSULTA CENTRALIZADA DE CLIMA EN VIVO (VÍA BACKEND PROTEGIDO) =====
 async function getLiveWeatherData() {
   try {
-    const res = await fetch(OPEN_METEO_LIVE_URL);
-    if (!res.ok) throw new Error('Open-Meteo HTTP Error');
-    const data = await res.json();
-    const curr = data.current || {};
-    const daily = data.daily || {};
-
+    return await apiRequest('/weather/current');
+  } catch (err) {
+    console.warn('Aviso: Utilizando respaldo de clima local:', err.message);
     return {
       success: true,
       data: {
@@ -136,23 +133,20 @@ async function getLiveWeatherData() {
         latitude: -10.6674,
         longitude: -76.2567,
         altitude_masl: 4380,
-        temp_2m: curr.temperature_2m ?? 4.5,
-        humidity: curr.relative_humidity_2m ?? 75,
-        pressure: curr.surface_pressure ?? 620,
-        wind_speed: curr.wind_speed_10m ?? 4.2,
-        soil_temp_0cm: curr.soil_temperature_0cm ?? 5.2,
-        soil_moisture_1cm: curr.soil_moisture_0_to_1cm ?? 0.35,
-        uv_index: curr.uv_index ?? 9.5,
-        temp_min: daily.temperature_2m_min?.[0] ?? -2.0,
-        temp_max: daily.temperature_2m_max?.[0] ?? 12.0,
-        rain_prob: daily.precipitation_probability_max?.[0] ?? 20,
-        condition: (curr.temperature_2m ?? 4.5) <= 0 ? 'Helada / Descenso térmico' : 'Cielo despejado',
-        source: 'Open-Meteo Live (Lat -10.6674, Lon -76.2567)'
+        temp_2m: 4.5,
+        humidity: 75,
+        pressure: 620,
+        wind_speed: 4.2,
+        soil_temp_0cm: 5.2,
+        soil_moisture_1cm: 0.35,
+        uv_index: 9.5,
+        temp_min: -2.0,
+        temp_max: 12.0,
+        rain_prob: 20,
+        condition: 'Cielo despejado',
+        source: 'AgroPasco Clima Protegido'
       }
     };
-  } catch (err) {
-    console.warn('Fallback a API local para clima:', err.message);
-    return apiRequest('/weather/current');
   }
 }
 

@@ -17,6 +17,7 @@
 const db = require('../config/database');
 const { defaultEngine } = require('./mlEngine');
 const { buildDailyFeatures, checkFeatureCompleteness } = require('./mlFeaturePipeline');
+const weatherCacheService = require('./weatherCacheService');
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8100';
 const EXPECTED_MODEL_VERSION = '2.0.0_native';
@@ -619,6 +620,7 @@ async function executeOpenMeteoRequest(openMeteoUrl, options = {}) {
 async function fetchOpenMeteoForecast(lat, lng, options = {}) {
   // Comprobación temprana de circuit breaker
   if (isRateLimitActive()) {
+    weatherCacheService.recordMetric('circuit_breaker_block');
     const status = getRateLimitStatus();
     return {
       success: false,
@@ -634,10 +636,27 @@ async function fetchOpenMeteoForecast(lat, lng, options = {}) {
   }
 
   const includeHistory = options.includeHistory !== false;
+
+  // 1. Comprobar si existe un pronóstico crudo reciente en la caché compartida de celda geográfica
+  const shared = await weatherCacheService.getSharedForecast(lat, lng, { allowStale: false });
+  if (shared && shared.forecast && shared.forecast.hourly && shared.forecast.daily) {
+    const hasHistory = !includeHistory || (shared.forecast.past_days_available !== false && (shared.forecast.hourly?.time?.length || 0) >= 168);
+    if (hasHistory) {
+      return {
+        success: true,
+        forecast: shared.forecast,
+        attempts: 0,
+        durationMs: 0,
+        source: 'shared_cache'
+      };
+    }
+  }
+
   const inFlightKey = `${Number(lat).toFixed(4)}_${Number(lng).toFixed(4)}_${includeHistory ? 'hist' : 'nohist'}`;
 
   // Si ya existe una petición idéntica en vuelo, reutilizar la misma promesa
   if (inFlightRequests.has(inFlightKey)) {
+    weatherCacheService.recordMetric('coalesced');
     return inFlightRequests.get(inFlightKey);
   }
 
@@ -664,13 +683,27 @@ async function fetchOpenMeteoForecast(lat, lng, options = {}) {
 
   const requestPromise = (async () => {
     try {
-      return await executeOpenMeteoRequest(openMeteoUrl, {
+      weatherCacheService.recordMetric('outgoing', { module: 'ml' });
+      const result = await executeOpenMeteoRequest(openMeteoUrl, {
         parcelId: options.parcelId,
         timeoutMs: options.timeoutMs,
         retryTimeoutMs: options.retryTimeoutMs,
         maxRetries: options.maxRetries,
         retryDelayMs: options.retryDelayMs
       });
+
+      if (result.success && result.forecast) {
+        weatherCacheService.recordMetric('success');
+        await weatherCacheService.saveSharedForecast(lat, lng, result.forecast, {
+          allowInTest: options.allowInTest,
+          altitude: options.altitude || result.forecast?.elevation,
+          scope: 'ml_full'
+        });
+      } else if (result.http_status === 429) {
+        weatherCacheService.recordMetric('http_429', { reason: result.error });
+      }
+
+      return result;
     } finally {
       inFlightRequests.delete(inFlightKey);
     }
@@ -715,6 +748,13 @@ async function getPredictionForParcel(parcel) {
   }
   const { lat, lng } = coordValidation;
 
+  const currentGeo = {
+    lat,
+    lng,
+    altitude: parcel.altitude_masl,
+    geo_json: parcel.geo_json
+  };
+
   // Consultar cache en primer lugar, verificando que no preceda la creación de la parcela
   const cached = await getCachedPrediction(parcelId, parcel.created_at);
   if (cached) {
@@ -743,7 +783,98 @@ async function getPredictionForParcel(parcel) {
     if (staleResult) {
       return staleResult;
     }
-    // Si no hay datos previos utilizables en caché, reportar el error directamente
+
+    // Si no hay datos previos para esta parcela, comprobar si existe un pronóstico compartido compatible en el grid (hasta 24h)
+    const sharedStale = await weatherCacheService.getSharedForecast(lat, lng, {
+      allowStale: true,
+      altitude: parcel.altitude_masl,
+      requireMlFeatures: true
+    });
+    if (sharedStale && sharedStale.forecast && sharedStale.forecast.hourly && sharedStale.forecast.daily) {
+      try {
+        const dailyFeaturesList = buildDailyFeatures(sharedStale.forecast, parcel.altitude_masl);
+        if (dailyFeaturesList && dailyFeaturesList.length > 0) {
+          const dailyPredictions = [];
+          for (const dayFeat of dailyFeaturesList) {
+            const dayPred = {
+              date: dayFeat.date,
+              raw: {
+                tempMin: dayFeat.temperature_2m_min,
+                tempMax: dayFeat.temperature_2m_max,
+                precip: dayFeat.precipitation_sum,
+                wind: dayFeat.wind_speed_10m_max
+              }
+            };
+            const frostCheck = checkFeatureCompleteness(dayFeat, defaultEngine.models?.frost?.features || []);
+            if (frostCheck.complete && defaultEngine.isLoaded) {
+              dayPred.frost = defaultEngine.predictFrost(dayFeat);
+            } else {
+              const tempMin = dayFeat.temperature_2m_min ?? 999;
+              let frostScore = tempMin <= -2 ? 70 : tempMin <= 0 ? 50 : tempMin <= 3 ? 25 : 0;
+              dayPred.frost = { phenomenon: 'frost', risk_level: frostScore >= 60 ? 'high' : frostScore >= 30 ? 'moderate' : 'none', risk_score: frostScore };
+            }
+            const rainCheck = checkFeatureCompleteness(dayFeat, defaultEngine.models?.heavy_rain?.features || []);
+            if (rainCheck.complete && defaultEngine.isLoaded) {
+              dayPred.heavy_rain = defaultEngine.predictHeavyRain(dayFeat);
+            } else {
+              const precip = dayFeat.precipitation_sum ?? 0;
+              let rainScore = precip >= 15 ? 80 : precip >= 8 ? 50 : precip >= 3 ? 25 : 0;
+              dayPred.heavy_rain = { phenomenon: 'heavy_rain', risk_level: rainScore >= 60 ? 'high' : rainScore >= 30 ? 'moderate' : 'none', risk_score: rainScore };
+            }
+            dayPred.snow = defaultEngine.isLoaded ? defaultEngine.predictSnow(dayFeat) : { phenomenon: 'snow', risk_level: 'none', risk_score: 0 };
+            dayPred.hail = defaultEngine.isLoaded ? defaultEngine.predictHail(dayFeat) : { phenomenon: 'hail', risk_level: 'none', risk_score: 0 };
+            dailyPredictions.push(dayPred);
+          }
+          const formattedPredictions = formatConsolidatedPredictions(dailyPredictions, dailyFeaturesList);
+          const forecastSummary = {
+            days: dailyFeaturesList.length,
+            dates: dailyFeaturesList.map(d => d.date),
+            temp_min: dailyFeaturesList.map(d => d.temperature_2m_min),
+            temp_max: dailyFeaturesList.map(d => d.temperature_2m_max),
+            precipitation: dailyFeaturesList.map(d => d.precipitation_sum),
+            elevation_model: sharedStale.forecast.elevation || sharedStale.reference_elevation || null
+          };
+          const staleData = {
+            parcel_id: parcelId,
+            parcel_name: parcel.name || '',
+            latitude: lat,
+            longitude: lng,
+            altitude_masl: parcel.altitude_masl || null,
+            geo_json: parcel.geo_json || null,
+            geo_footprint: getGeoFootprint(lat, lng, parcel.altitude_masl, parcel.geo_json),
+            model_version: EXPECTED_MODEL_VERSION,
+            prediction_source: 'ml_trained',
+            predictions: formattedPredictions,
+            forecast_summary: forecastSummary,
+            issued_at: sharedStale.fetchedAt,
+            valid_until: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            is_stale: true,
+            source: 'cache_stale',
+            last_updated: sharedStale.fetchedAt,
+            stale_age_minutes: sharedStale.ageMinutes || 1,
+            stale_reason: 'shared_grid_stale',
+            grid_reuse: true,
+            reference_elevation: sharedStale.reference_elevation || null,
+            altitude_diff: sharedStale.altitude_diff !== undefined ? sharedStale.altitude_diff : null,
+            coverage_warning: `Pronóstico regional recuperado desde cuadrícula compatible (${sharedStale.ageMinutes || 1} min atrás, altitud ref: ${sharedStale.reference_elevation || 'N/A'} msnm). Servicio meteorológico con alta demanda.`,
+            data_source: 'Motor ML Nativo AgroPasco + Open-Meteo (Caché Compartida)'
+          };
+          return { success: true, data: staleData, source: 'cache_stale' };
+        }
+      } catch (_) {}
+    }
+
+    // Si no hay datos previos en caché, reportar estado amigable para el agricultor
+    if (fetchResult.rate_limited || fetchResult.http_status === 429) {
+      return {
+        ...fetchResult,
+        status: 'pending',
+        user_status: 'pending',
+        fallback: fetchResult.fallback || 'api_error',
+        error: fetchResult.error || 'Límite de solicitudes alcanzado en el servicio meteorológico. Intente más tarde.',
+        user_message: 'Estamos preparando la información meteorológica de esta parcela. Estará disponible en cuanto se complete la sincronización.'
+      };
+    }
     return fetchResult;
   }
 
@@ -1101,21 +1232,8 @@ async function getFallbackPrediction(parcel, options = {}) {
     }
     const { lat, lng } = coordValidation;
 
-    const openMeteoUrl = new URL('https://api.open-meteo.com/v1/forecast');
-    openMeteoUrl.searchParams.set('latitude', String(lat));
-    openMeteoUrl.searchParams.set('longitude', String(lng));
-    openMeteoUrl.searchParams.set(
-      'daily',
-      'temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,rain_sum,wind_speed_10m_max'
-    );
-    openMeteoUrl.searchParams.set(
-      'hourly',
-      'temperature_2m,relative_humidity_2m,precipitation'
-    );
-    openMeteoUrl.searchParams.set('timezone', 'America/Lima');
-    openMeteoUrl.searchParams.set('forecast_days', '3');
-
-    const fetchResult = await executeOpenMeteoRequest(openMeteoUrl, {
+    const fetchResult = await fetchOpenMeteoForecast(lat, lng, {
+      includeHistory: false,
       parcelId: parcel?.id,
       timeoutMs: options.timeoutMs || ML_REQUEST_TIMEOUT_MS,
       maxRetries: options.maxRetries !== undefined ? options.maxRetries : ML_MAX_RETRIES,
@@ -1702,5 +1820,7 @@ module.exports = {
   ML_REQUEST_TIMEOUT_MS,
   ML_RETRY_TIMEOUT_MS,
   ML_MAX_RETRIES,
-  DEFAULT_CONCURRENCY_LIMIT
+  DEFAULT_CONCURRENCY_LIMIT,
+  getWeatherMetrics: weatherCacheService.getWeatherMetrics,
+  resetWeatherMetrics: weatherCacheService.resetWeatherMetrics
 };
