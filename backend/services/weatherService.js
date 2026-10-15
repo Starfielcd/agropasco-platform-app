@@ -5,6 +5,7 @@
 
 const { dbRun, dbGet } = require('../config/database');
 const { mockWeatherData } = require('../data/advisory-knowledge');
+const weatherCacheService = require('./weatherCacheService');
 
 const WEATHER_API_KEY = process.env.WEATHER_API_KEY || 'TU_API_KEY_AQUI';
 const DEFAULT_CITY = process.env.DEFAULT_CITY || 'Cerro de Pasco,PE';
@@ -14,12 +15,80 @@ const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutos
 
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-10.6674&longitude=-76.2567&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_1cm,uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FLima';
 
+function formatWeatherObjectFromOpenMeteo(data, sourceTag = 'open-meteo-live') {
+  const curr = data.current || {};
+  const daily = data.daily || {};
+  const hourly = data.hourly || {};
+  const lastH = Array.isArray(hourly.time) && hourly.time.length > 0 ? hourly.time.length - 1 : -1;
+
+  const temp = curr.temperature_2m ?? (lastH >= 0 && hourly.temperature_2m?.[lastH] !== undefined ? hourly.temperature_2m[lastH] : 4.5);
+  const tempMin = daily.temperature_2m_min?.[0] ?? -2.0;
+  const tempMax = daily.temperature_2m_max?.[0] ?? 12.0;
+  const humidity = curr.relative_humidity_2m ?? (lastH >= 0 && hourly.relative_humidity_2m?.[lastH] !== undefined ? hourly.relative_humidity_2m[lastH] : 75);
+  const soilTemp = curr.soil_temperature_0cm ?? 5.2;
+  const soilMoist = curr.soil_moisture_0_to_1cm ?? (lastH >= 0 && hourly.soil_moisture_0_to_1cm?.[lastH] !== undefined ? hourly.soil_moisture_0_to_1cm[lastH] : 0.35);
+  const uvIdx = curr.uv_index ?? 9.5;
+  const rainProb = daily.precipitation_probability_max?.[0] ?? 20;
+
+  return {
+    name: 'Cerro de Pasco',
+    coord: { lat: -10.6674, lon: -76.2567 },
+    altitude: 4380,
+    _source: sourceTag,
+    temp_2m: temp,
+    humidity: humidity,
+    pressure: curr.surface_pressure ?? 620,
+    wind_speed: curr.wind_speed_10m ?? 4.2,
+    soil_temp_0cm: soilTemp,
+    soil_moisture_1cm: soilMoist,
+    uv_index: uvIdx,
+    temp_min: tempMin,
+    temp_max: tempMax,
+    rain_prob: rainProb,
+    condition: temp <= 0 ? 'Helada / Descenso térmico' : 'Cielo despejado',
+    main: {
+      temp: temp,
+      temp_min: tempMin,
+      temp_max: tempMax,
+      humidity: humidity,
+      pressure: curr.surface_pressure ?? 620,
+      feels_like: temp - 2.0
+    },
+    soil: {
+      temp: soilTemp,
+      moisture: soilMoist
+    },
+    uv_index: uvIdx,
+    wind: { speed: curr.wind_speed_10m ?? 4.2, deg: 180 },
+    weather: [{
+      id: 800,
+      main: 'Clear',
+      description: temp <= 0 ? 'Helada / Descenso térmico' : 'Cielo despejado',
+      icon: '01d'
+    }]
+  };
+}
+
 async function getCurrentWeather() {
-  // Check cache first
+  // 1. Check local weather cache first
   const cached = await getCachedWeather('current');
   if (cached) return cached;
 
-  // Query Open-Meteo Live API first (no API key required) si no hay rate limit activo
+  // 2. Check if a fresh or stale shared raw forecast exists in weatherCacheService
+  const shared = await weatherCacheService.getSharedForecast(-10.6674, -76.2567, {
+    allowStale: true,
+    altitude: 4380
+  });
+  if (shared && shared.forecast) {
+    const weatherObj = formatWeatherObjectFromOpenMeteo(
+      shared.forecast,
+      shared.isStale ? 'open-meteo-shared-stale' : 'open-meteo-shared-cache'
+    );
+    await cacheWeather('current', weatherObj);
+    return weatherObj;
+  }
+
+  // 3. Query Open-Meteo Live API si no hay rate limit activo
   let mlService;
   try {
     mlService = require('./mlService');
@@ -29,44 +98,35 @@ async function getCurrentWeather() {
 
   if (!isRateLimited) {
     try {
-      const response = await fetch(OPEN_METEO_URL);
-      if (response.ok) {
-        const data = await response.json();
-        const curr = data.current || {};
-        const daily = data.daily || {};
+      const inFlightKey = 'shared_weather_cerro_de_pasco';
+      const weatherObj = await weatherCacheService.singleFlight(inFlightKey, async () => {
+        weatherCacheService.recordMetric('outgoing', { module: 'weather' });
+        const response = await fetch(OPEN_METEO_URL);
+        if (response.ok) {
+          const data = await response.json();
+          weatherCacheService.recordMetric('success');
+          await weatherCacheService.saveSharedForecast(-10.6674, -76.2567, data, {
+            altitude: 4380,
+            scope: 'standard'
+          });
+          return formatWeatherObjectFromOpenMeteo(data, 'open-meteo-live');
+        } else if (response.status === 429 && mlService?.tripRateLimit) {
+          weatherCacheService.recordMetric('http_429', { reason: 'HTTP 429 en weatherService' });
+          let retryMs = 60000;
+          if (typeof mlService.parseRetryAfter === 'function') {
+            const retryHeader = response.headers?.get ? response.headers.get('retry-after') : null;
+            const parsed = mlService.parseRetryAfter(retryHeader);
+            if (parsed !== null && parsed > 0) retryMs = parsed;
+          }
+          mlService.tripRateLimit(retryMs, 'HTTP 429 en weatherService');
+          return null;
+        }
+        return null;
+      });
 
-        const weatherObj = {
-          name: 'Cerro de Pasco',
-          coord: { lat: -10.6674, lon: -76.2567 },
-          altitude: 4380,
-          _source: 'open-meteo-live',
-          main: {
-            temp: curr.temperature_2m ?? 4.5,
-            temp_min: daily.temperature_2m_min?.[0] ?? -2.0,
-            temp_max: daily.temperature_2m_max?.[0] ?? 12.0,
-            humidity: curr.relative_humidity_2m ?? 75,
-            pressure: curr.surface_pressure ?? 620,
-            feels_like: (curr.temperature_2m ?? 4.5) - 2.0
-          },
-          soil: {
-            temp: curr.soil_temperature_0cm ?? 5.2,
-            moisture: curr.soil_moisture_0_to_1cm ?? 0.35 // m³/m³
-          },
-          uv_index: curr.uv_index ?? 9.5,
-          wind: { speed: curr.wind_speed_10m ?? 4.2, deg: 180 },
-          weather: [{ id: 800, main: 'Clear', description: (curr.temperature_2m ?? 4.5) <= 0 ? 'Helada / Descenso térmico' : 'Cielo despejado', icon: '01d' }]
-        };
-
+      if (weatherObj) {
         await cacheWeather('current', weatherObj);
         return weatherObj;
-      } else if (response.status === 429 && mlService?.tripRateLimit) {
-        let retryMs = 60000;
-        if (typeof mlService.parseRetryAfter === 'function') {
-          const retryHeader = response.headers?.get ? response.headers.get('retry-after') : null;
-          const parsed = mlService.parseRetryAfter(retryHeader);
-          if (parsed !== null && parsed > 0) retryMs = parsed;
-        }
-        mlService.tripRateLimit(retryMs, 'HTTP 429 en weatherService');
       }
     } catch (err) {
       console.warn('⚠️ Error al consultar Open-Meteo API:', err.message);
@@ -80,9 +140,44 @@ async function getCurrentWeather() {
   return simulated;
 }
 
+function formatDailyForecastFromOpenMeteo(daily) {
+  if (!daily || !Array.isArray(daily.time) || daily.time.length === 0) return null;
+  const days = [];
+  const times = daily.time.slice(0, 5);
+  for (let i = 0; i < times.length; i++) {
+    const minT = daily.temperature_2m_min?.[i] ?? 0;
+    const maxT = daily.temperature_2m_max?.[i] ?? 10;
+    const rainP = daily.precipitation_probability_max?.[i] ?? 10;
+    days.push({
+      date: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : `Día ${i + 1}`,
+      raw_date: times[i],
+      temp_min: minT,
+      temp_max: maxT,
+      humidity: 70,
+      condition: minT <= 0 ? 'Helada / Frío extremo' : rainP > 50 ? 'Lluvias probables' : 'Nublado parcial',
+      rain_prob: rainP,
+      icon: getWeatherIcon(minT, rainP)
+    });
+  }
+  return days;
+}
+
 async function getForecast() {
   const cached = await getCachedWeather('forecast');
   if (cached) return cached;
+
+  // 1. Reutilizar pronóstico diario de Open-Meteo compartido si existe
+  const shared = await weatherCacheService.getSharedForecast(-10.6674, -76.2567, {
+    allowStale: true,
+    altitude: 4380
+  });
+  if (shared?.forecast?.daily) {
+    const openMeteoDays = formatDailyForecastFromOpenMeteo(shared.forecast.daily);
+    if (openMeteoDays && openMeteoDays.length > 0) {
+      await cacheWeather('forecast', openMeteoDays);
+      return openMeteoDays;
+    }
+  }
 
   if (WEATHER_API_KEY && WEATHER_API_KEY !== 'TU_API_KEY_AQUI') {
     try {

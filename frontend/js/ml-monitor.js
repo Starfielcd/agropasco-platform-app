@@ -196,20 +196,48 @@ function renderParcelPredictionCard(parcelPred) {
   }
 
   if (!parcelPred.success && parcelPred.success !== undefined) {
+    const isPending = parcelPred.status === 'pending' || parcelPred.fallback === 'pending_first_sync' || (parcelPred.error || '').includes('preparando la información');
+    if (isPending) {
+      return `
+        <div class="card" style="margin-bottom: 12px; border-left: 4px solid var(--blue-400); background: rgba(59, 130, 246, 0.05); padding: 14px 16px;">
+          <div style="display: flex; align-items: flex-start; gap: 12px;">
+            <span style="font-size: 24px;">🌱</span>
+            <div style="flex: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
+                <span class="badge badge-blue" style="font-size: 11px;">🌱 Preparando datos</span>
+              </div>
+              <div class="text-sm" style="color: var(--text-primary); margin-top: 4px; font-weight: 500;">
+                Estamos preparando la información meteorológica de esta parcela.
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                La información y los modelos de predicción estarán disponibles tan pronto como se complete la sincronización con el servicio meteorológico.
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     const isRateLimited = (parcelPred.error || '').includes('Límite de solicitudes') || parcelPred.http_status === 429 || parcelPred.fallback === 'api_error';
+    const friendlyError = isRateLimited
+      ? 'Servicio meteorológico con alta demanda temporal.'
+      : (parcelPred.error || 'Servicio meteorológico temporalmente no disponible.');
+    const friendlyDetails = isRateLimited
+      ? 'Estamos preparando la información meteorológica de esta parcela. El sistema se sincronizará automáticamente.'
+      : 'Se reintentará la consulta en la próxima actualización programada.';
+
     return `
-      <div class="card" style="margin-bottom: 12px; border-left: 4px solid ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; opacity: 0.85;">
+      <div class="card" style="margin-bottom: 12px; border-left: 4px solid ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; opacity: 0.9;">
         <div style="display: flex; align-items: flex-start; gap: 10px;">
           <span style="font-size: 22px;">${isRateLimited ? '⏳' : '⚠️'}</span>
           <div>
             <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
             <div class="text-sm" style="color: ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; margin-top: 2px;">
-              ${parcelPred.error || 'Servicio meteorológico temporalmente no disponible.'}
+              ${friendlyError}
             </div>
             <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
-              ${isRateLimited
-                ? 'Sin historial de pronóstico para esta parcela. Esperando primera consulta meteorológica al cesar el enfriamiento del servicio externo.'
-                : 'Se reintentará la consulta en la próxima actualización programada.'}
+              ${friendlyDetails}
             </div>
           </div>
         </div>
