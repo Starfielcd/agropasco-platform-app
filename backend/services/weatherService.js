@@ -16,6 +16,34 @@ const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutos
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-10.6674&longitude=-76.2567&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_1cm,uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FLima';
 
 function formatWeatherObjectFromOpenMeteo(data, sourceTag = 'open-meteo-live') {
+  const isLive = sourceTag === 'open-meteo-live';
+  const isStale = sourceTag.includes('stale');
+  const status = isLive ? 'fresh' : (isStale ? 'stale' : 'cache');
+
+  // Si el objeto ya está estructurado (p. ej. proveniente de caché local previo):
+  if (data && (typeof data.temp_2m === 'number' || typeof data.main?.temp === 'number') && !data.current) {
+    const existingTemp = data.temp_2m ?? data.main?.temp;
+    return {
+      ...data,
+      name: data.name || 'Cerro de Pasco',
+      altitude: data.altitude || 4380,
+      status,
+      _source: sourceTag,
+      is_stale: isStale,
+      is_available: true,
+      is_simulation: false,
+      temp_2m: existingTemp,
+      main: {
+        temp: existingTemp,
+        temp_min: data.main?.temp_min ?? data.temp_min ?? null,
+        temp_max: data.main?.temp_max ?? data.temp_max ?? null,
+        humidity: data.main?.humidity ?? data.humidity ?? null,
+        pressure: data.main?.pressure ?? data.pressure ?? 620,
+        feels_like: data.main?.feels_like ?? (existingTemp !== null ? existingTemp - 2.0 : null)
+      }
+    };
+  }
+
   const curr = data.current || {};
   const daily = data.daily || {};
   const hourly = data.hourly || {};
@@ -34,7 +62,12 @@ function formatWeatherObjectFromOpenMeteo(data, sourceTag = 'open-meteo-live') {
     name: 'Cerro de Pasco',
     coord: { lat: -10.6674, lon: -76.2567 },
     altitude: 4380,
+    status: status,
     _source: sourceTag,
+    is_available: true,
+    is_stale: isStale,
+    is_simulation: false,
+    updated_at: new Date().toISOString(),
     temp_2m: temp,
     humidity: humidity,
     pressure: curr.surface_pressure ?? 620,
@@ -69,10 +102,60 @@ function formatWeatherObjectFromOpenMeteo(data, sourceTag = 'open-meteo-live') {
   };
 }
 
-async function getCurrentWeather() {
-  // 1. Check local weather cache first
+function buildUnavailableWeatherObject() {
+  return {
+    name: 'Cerro de Pasco',
+    coord: { lat: parseFloat(DEFAULT_LAT), lon: parseFloat(DEFAULT_LON) },
+    altitude: 4380,
+    status: 'unavailable',
+    _source: 'unavailable',
+    is_available: false,
+    is_stale: false,
+    is_simulation: false,
+    message: 'Información meteorológica temporalmente no disponible. Estamos esperando la próxima consulta al servicio meteorológico.',
+    updated_at: null,
+    temp_2m: null,
+    humidity: null,
+    pressure: null,
+    wind_speed: null,
+    soil_temp_0cm: null,
+    soil_moisture_1cm: null,
+    uv_index: null,
+    temp_min: null,
+    temp_max: null,
+    rain_prob: null,
+    condition: 'Información meteorológica temporalmente no disponible',
+    main: {
+      temp: null,
+      temp_min: null,
+      temp_max: null,
+      humidity: null,
+      pressure: null,
+      feels_like: null
+    },
+    soil: {
+      temp: null,
+      moisture: null
+    },
+    uv_index: null,
+    wind: { speed: null, deg: null },
+    weather: [{
+      id: 0,
+      main: 'Unavailable',
+      description: 'Información meteorológica temporalmente no disponible',
+      icon: 'unavailable'
+    }]
+  };
+}
+
+async function getCurrentWeather(options = {}) {
+  const allowSimulation = Boolean(options.allowSimulation);
+
+  // 1. Check local weather cache first (fresco <= 30 min)
   const cached = await getCachedWeather('current');
-  if (cached) return cached;
+  if (cached && cached.is_available !== false && cached._source !== 'unavailable') {
+    return cached;
+  }
 
   // 2. Check if a fresh or stale shared raw forecast exists in weatherCacheService
   const shared = await weatherCacheService.getSharedForecast(-10.6674, -76.2567, {
@@ -84,7 +167,9 @@ async function getCurrentWeather() {
       shared.forecast,
       shared.isStale ? 'open-meteo-shared-stale' : 'open-meteo-shared-cache'
     );
-    await cacheWeather('current', weatherObj);
+    if (!shared.isStale) {
+      await cacheWeather('current', weatherObj);
+    }
     return weatherObj;
   }
 
@@ -133,11 +218,23 @@ async function getCurrentWeather() {
     }
   }
 
-  // Fallback: simulated data with realistic variations
-  const simulated = generateRealisticWeather();
-  simulated._source = 'simulated';
-  simulated._note = 'Datos simulados realistas para Cerro de Pasco (4380 msnm).';
-  return simulated;
+  // 4. Intentar recuperar caché local desactualizada de respaldo real (hasta 24h)
+  const staleCached = await getStaleCachedWeather('current', 24 * 60 * 60 * 1000);
+  if (staleCached && staleCached.is_available !== false && staleCached._source !== 'unavailable') {
+    staleCached.status = 'stale';
+    staleCached.is_stale = true;
+    staleCached._source = staleCached._source || 'open-meteo-stale-cache';
+    return staleCached;
+  }
+
+  // 5. Fallback controlado:
+  // Solo devolver datos simulados si se solicitó explícitamente modo simulación (demostraciones autorizadas)
+  if (allowSimulation) {
+    return generateRealisticWeather();
+  }
+
+  // Producción estricta: NO inventar datos con Math.random(). Informar estado unavailable.
+  return buildUnavailableWeatherObject();
 }
 
 function formatDailyForecastFromOpenMeteo(daily) {
@@ -162,9 +259,11 @@ function formatDailyForecastFromOpenMeteo(daily) {
   return days;
 }
 
-async function getForecast() {
+async function getForecast(options = {}) {
+  const allowSimulation = Boolean(options.allowSimulation);
+
   const cached = await getCachedWeather('forecast');
-  if (cached) return cached;
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   // 1. Reutilizar pronóstico diario de Open-Meteo compartido si existe
   const shared = await weatherCacheService.getSharedForecast(-10.6674, -76.2567, {
@@ -195,8 +294,22 @@ async function getForecast() {
     }
   }
 
-  // Fallback
-  return mockWeatherData.forecast;
+  // 2. Intentar recuperar caché local de pronóstico de respaldo (hasta 48h)
+  const staleForecast = await getStaleCachedWeather('forecast', 48 * 60 * 60 * 1000);
+  if (staleForecast && Array.isArray(staleForecast) && staleForecast.length > 0) {
+    return staleForecast;
+  }
+
+  // 3. Fallback: Solo si se solicita simulación explícita para pruebas o demo
+  if (allowSimulation && Array.isArray(mockWeatherData?.forecast)) {
+    return mockWeatherData.forecast.map(day => ({
+      ...day,
+      is_simulation: true
+    }));
+  }
+
+  // Producción estricta: NO inventar pronósticos sintéticos
+  return [];
 }
 
 function processForecast(rawData) {
@@ -244,6 +357,26 @@ function generateRealisticWeather() {
   return {
     name: 'Cerro de Pasco',
     coord: { lat: parseFloat(DEFAULT_LAT), lon: parseFloat(DEFAULT_LON) },
+    altitude: 4380,
+    status: 'simulated',
+    _source: 'simulated',
+    is_available: true,
+    is_stale: false,
+    is_simulation: true,
+    is_demo: true,
+    _note: 'MODO DEMOSTRACIÓN: Datos simulados para pruebas y capacitación.',
+    updated_at: new Date().toISOString(),
+    temp_2m: Math.round(temp * 10) / 10,
+    humidity: Math.round(humidity),
+    pressure: 618 + Math.round(Math.random() * 6),
+    wind_speed: Math.round((3 + Math.random() * 5) * 10) / 10,
+    soil_temp_0cm: 5.2,
+    soil_moisture_1cm: 0.35,
+    uv_index: 8.5,
+    temp_min: Math.round((baseTemp - 3 + Math.random() * 2) * 10) / 10,
+    temp_max: Math.round((baseTemp + 10 + Math.random() * 3) * 10) / 10,
+    rain_prob: 25,
+    condition: condition,
     main: {
       temp: Math.round(temp * 10) / 10,
       feels_like: Math.round((temp - 2.5) * 10) / 10,
@@ -252,10 +385,12 @@ function generateRealisticWeather() {
       temp_min: Math.round((baseTemp - 3 + Math.random() * 2) * 10) / 10,
       temp_max: Math.round((baseTemp + 10 + Math.random() * 3) * 10) / 10
     },
+    soil: {
+      temp: 5.2,
+      moisture: 0.35
+    },
     weather: [{ id: 802, main: 'Clouds', description: condition, icon: '03d' }],
-    wind: { speed: Math.round((3 + Math.random() * 5) * 10) / 10, deg: Math.round(Math.random() * 360) },
-    visibility: condition.includes('lluvia') ? 5000 : 10000,
-    altitude: 4380
+    wind: { speed: Math.round((3 + Math.random() * 5) * 10) / 10, deg: Math.round(Math.random() * 360) }
   };
 }
 
@@ -269,18 +404,33 @@ function getWeatherIcon(tempMin, rainProb) {
 
 function generateAlerts(weather, forecast, simulatedType = null) {
   const alerts = [];
-  const temp = weather.main?.temp ?? weather.temp ?? 4;
-  const tempMin = weather.main?.temp_min ?? temp - 3;
-  const humidity = weather.main?.humidity ?? 70;
-  const condition = (weather.weather?.[0]?.description || '').toLowerCase();
+  const isSimulation = Boolean(simulatedType) || weather?.is_simulation === true || weather?._source === 'simulated';
+  const isUnavailable = weather?.status === 'unavailable' || weather?._source === 'unavailable' || !weather;
+
+  // Si el clima está no disponible y NO hay simulación explícita solicitada, no inventar alertas
+  if (isUnavailable && !simulatedType) {
+    return [];
+  }
+
+  // Si no se solicitó simulación explícita (?sim=...) y los datos son simulados por fallback, bloquear alertas críticas
+  if (weather?.is_simulation && !simulatedType) {
+    return [];
+  }
+
+  const temp = typeof weather?.main?.temp === 'number' ? weather.main.temp : (typeof weather?.temp_2m === 'number' ? weather.temp_2m : null);
+  const tempMin = typeof weather?.main?.temp_min === 'number' ? weather.main.temp_min : (temp !== null ? temp - 3 : null);
+  const humidity = typeof weather?.main?.humidity === 'number' ? weather.main.humidity : (typeof weather?.humidity === 'number' ? weather.humidity : null);
+  const condition = (weather?.weather?.[0]?.description || weather?.condition || '').toLowerCase();
 
   // If simulation requested:
-  if (simulatedType === 'helada' || tempMin <= 0) {
+  if (simulatedType === 'helada' || (tempMin !== null && tempMin <= 0)) {
     alerts.push({
       type: 'alerta_helada',
       severity: 'critical',
-      title: '🥶 ALERTA CRÍTICA DE HELADA (< 0°C)',
-      message: `Temperatura extrema registrada de ${tempMin <= 0 ? tempMin : -3.5}°C en Cerro de Pasco. Riesgo alto de congelamiento de follaje en tubérculos y brotes jóvenes.`,
+      is_demo: Boolean(simulatedType),
+      is_stale: Boolean(weather?.is_stale),
+      title: Boolean(simulatedType) ? '🧪 [DEMO] ALERTA CRÍTICA DE HELADA (< 0°C)' : '🥶 ALERTA CRÍTICA DE HELADA (< 0°C)',
+      message: `Temperatura extrema registrada de ${tempMin !== null && tempMin <= 0 ? tempMin : -3.5}°C en Cerro de Pasco. Riesgo alto de congelamiento de follaje en tubérculos y brotes jóvenes.${Boolean(simulatedType) ? ' (Modo demostración visual).' : ''}`,
       actions: [
         'Activar riego por aspersión antes del amanecer (3:00 - 5:00 AM) para liberar calor latente.',
         'Colocar mantas térmicas, agrotela o paja sobre parcelas de papa, quinua y maca.',
@@ -288,10 +438,12 @@ function generateAlerts(weather, forecast, simulatedType = null) {
         'Aplicar bioestimulantes de aminoácidos y fósforo al reaparecer el sol.'
       ]
     });
-  } else if (tempMin <= 3) {
+  } else if (tempMin !== null && tempMin <= 3) {
     alerts.push({
       type: 'alerta_helada',
       severity: 'warning',
+      is_demo: Boolean(simulatedType),
+      is_stale: Boolean(weather?.is_stale),
       title: '⚠️ PRE-ALERTA DE DESCENSO TÉRMICO',
       message: `Temperatura mínima proyectada en ${tempMin}°C. Posible helada ligera durante la madrugada.`,
       actions: [
@@ -302,12 +454,14 @@ function generateAlerts(weather, forecast, simulatedType = null) {
     });
   }
 
-  if (simulatedType === 'radiacion' || temp > 18) {
+  if (simulatedType === 'radiacion' || (temp !== null && temp > 18)) {
     alerts.push({
       type: 'alerta_radiacion',
       severity: 'warning',
-      title: '☀️ ALERTA DE RADIACIÓN SOLAR ALTA / GOLPE DE CALOR',
-      message: `Temperatura de ${temp}°C a 4,380 msnm con índice UV extremadamente alto (>11). Riesgo de deshidratación celular e inburn foliar.`,
+      is_demo: Boolean(simulatedType),
+      is_stale: Boolean(weather?.is_stale),
+      title: Boolean(simulatedType) ? '🧪 [DEMO] ALERTA DE RADIACIÓN SOLAR ALTA / GOLPE DE CALOR' : '☀️ ALERTA DE RADIACIÓN SOLAR ALTA / GOLPE DE CALOR',
+      message: `Temperatura de ${temp !== null ? temp : 19}°C a 4,380 msnm con índice UV extremadamente alto (>11). Riesgo de deshidratación celular e inburn foliar.`,
       actions: [
         'Incrementar frecuencia de riego ligero al amanecer para reducir evapotranspiración.',
         'Aplicar caolín (arcilla blanca) o bio-protectores reflectantes al follaje.',
@@ -317,12 +471,14 @@ function generateAlerts(weather, forecast, simulatedType = null) {
     });
   }
 
-  if (simulatedType === 'granizo' || condition.includes('granizo') || (humidity > 85 && condition.includes('lluvia'))) {
+  if (simulatedType === 'granizo' || condition.includes('granizo') || (humidity !== null && humidity > 85 && condition.includes('lluvia'))) {
     alerts.push({
       type: 'alerta_granizo',
       severity: 'critical',
-      title: '🌩️ ALERTA DE LLUVIAS INTENSAS Y GRANIZO',
-      message: `Humedad de ${humidity}% con desarrollo nuboso vertical. Riesgo inminente de granizada y erosión de surcos.`,
+      is_demo: Boolean(simulatedType),
+      is_stale: Boolean(weather?.is_stale),
+      title: Boolean(simulatedType) ? '🧪 [DEMO] ALERTA DE LLUVIAS INTENSAS Y GRANIZO' : '🌩️ ALERTA DE LLUVIAS INTENSAS Y GRANIZO',
+      message: `Humedad de ${humidity !== null ? humidity : 90}% con desarrollo nuboso vertical. Riesgo inminente de granizada y erosión de surcos.`,
       actions: [
         'Instalar mallas antigranizo de monofilamento sobre cultivos de alto valor.',
         'Despejar y profundizar zanjas de coronación y canales de drenaje principal.',
@@ -332,12 +488,14 @@ function generateAlerts(weather, forecast, simulatedType = null) {
     });
   }
 
-  if (simulatedType === 'sequia' || (humidity < 40 && tempMin > 4)) {
+  if (simulatedType === 'sequia' || (humidity !== null && humidity < 40 && tempMin !== null && tempMin > 4)) {
     alerts.push({
       type: 'alerta_sequia',
       severity: 'warning',
-      title: '🏜️ ALERTA DE SEQUÍA Y ESTRÉS HÍDRICO',
-      message: `Humedad atmosférica crítica de ${humidity}%. Déficit hídrico acumulado amenaza la floración y tuberización.`,
+      is_demo: Boolean(simulatedType),
+      is_stale: Boolean(weather?.is_stale),
+      title: Boolean(simulatedType) ? '🧪 [DEMO] ALERTA DE SEQUÍA Y ESTRÉS HÍDRICO' : '🏜️ ALERTA DE SEQUÍA Y ESTRÉS HÍDRICO',
+      message: `Humedad atmosférica crítica de ${humidity !== null ? humidity : 35}%. Déficit hídrico acumulado amenaza la floración y tuberización.`,
       actions: [
         'Aplicar mulching (cobertura vegetativa muerta) en la base de las plantas.',
         'Priorizar el riego por goteo o surcos intercalados cada 4-5 días.',
@@ -347,13 +505,14 @@ function generateAlerts(weather, forecast, simulatedType = null) {
     });
   }
 
-  // Check forecast for upcoming threats
+  // Check forecast for upcoming threats (solo si temp_min es real y válida)
   if (forecast && Array.isArray(forecast)) {
     forecast.forEach(day => {
-      if (day.temp_min <= -2 && day.date !== 'Hoy') {
+      if (typeof day.temp_min === 'number' && day.temp_min <= -2 && day.date !== 'Hoy') {
         alerts.push({
           type: 'alerta_helada',
           severity: 'warning',
+          is_demo: Boolean(day.is_simulation),
           title: `❄️ HELADA EN PRONÓSTICO — ${day.date}`,
           message: `Se prevé descenso térmico a ${day.temp_min}°C en ${day.date}. Preparar defensas activas.`,
           actions: ['Revisar stock de mantas agrícolas', 'Asegurar operatividad de riego', 'Monitorear boletín senamhi']
@@ -383,8 +542,33 @@ async function getCachedWeather(type) {
   return null;
 }
 
+async function getStaleCachedWeather(type, maxAgeMs = 24 * 60 * 60 * 1000) {
+  try {
+    const row = await dbGet(
+      'SELECT data_json, fetched_at FROM weather_cache WHERE location = ? AND data_type = ? ORDER BY fetched_at DESC LIMIT 1',
+      [DEFAULT_CITY, type]
+    );
+    if (row) {
+      const fetchedAt = new Date(row.fetched_at).getTime();
+      if (Date.now() - fetchedAt < maxAgeMs) {
+        const parsed = JSON.parse(row.data_json);
+        if (parsed && parsed._source !== 'simulated' && parsed._source !== 'unavailable') {
+          return parsed;
+        }
+      }
+    }
+  } catch (err) {
+    // Stale cache miss is ok
+  }
+  return null;
+}
+
 async function cacheWeather(type, data) {
   try {
+    // No persistir objetos de fallo 'unavailable' ni 'simulated' en la caché productiva
+    if (!data || data._source === 'unavailable' || data._source === 'simulated' || data.is_available === false) {
+      return;
+    }
     await dbRun(
       'INSERT INTO weather_cache (location, data_type, data_json) VALUES (?, ?, ?)',
       [DEFAULT_CITY, type, JSON.stringify(data)]
@@ -394,4 +578,10 @@ async function cacheWeather(type, data) {
   }
 }
 
-module.exports = { getCurrentWeather, getForecast, generateAlerts };
+module.exports = {
+  getCurrentWeather,
+  getForecast,
+  generateAlerts,
+  generateRealisticWeather,
+  buildUnavailableWeatherObject
+};

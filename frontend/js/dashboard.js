@@ -22,9 +22,12 @@ async function renderDashboard() {
   const frost = frostRes.data || {};
   const mlPredictions = mlPredRes.data || [];
 
-  const temp = live.temp_2m ?? weather.main?.temp ?? '--';
-  const humidity = live.humidity ?? weather.main?.humidity ?? '--';
-  const condition = live.condition || weather.weather?.[0]?.description || 'Tiempo estable';
+  const isAvailable = live.is_available !== false && live.status !== 'unavailable' && (live.temp_2m !== null || weather.main?.temp !== null);
+  const temp = isAvailable ? (live.temp_2m ?? weather.main?.temp) : null;
+  const humidity = isAvailable ? (live.humidity ?? weather.main?.humidity) : null;
+  const condition = isAvailable
+    ? (live.condition || weather.weather?.[0]?.description || 'Tiempo estable')
+    : 'Información en sincronización';
   const alertCount = alerts.alerts?.length || 0;
 
   return `
@@ -38,7 +41,7 @@ async function renderDashboard() {
         </div>
         <div class="stat-card" style="--stat-color: var(--blue-500)">
           <div class="stat-card-icon">🌡️</div>
-          <div class="stat-card-value">${typeof temp === 'number' ? temp.toFixed(1) : temp}°</div>
+          <div class="stat-card-value">${temp !== null ? (typeof temp === 'number' ? temp.toFixed(1) + '°' : temp) : '--'}</div>
           <div class="stat-card-label">Temperatura Actual</div>
         </div>
         <div class="stat-card" style="--stat-color: ${alertCount > 0 ? 'var(--red-500)' : 'var(--amber-500)'}">
@@ -62,18 +65,26 @@ async function renderDashboard() {
           </div>
           <div class="flex items-center gap-lg">
             <div>
-              <div style="font-size: 48px; font-weight: 800; line-height: 1;">${typeof temp === 'number' ? temp.toFixed(1) : temp}°C</div>
+              <div style="font-size: 48px; font-weight: 800; line-height: 1;">${temp !== null ? (typeof temp === 'number' ? temp.toFixed(1) : temp) + '°C' : '--'}</div>
               <div class="text-muted mt-sm">${condition}</div>
             </div>
             <div style="flex: 1;">
               <div class="weather-meta" style="flex-direction: column; gap: 8px;">
-                <div class="weather-meta-item">💧 Humedad: <strong>${humidity}%</strong></div>
-                <div class="weather-meta-item">🌬️ Viento: <strong>${weather.wind?.speed ?? '--'} m/s</strong></div>
+                <div class="weather-meta-item">💧 Humedad: <strong>${humidity !== null ? humidity + '%' : '--'}</strong></div>
+                <div class="weather-meta-item">🌬️ Viento: <strong>${isAvailable && (weather.wind?.speed ?? live.wind_speed) ? (weather.wind?.speed ?? live.wind_speed) + ' m/s' : '--'}</strong></div>
                 <div class="weather-meta-item">📍 Altitud: <strong>4,380 msnm</strong></div>
               </div>
             </div>
           </div>
-          ${frost.risk_level ? `
+          ${!isAvailable ? `
+            <div class="alert-card info" style="margin-top: 16px;">
+              <span class="alert-icon">⏳</span>
+              <div class="alert-content">
+                <div class="alert-title">Sincronización en curso</div>
+                <div class="alert-message">Esperando la próxima lectura de la estación meteorológica.</div>
+              </div>
+            </div>
+          ` : (frost.risk_level ? `
             <div class="alert-card ${frost.risk_level === 'critico' ? 'critical' : frost.risk_level === 'alto' ? 'warning' : 'info'}" style="margin-top: 16px;">
               <span class="alert-icon">${frost.risk_level === 'critico' ? '🥶' : frost.risk_level === 'alto' ? '⚠️' : '🌡️'}</span>
               <div class="alert-content">
@@ -81,7 +92,7 @@ async function renderDashboard() {
                 <div class="alert-message">${frost.recommendation}</div>
               </div>
             </div>
-          ` : ''}
+          ` : '')}
         </div>
 
         <!-- Active Alerts -->

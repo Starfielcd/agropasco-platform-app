@@ -83,55 +83,98 @@ async function renderWeatherPage() {
   const alerts = alertsRes.data || {};
   const frost = frostRes.data || {};
 
-  const temp = live.temp_2m ?? live.main?.temp ?? 4.5;
-  const humidity = live.humidity ?? live.main?.humidity ?? 75;
-  const soilTemp = live.soil_temp_0cm ?? live.soil?.temp ?? 5.2;
-  const soilMoisture = live.soil_moisture_1cm ?? live.soil?.moisture ?? 0.35;
-  const uvIndex = live.uv_index ?? 9.5;
+  const isAvailable = live.is_available !== false && live.status !== 'unavailable' && (live.temp_2m !== null || live.main?.temp !== null);
+  const temp = isAvailable ? (live.temp_2m ?? live.main?.temp) : null;
+  const humidity = isAvailable ? (live.humidity ?? live.main?.humidity) : null;
+  const soilTemp = isAvailable ? (live.soil_temp_0cm ?? live.soil?.temp) : null;
+  const soilMoisture = isAvailable ? (live.soil_moisture_1cm ?? live.soil?.moisture) : null;
+  const uvIndex = isAvailable ? (live.uv_index) : null;
+
+  const updateTime = live.updated_at
+    ? new Date(live.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
+
+  // Determinar insignia y encabezado según el estado de integridad
+  let badgeHtml = '<span class="badge badge-amber">⏳ En Sincronización</span>';
+  let headerTitle = 'Estación Meteorológica — Servicio en Sincronización';
+  let headerSubtitle = 'Coordenadas: Lat -10.6674, Lon -76.2567 (Cerro de Pasco — 4,380 msnm)';
+
+  if (live.status === 'fresh' || live._source === 'open-meteo-live') {
+    badgeHtml = '<span class="badge badge-green">⚡ En vivo</span>';
+    headerTitle = 'Estación Meteorológica en Vivo — Open-Meteo API';
+    headerSubtitle = `Lectura oficial en tiempo real (4,380 msnm)${updateTime ? ' • Actualizado: ' + updateTime : ''}`;
+  } else if (live.status === 'cache' || live._source === 'open-meteo-shared-cache') {
+    badgeHtml = '<span class="badge badge-blue">💾 Caché Verificada</span>';
+    headerTitle = 'Estación Meteorológica — Open-Meteo API (Caché)';
+    headerSubtitle = `Datos reales vigentes en caché${updateTime ? ' • Lectura: ' + updateTime : ''}`;
+  } else if (live.status === 'stale' || live._source?.includes('stale') || live.is_stale) {
+    badgeHtml = '<span class="badge badge-amber">🕒 Datos de Respaldo</span>';
+    headerTitle = 'Estación Meteorológica — Datos de Respaldo Previo';
+    headerSubtitle = 'Información previa de Open-Meteo en caché. Tomar con cautela hasta nueva sincronización.';
+  } else if (live.status === 'simulated' || live._source === 'simulated' || live.is_simulation) {
+    badgeHtml = '<span class="badge badge-purple">🧪 Modo Demostración</span>';
+    headerTitle = 'Entorno de Demostración — Datos Sintéticos';
+    headerSubtitle = 'Simulación activa para pruebas visuales y capacitación agronómica.';
+  }
 
   return `
     <div class="page-content">
-      <!-- Open-Meteo Live Header Badge -->
-      <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.25); padding: 10px 16px; border-radius: var(--radius-sm);">
+      <!-- Estado de Integridad Meteorológica -->
+      <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: var(--radius-sm);">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 20px;">📡</span>
           <div>
-            <strong style="font-size: 13.5px; color: var(--green-400);">Estación Meteorológica en Vivo — Open-Meteo API</strong>
-            <div class="text-sm text-muted">Coordenadas: Lat -10.6674, Lon -76.2567 (Cerro de Pasco — 4,380 msnm)</div>
+            <strong style="font-size: 13.5px; color: var(--text-primary);">${headerTitle}</strong>
+            <div class="text-sm text-muted">${headerSubtitle}</div>
           </div>
         </div>
-        <span class="badge badge-green">⚡ En vivo</span>
+        ${badgeHtml}
       </div>
+
+      ${!isAvailable ? `
+        <!-- Tarjeta Informativa de Sincronización / No Disponible -->
+        <div class="card mb-lg" style="border-left: 4px solid var(--amber-400); background: rgba(245, 158, 11, 0.08);">
+          <div class="flex items-center gap-md">
+            <span style="font-size: 32px;">⏳</span>
+            <div>
+              <div style="font-weight: 700; font-size: 15px; color: var(--amber-400);">Información meteorológica temporalmente no disponible</div>
+              <div class="text-sm text-muted" style="margin-top: 4px; line-height: 1.5;">
+                Estamos esperando la próxima consulta al servicio meteorológico. Las recomendaciones agronómicas se basan en pautas técnicas para Cerro de Pasco (4,380 msnm).
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Weather Hero Widget -->
       <div class="weather-hero">
         <div class="weather-main">
           <div class="weather-temp">
-            ${typeof temp === 'number' ? temp.toFixed(1) : temp}<span class="weather-temp-unit">°C</span>
+            ${temp !== null ? (typeof temp === 'number' ? temp.toFixed(1) : temp) : '--'}<span class="weather-temp-unit">°C</span>
           </div>
           <div class="weather-details">
             <h3>📍 Cerro de Pasco</h3>
             <p style="font-size: 16px; color: var(--green-300); font-weight: 600;">
-              ${temp <= 0 ? '🥶 Helada Severa / Descenso Térmico' : temp <= 3 ? '⚠️ Frío Intenso' : '⛅ Tiempo Estable'}
+              ${temp !== null ? (temp <= 0 ? '🥶 Helada Severa / Descenso Térmico' : temp <= 3 ? '⚠️ Frío Intenso' : '⛅ Tiempo Estable') : 'Información en sincronización'}
             </p>
 
             <!-- Grid de Indicadores Clave en Vivo -->
             <div class="weather-meta" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px;">
               <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--blue-400);">
                 <div class="text-sm text-muted">💧 Humedad Aire</div>
-                <strong style="font-size: 16px;">${humidity}%</strong>
+                <strong style="font-size: 16px;">${humidity !== null ? humidity + '%' : '--'}</strong>
               </div>
               <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--amber-400);">
                 <div class="text-sm text-muted">🌱 Temp. Suelo</div>
-                <strong style="font-size: 16px;">${typeof soilTemp === 'number' ? soilTemp.toFixed(1) : soilTemp}°C</strong>
+                <strong style="font-size: 16px;">${typeof soilTemp === 'number' ? soilTemp.toFixed(1) + '°C' : '--'}</strong>
               </div>
               <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--cyan-400);">
                 <div class="text-sm text-muted">🌧️ Humedad Suelo</div>
-                <strong style="font-size: 16px;">${(soilMoisture * 100).toFixed(0)}%</strong>
+                <strong style="font-size: 16px;">${typeof soilMoisture === 'number' ? (soilMoisture * 100).toFixed(0) + '%' : '--'}</strong>
               </div>
               <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--purple-400);">
                 <div class="text-sm text-muted">☀️ Índice UV</div>
-                <strong style="font-size: 16px; color: ${uvIndex > 10 ? 'var(--red-400)' : 'var(--amber-400)'};">${typeof uvIndex === 'number' ? uvIndex.toFixed(1) : uvIndex}</strong>
+                <strong style="font-size: 16px; color: ${typeof uvIndex === 'number' && uvIndex > 10 ? 'var(--red-400)' : 'var(--amber-400)'};">${typeof uvIndex === 'number' ? uvIndex.toFixed(1) : '--'}</strong>
               </div>
             </div>
           </div>
@@ -139,14 +182,18 @@ async function renderWeatherPage() {
         
         <!-- 5-Day Forecast -->
         <div class="weather-forecast">
-          ${forecast.map(day => `
+          ${forecast && forecast.length > 0 ? forecast.map(day => `
             <div class="forecast-day">
               <div class="forecast-day-name">${day.date}</div>
               <div class="forecast-day-icon">${day.icon || '⛅'}</div>
               <div class="forecast-day-temp">${day.temp_max?.toFixed(0) ?? '--'}° <span>${day.temp_min?.toFixed(0) ?? '--'}°</span></div>
               <div class="forecast-day-rain">💧 ${day.rain_prob ?? 0}%</div>
             </div>
-          `).join('')}
+          `).join('') : `
+            <div style="grid-column: 1 / -1; padding: 20px; text-align: center; color: var(--text-muted); font-size: 13.5px;">
+              ⏳ Pronóstico extendido en sincronización con la estación meteorológica...
+            </div>
+          `}
         </div>
       </div>
 
@@ -192,28 +239,29 @@ async function renderWeatherPage() {
 }
 
 // ===== RENDERIZADO DEL MÓDULO CON BOTÓN DE ACCIÓN DINÁMICO =====
-function renderFrostRisk(frost, currentTemp = 4) {
+function renderFrostRisk(frost, currentTemp = null) {
+  const hasTemp = typeof currentTemp === 'number';
   let scenarioKey = 'helada';
   if (activeWeatherSim) {
     scenarioKey = activeWeatherSim;
-  } else if (currentTemp <= 0) {
+  } else if (hasTemp && currentTemp <= 0) {
     scenarioKey = 'helada';
-  } else if (currentTemp > 18) {
+  } else if (hasTemp && currentTemp > 18) {
     scenarioKey = 'radiacion';
   }
 
   const protocol = EMERGENCY_PROTOCOLS[scenarioKey] || EMERGENCY_PROTOCOLS.helada;
-  const level = frost.risk_level || (currentTemp <= 0 ? 'critico' : currentTemp <= 3 ? 'alto' : 'bajo');
-  const score = frost.risk_score ?? (currentTemp <= 0 ? 88 : currentTemp <= 3 ? 65 : 20);
+  const level = frost.risk_level || (!hasTemp ? 'bajo' : (currentTemp <= 0 ? 'critico' : currentTemp <= 3 ? 'alto' : 'bajo'));
+  const score = frost.risk_score ?? (!hasTemp ? '--' : (currentTemp <= 0 ? 88 : currentTemp <= 3 ? 65 : 20));
 
   const levelText = {
     critico: '🔴 PELIGRO EXTREMO (<0°C)',
     alto: '🟡 CUIDADO / PRECAUCIÓN',
     medio: '🟡 CUIDADO / PRECAUCIÓN',
-    bajo: '🟢 SEGURO / NORMAL'
+    bajo: hasTemp ? '🟢 SEGURO / NORMAL' : '⚪ EN ESPERA'
   };
 
-  const badgeClass = { critico: 'red', alto: 'amber', medio: 'amber', bajo: 'green' };
+  const badgeClass = { critico: 'red', alto: 'amber', medio: 'amber', bajo: hasTemp ? 'green' : 'amber' };
 
   return `
     <div class="card">
@@ -226,19 +274,19 @@ function renderFrostRisk(frost, currentTemp = 4) {
 
       <div style="text-align: center; padding: 16px 0;">
         <div style="font-size: 64px; font-weight: 900; line-height: 1; color: ${level === 'critico' ? 'var(--red-400)' : level === 'alto' ? 'var(--amber-400)' : 'var(--green-400)'};">
-          ${score} <span style="font-size: 20px; font-weight: 500; color: var(--text-muted);">/ 100</span>
+          ${score} <span style="font-size: 20px; font-weight: 500; color: var(--text-muted);">${hasTemp ? '/ 100' : ''}</span>
         </div>
-        <div style="font-size: 13.5px; color: var(--text-secondary); margin-top: 6px;">Puntuación de Riesgo de Congelamiento</div>
+        <div style="font-size: 13.5px; color: var(--text-secondary); margin-top: 6px;">${hasTemp ? 'Puntuación de Riesgo de Congelamiento' : 'Esperando sincronización de temperatura'}</div>
       </div>
 
       <!-- Desglose Visual de Factores -->
       <div style="display: grid; gap: 8px; margin-top: 12px; margin-bottom: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-glass); border-radius: 8px; border-left: 3px solid ${currentTemp <= 0 ? 'var(--red-500)' : 'var(--green-500)'};">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-glass); border-radius: 8px; border-left: 3px solid ${!hasTemp ? 'var(--amber-400)' : (currentTemp <= 0 ? 'var(--red-500)' : 'var(--green-500)')};">
           <div>
             <strong style="font-size: 13px;">🌡️ Temp. Aire (2m):</strong>
-            <div class="text-sm text-muted">${currentTemp}°C</div>
+            <div class="text-sm text-muted">${hasTemp ? currentTemp + '°C' : 'En sincronización (--)'}</div>
           </div>
-          <span class="badge badge-${currentTemp <= 0 ? 'red' : 'green'}">${currentTemp <= 0 ? 'Congelante' : 'Seguro'}</span>
+          <span class="badge badge-${!hasTemp ? 'amber' : (currentTemp <= 0 ? 'red' : 'green')}">${!hasTemp ? 'En Espera' : (currentTemp <= 0 ? 'Congelante' : 'Seguro')}</span>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-glass); border-radius: 8px; border-left: 3px solid var(--blue-400);">

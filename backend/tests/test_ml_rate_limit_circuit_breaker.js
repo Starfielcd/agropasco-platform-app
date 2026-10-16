@@ -261,7 +261,7 @@ async function runSuite() {
     db.dbGet = origDbGet;
 
     assert.strictEqual(weatherFetchCalls, 0, 'weatherService no debe llamar a Open-Meteo durante enfriamiento activo');
-    assert.strictEqual(weather._source, 'simulated', 'weatherService debe usar fallback simulado sin llamar a red');
+    assert.strictEqual(weather._source, 'unavailable', 'weatherService debe responder unavailable sin inventar datos en enfriamiento');
   });
 
   await test('Recuperación automática posterior al periodo de enfriamiento', async () => {

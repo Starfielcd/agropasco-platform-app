@@ -547,7 +547,7 @@ async function runSecuritySuite() {
 
       try {
         const result = await weatherService.getCurrentWeather();
-        assert.strictEqual(result._source, 'simulated', 'Debe degradar a datos simulados');
+        assert.strictEqual(result._source, 'unavailable', 'Debe degradar a estado unavailable sin inventar datos');
         assert.strictEqual(mlService.isRateLimitActive(), true, 'Debe activar circuit breaker');
         const status = mlService.getRateLimitStatus();
         assert(status.remainingMs >= 85000 && status.remainingMs <= 90000, `Debe respetar ~90s (fue: ${status.remainingMs}ms)`);

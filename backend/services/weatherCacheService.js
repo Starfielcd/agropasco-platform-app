@@ -467,6 +467,11 @@ function formatWeatherStateForFarmer(errorObj = {}) {
   };
 }
 
+function clearSharedCache() {
+  _sharedMemoryCache.clear();
+  _inFlightGridPromises.clear();
+}
+
 module.exports = {
   getGridKey,
   getSharedForecast,
@@ -479,6 +484,7 @@ module.exports = {
   setTestModeOverride,
   checkAltitudeCompatibility,
   isForecastCompatibleWithMl,
+  clearSharedCache,
   MAX_COMPATIBLE_ALTITUDE_DIFF_METERS,
   SHARED_WEATHER_CACHE_TTL_MS,
   SHARED_WEATHER_STALE_MAX_AGE_MS,

@@ -7,17 +7,19 @@ const { dbAll } = require('../config/database');
 
 async function getCurrent(req, res) {
   try {
-    const weather = await getCurrentWeather();
+    const allowSimulation = req.query.sim === 'true' || req.query.sim === 'demo' || req.query.sim === 'helada';
+    const weather = await getCurrentWeather({ allowSimulation });
     res.json({ success: true, data: weather });
   } catch (err) {
-    console.error('Error al obtener clima:', err);
+    console.error('Error al obtener clima:', err.message || err);
     res.status(500).json({ success: false, error: 'Error al obtener datos climáticos.' });
   }
 }
 
 async function getForecastData(req, res) {
   try {
-    const forecast = await getForecast();
+    const allowSimulation = req.query.sim === 'true' || req.query.sim === 'demo';
+    const forecast = await getForecast({ allowSimulation });
     res.json({ success: true, data: forecast });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Error al obtener pronóstico.' });
@@ -26,9 +28,10 @@ async function getForecastData(req, res) {
 
 async function getAlerts(req, res) {
   try {
-    const weather = await getCurrentWeather();
-    const forecast = await getForecast();
     const simType = req.query.sim || null;
+    const isExplicitDemo = Boolean(simType);
+    const weather = await getCurrentWeather({ allowSimulation: isExplicitDemo });
+    const forecast = await getForecast({ allowSimulation: isExplicitDemo });
     const alerts = generateAlerts(weather, forecast, simType);
 
     res.json({
@@ -37,11 +40,13 @@ async function getAlerts(req, res) {
         alerts,
         total: alerts.length,
         has_critical: alerts.some(a => a.severity === 'critical'),
+        is_simulation: isExplicitDemo,
         weather_summary: {
-          temp: weather.main?.temp,
-          temp_min: weather.main?.temp_min,
-          humidity: weather.main?.humidity,
-          condition: weather.weather?.[0]?.description
+          temp: weather.main?.temp ?? weather.temp_2m ?? null,
+          temp_min: weather.main?.temp_min ?? null,
+          humidity: weather.main?.humidity ?? weather.humidity ?? null,
+          condition: weather.weather?.[0]?.description ?? weather.condition ?? 'No disponible',
+          status: weather.status || 'unknown'
         }
       }
     });
