@@ -6,7 +6,8 @@
 // ===== ROLE-BASED ROUTE DEFINITIONS =====
 const routes = {
   // Public
-  '/login': { title: 'Iniciar Sesión', render: () => renderLoginPage(), public: true, fullPage: true },
+  '/login': { title: 'Iniciar Sesión', render: () => renderLoginPage('login'), public: true, fullPage: true },
+  '/register': { title: 'Registrarse', render: () => renderLoginPage('register'), public: true, fullPage: true },
 
   // Farmer routes
   '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas', icon: '📊', render: renderDashboard, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
@@ -55,14 +56,15 @@ async function navigateTo(path) {
   // Extraer ruta base sin query params (ej: /crops?action=new -> /crops)
   const basePath = path.split('?')[0];
 
-  // Auth guard
-  if (!token && basePath !== '/login') {
+  // Auth guard: solo permitir /login y /register sin autenticación
+  const isPublicRoute = basePath === '/login' || basePath === '/register';
+  if (!token && !isPublicRoute) {
     window.location.hash = '#/login';
     return;
   }
 
-  // Redirect authenticated users away from login
-  if (token && basePath === '/login') {
+  // Redirigir usuarios autenticados fuera de login o register
+  if (token && isPublicRoute) {
     window.location.hash = '#' + (defaultRoutes[user?.role] || '/dashboard');
     return;
   }

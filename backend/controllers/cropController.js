@@ -112,7 +112,7 @@ async function getCrop(req, res) {
 
 async function updateCrop(req, res) {
   try {
-    const { name, crop_type, variety, area_hectares, planting_date, expected_harvest_date, status, location_detail, altitude_masl, notes } = req.body;
+    const { name, crop_type, variety, area_hectares, planting_date, expected_harvest_date, status, location_detail, altitude_masl, notes, photo_url } = req.body;
 
     const isAdmin = req.user.role === 'admin';
     const crop = isAdmin
@@ -123,14 +123,18 @@ async function updateCrop(req, res) {
       return res.status(404).json({ success: false, error: 'Cultivo no encontrado.' });
     }
 
+    const finalPhoto = (photo_url && typeof photo_url === 'string' && photo_url.trim() !== '')
+      ? photo_url.trim()
+      : crop.photo_url;
+
     await dbRun(
       `UPDATE crops SET name=?, crop_type=?, variety=?, area_hectares=?, planting_date=?, expected_harvest_date=?, 
-       status=?, location_detail=?, altitude_masl=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+       status=?, location_detail=?, altitude_masl=?, notes=?, photo_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
       [name || crop.name, crop_type || crop.crop_type, variety ?? crop.variety,
        area_hectares ?? crop.area_hectares, planting_date ?? crop.planting_date,
        expected_harvest_date ?? crop.expected_harvest_date, status || crop.status,
        location_detail ?? crop.location_detail, altitude_masl ?? crop.altitude_masl,
-       notes ?? crop.notes, req.params.id]
+       notes ?? crop.notes, finalPhoto, req.params.id]
     );
 
     // Log status change

@@ -161,7 +161,7 @@ async function handleBase64Upload(req, res) {
     if (mimeType.includes('png')) ext = '.png';
     else if (mimeType.includes('webp')) ext = '.webp';
 
-    const safeFolder = ['pests', 'products'].includes(folder) ? folder : 'general';
+    const safeFolder = ALLOWED_FOLDERS.includes(folder) ? folder : 'general';
     const filename = generateSafeFilename('capture', ext);
 
     const result = await persistFile({

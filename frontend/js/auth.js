@@ -5,7 +5,8 @@
  * Modal de cambio de contraseña obligatorio al primer login tras aprobación.
  */
 
-function renderLoginPage() {
+function renderLoginPage(initialTab = 'login') {
+  const isRegister = initialTab === 'register' || (typeof window !== 'undefined' && window.location && window.location.hash === '#/register');
   return `
     <div class="login-page">
       <!-- Fondo Agrícola Inmersivo y Marco Botánico -->
@@ -101,7 +102,7 @@ function renderLoginPage() {
               <!-- Banner dinámico para configuración inicial del administrador si no existe -->
               <div id="initial-setup-banner-container"></div>
 
-              <div id="login-form-container">
+              <div id="login-form-container" class="${isRegister ? 'hidden' : ''}">
                 <div class="login-form-intro">
                   <h2 class="login-form-title">Iniciar sesión</h2>
                   <p class="login-form-desc">Accede a tu cuenta para gestionar tus parcelas</p>
@@ -145,13 +146,17 @@ function renderLoginPage() {
                     <span class="login-divider-line"></span>
                   </div>
 
-                  <button type="button" class="btn-login-register" onclick="switchAuthTab('register')">
+                  <button type="button" class="btn-login-register" id="btn-switch-to-register" onclick="switchAuthTab('register')">
                     👤 Registrarse
                   </button>
                 </form>
               </div>
 
-            <div id="register-form-container" class="hidden">
+            <div id="register-form-container" class="${isRegister ? '' : 'hidden'}">
+              <div class="login-form-intro">
+                <h2 class="login-form-title">Crear Cuenta</h2>
+                <p class="login-form-desc">Únete a la plataforma agrícola de la Región Pasco</p>
+              </div>
               <form id="register-form" onsubmit="handleRegister(event)">
                 <div class="form-group">
                   <label class="form-label" for="reg-name">Nombre Completo</label>
@@ -241,6 +246,16 @@ function renderLoginPage() {
                 <button type="submit" class="btn btn-primary btn-block btn-lg" id="register-btn" style="box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);">
                   🌾 Crear Cuenta
                 </button>
+
+                <div class="login-divider-row" style="margin-top: 16px;">
+                  <span class="login-divider-line"></span>
+                  <span class="login-divider-text">¿Ya tienes cuenta?</span>
+                  <span class="login-divider-line"></span>
+                </div>
+
+                <button type="button" class="btn btn-secondary btn-block" onclick="switchAuthTab('login')" style="margin-top: 8px;">
+                  ← Iniciar Sesión
+                </button>
               </form>
             </div>
 
@@ -276,23 +291,31 @@ function selectRole(role) {
 }
 
 function switchAuthTab(tab) {
+  if (window.__stepperPollInterval) {
+    clearInterval(window.__stepperPollInterval);
+    window.__stepperPollInterval = null;
+  }
   const tabLogin = document.getElementById('tab-login');
   const tabRegister = document.getElementById('tab-register');
+  const loginContainer = document.getElementById('login-form-container');
+  const registerContainer = document.getElementById('register-form-container');
 
   if (tab === 'login') {
-    if (window.__stepperPollInterval) {
-      clearInterval(window.__stepperPollInterval);
-      window.__stepperPollInterval = null;
+    if (tabLogin) tabLogin.classList.add('active');
+    if (tabRegister) tabRegister.classList.remove('active');
+    if (loginContainer) loginContainer.classList.remove('hidden');
+    if (registerContainer) registerContainer.classList.add('hidden');
+    if (window.location.hash !== '#/login') {
+      window.history.replaceState(null, '', '#/login');
     }
-    tabLogin.classList.add('active');
-    tabRegister.classList.remove('active');
-    document.getElementById('login-form-container').classList.remove('hidden');
-    document.getElementById('register-form-container').classList.add('hidden');
   } else {
-    tabRegister.classList.add('active');
-    tabLogin.classList.remove('active');
-    document.getElementById('login-form-container').classList.add('hidden');
-    document.getElementById('register-form-container').classList.remove('hidden');
+    if (tabRegister) tabRegister.classList.add('active');
+    if (tabLogin) tabLogin.classList.remove('active');
+    if (loginContainer) loginContainer.classList.add('hidden');
+    if (registerContainer) registerContainer.classList.remove('hidden');
+    if (window.location.hash !== '#/register') {
+      window.history.replaceState(null, '', '#/register');
+    }
   }
 }
 

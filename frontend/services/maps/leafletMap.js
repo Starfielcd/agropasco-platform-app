@@ -129,24 +129,32 @@ class AgroMap {
         if (this.userLocationMarker) this.map.removeLayer(this.userLocationMarker);
         if (this.userAccuracyCircle) this.map.removeLayer(this.userAccuracyCircle);
 
-        // Marcador pulsante de ubicación del agricultor
+        // Marcador visible y pulsante de ubicación del agricultor (Pin SVG + Radar de precisión)
         this.userLocationMarker = L.marker([lat, lng], {
           icon: L.divIcon({
-            html: `<div class="geo-pulse-marker">
-              <div class="geo-pulse-dot"></div>
-              <div class="geo-pulse-ring"></div>
+            html: `<div class="geo-pulse-container" style="position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;pointer-events:auto;">
+              <div class="geo-pulse-ring" style="position:absolute;width:34px;height:34px;border-radius:50%;background:rgba(34,197,94,0.4);border:1.5px solid #22c55e;animation:geoPulseRing 2s infinite ease-out;"></div>
+              <div class="geo-pulse-pin" style="position:relative;z-index:2;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.55));">
+                <svg width="26" height="32" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 0C5.37 0 0 5.37 0 12C0 19.5 10.2 28.8 11.1 29.6C11.6 30.1 12.4 30.1 12.9 29.6C13.8 28.8 24 19.5 24 12C24 5.37 18.63 0 12 0Z" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/>
+                  <circle cx="12" cy="11" r="5" fill="#FFFFFF"/>
+                  <circle cx="12" cy="11" r="2.8" fill="#15803D"/>
+                </svg>
+              </div>
             </div>`,
-            className: 'geo-pulse-container',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            className: 'geo-pulse-container-wrapper',
+            iconSize: [34, 34],
+            iconAnchor: [17, 32],
+            popupAnchor: [0, -30]
           }),
-          zIndexOffset: 1000
+          zIndexOffset: 1500
         }).addTo(this.map);
 
         this.userLocationMarker.bindPopup(
-          `<div style="font-family:Inter,sans-serif;text-align:center;">
-            <strong style="color:#22c55e;">📍 Tu ubicación actual</strong><br>
-            <span style="font-size:12px;color:#94a3b8;">Precisión: ~${Math.round(accuracy)}m</span>
+          `<div style="font-family:Inter,sans-serif;text-align:center;padding:4px 2px;">
+            <div style="font-weight:700;color:#16a34a;font-size:13.5px;margin-bottom:2px;">📍 Tu ubicación GPS</div>
+            <div style="font-size:12px;color:#1e293b;font-weight:600;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">Precisión estimada: ~${Math.round(accuracy)} metros</div>
           </div>`
         );
 

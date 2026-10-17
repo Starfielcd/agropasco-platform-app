@@ -3506,3 +3506,52 @@ body.role-supermarket .timeline-item {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== MARCADOR GPS DE ALTA PRECISIÓN LEAFLET (UIUX / FIX01) ===== */
+.geo-pulse-container-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+.geo-pulse-container {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.geo-pulse-ring {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.4);
+  border: 1.5px solid #22c55e;
+  animation: geoPulseRing 2s infinite ease-out;
+  pointer-events: none;
+}
+
+.geo-pulse-pin {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
+  transition: transform 0.2s ease;
+}
+
+.geo-pulse-pin:hover {
+  transform: scale(1.15);
+}
+
+@keyframes geoPulseRing {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}

@@ -172,11 +172,14 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     if (response.status === 401 || response.status === 403) {
-      clearMLClientCacheInternal();
-      removeToken();
-      removeUser();
-      if (typeof window !== 'undefined' && window.location) {
-        window.location.hash = '#/login';
+      const isAuthEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register');
+      if (!isAuthEndpoint) {
+        clearMLClientCacheInternal();
+        removeToken();
+        removeUser();
+        if (typeof window !== 'undefined' && window.location) {
+          window.location.hash = '#/login';
+        }
       }
       return data;
     }

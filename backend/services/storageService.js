@@ -37,9 +37,24 @@ ALLOWED_FOLDERS.forEach(sub => {
  * Obtiene la configuración de Supabase Storage desde variables de entorno.
  */
 function getSupabaseConfig() {
-  let supabaseUrl = process.env.SUPABASE_URL || '';
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || '';
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'agropasco-products';
+  let supabaseUrl = (process.env.SUPABASE_URL || '').trim();
+  // Quitar comillas si fueron incluidas en variables de entorno de Render o .env
+  supabaseUrl = supabaseUrl.replace(/^['"]+|['"]+$/g, '');
+
+  // Normalizar y extraer únicamente el origin (protocolo + hostname)
+  // Esto elimina automáticamente cualquier subruta accidental como /rest/v1, /storage/v1, /auth/v1, o trailing slashes
+  // que causa el error "HTTP 404: Invalid path specified in request URL" (PGRST125)
+  if (supabaseUrl) {
+    try {
+      if (!/^https?:\/\//i.test(supabaseUrl)) {
+        supabaseUrl = `https://${supabaseUrl}`;
+      }
+      const parsed = new URL(supabaseUrl);
+      supabaseUrl = parsed.origin;
+    } catch (_) {
+      supabaseUrl = supabaseUrl.replace(/\/(rest|storage|auth)(\/v\d+)?\/?.*$/i, '').replace(/\/+$/, '');
+    }
+  }
 
   // Si no está explícitamente SUPABASE_URL pero DATABASE_URL contiene el host de Supabase
   if (!supabaseUrl && process.env.DATABASE_URL) {
@@ -51,10 +66,12 @@ function getSupabaseConfig() {
     }
   }
 
-  // Normalizar URL sin trailing slash
-  if (supabaseUrl.endsWith('/')) {
-    supabaseUrl = supabaseUrl.slice(0, -1);
-  }
+  let supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+  supabaseKey = supabaseKey.replace(/^['"]+|['"]+$/g, '');
+
+  let bucket = (process.env.SUPABASE_STORAGE_BUCKET || 'agropasco-products').trim();
+  bucket = bucket.replace(/^['"]+|['"]+$/g, '').replace(/^\/+|\/+$/g, '');
+  if (!bucket) bucket = 'agropasco-products';
 
   return {
     url: supabaseUrl,
@@ -77,7 +94,15 @@ async function uploadToSupabaseStorage(buffer, destinationPath, mimeType) {
     return { success: false, error: 'Supabase Storage no está configurado (faltan credenciales).' };
   }
 
-  const endpoint = `${config.url}/storage/v1/object/${config.bucket}/${destinationPath}`;
+  // Normalizar la ruta del archivo dentro del bucket: sin barras iniciales ni segmentos vacíos
+  const cleanPath = destinationPath
+    .replace(/^\/+/, '')
+    .replace(/\/+/g, '/')
+    .split('/')
+    .map(segment => encodeURIComponent(segment.trim()))
+    .join('/');
+
+  const endpoint = `${config.url}/storage/v1/object/${encodeURIComponent(config.bucket)}/${cleanPath}`;
 
   try {
     const response = await fetch(endpoint, {
@@ -101,12 +126,12 @@ async function uploadToSupabaseStorage(buffer, destinationPath, mimeType) {
         // mantener texto plano
       }
 
-      console.warn(`[SUPABASE_STORAGE_WARN] Fallo HTTP ${response.status} al subir ${destinationPath}:`, parsedMsg);
+      console.warn(`[SUPABASE_STORAGE_WARN] Fallo HTTP ${response.status} al subir ${cleanPath}:`, parsedMsg);
       return { success: false, error: `Supabase Storage HTTP ${response.status}: ${parsedMsg}` };
     }
 
     // La URL pública para buckets públicos de Supabase
-    const publicUrl = `${config.url}/storage/v1/object/public/${config.bucket}/${destinationPath}`;
+    const publicUrl = `${config.url}/storage/v1/object/public/${encodeURIComponent(config.bucket)}/${cleanPath}`;
     return { success: true, publicUrl };
 
   } catch (netErr) {
