@@ -24,14 +24,27 @@ async function renderCropsPage() {
     <div class="page-content">
       <div class="flex items-center justify-between mb-lg" style="flex-wrap: wrap; gap: 12px;">
         <div>
-          <h3 style="font-size: 18px; font-weight: 700;">${pageTitle}</h3>
+          <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 4px;">🌿 ${pageTitle}</h2>
           <p class="text-sm text-muted">${pageSubtitle}</p>
         </div>
         <button type="button" class="btn btn-primary" onclick="event.preventDefault(); event.stopPropagation(); showNewCropModal(event); return false;">+ Registrar Cultivo</button>
       </div>
 
+      <!-- Filtros de Estado estilo Natural Moderno -->
+      <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+        <button class="btn btn-sm" id="crop-filter-all" onclick="filterCropsDisplay('all')" style="border-radius: 99px; background: var(--forest-green); color: #fff;">
+          Todos (${crops.length})
+        </button>
+        <button class="btn btn-sm btn-secondary" id="crop-filter-active" onclick="filterCropsDisplay('active')" style="border-radius: 99px;">
+          Activos (${crops.filter(c => c.status !== 'cancelado' && c.status !== 'cosechado').length})
+        </button>
+        <button class="btn btn-sm btn-secondary" id="crop-filter-inactive" onclick="filterCropsDisplay('inactive')" style="border-radius: 99px;">
+          Cosechados (${crops.filter(c => c.status === 'cosechado').length})
+        </button>
+      </div>
+
       ${crops.length > 0 ? `
-        <div class="grid-3">
+        <div class="grid-3" id="crops-grid-container">
           ${crops.map(crop => renderCropCard(crop)).join('')}
         </div>
       ` : `

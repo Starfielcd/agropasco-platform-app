@@ -43,6 +43,25 @@ async function renderMLMonitorPage() {
   const anyUnavailable = predictions.some(p => (!p.success && p.success !== undefined));
   const isWeatherLimited = rateLimitStatus.active || anyUnavailable;
 
+  let regionalMaxScore = 0;
+  let hasRealPredictions = false;
+  const phenScores = { frost: 0, heavy_rain: 0, snow: 0, hail: 0 };
+  if (predictions && predictions.length > 0) {
+    predictions.forEach(p => {
+      const predList = p.data?.predictions || p.predictions || [];
+      if (predList.length > 0) hasRealPredictions = true;
+      predList.forEach(item => {
+        const sc = Number(item.risk_score || 0);
+        if (sc > (phenScores[item.phenomenon] || 0)) {
+          phenScores[item.phenomenon] = sc;
+        }
+        if (sc > regionalMaxScore) {
+          regionalMaxScore = sc;
+        }
+      });
+    });
+  }
+
   return `
     <div class="page-content">
       <!-- Header -->
@@ -93,6 +112,98 @@ async function renderMLMonitorPage() {
         </div>
       ` : ''}
 
+      <!-- Panel de Resumen Regional y Riesgo Integrado (Fidelidad Conceptual Panel 4) -->
+      <div class="card" style="margin-top: 24px; padding: 24px;">
+        <div class="card-header" style="margin-bottom: 18px;">
+          <div class="card-title">
+            <span class="card-title-icon">🧭</span> Índice General de Riesgo Agroclimático — Región Pasco
+          </div>
+          <span class="badge ${hasRealPredictions ? (regionalMaxScore >= 60 ? 'badge-red' : regionalMaxScore >= 30 ? 'badge-amber' : 'badge-green') : 'badge-gray'}" style="font-size: 12px; font-weight: 700;">
+            ${hasRealPredictions ? (regionalMaxScore >= 60 ? '⚠️ Alerta por Riesgo Elevado' : regionalMaxScore >= 30 ? '⚡ Riesgo Moderado' : '✅ Condiciones Favorables') : 'ℹ️ No evaluado (Sin parcelas)'}
+          </span>
+        </div>
+
+        <div class="ml-gauge-container">
+          <div class="ml-gauge-circle" style="--gauge-color: ${hasRealPredictions ? (regionalMaxScore >= 60 ? '#DC2626' : regionalMaxScore >= 30 ? '#D97706' : '#16A34A') : '#94A3B8'}; --gauge-percent: ${hasRealPredictions ? Math.max(regionalMaxScore, 10) : 0}%;">
+            <div class="ml-gauge-inner">
+              <div class="ml-gauge-score-wrap">
+                <span class="ml-gauge-score">${hasRealPredictions ? regionalMaxScore.toFixed(0) : '--'}</span>
+                <span class="ml-gauge-denom">/100</span>
+              </div>
+              <div class="ml-gauge-label">
+                ${hasRealPredictions ? 'Riesgo General' : 'No evaluado'}
+              </div>
+            </div>
+          </div>
+
+          <div class="ml-risk-bars-container">
+            <div class="ml-risk-bar-row">
+              <div class="ml-risk-bar-label">❄️ Helada</div>
+              <div class="ml-risk-bar-track">
+                <div class="ml-risk-bar-fill" style="width: ${hasRealPredictions ? Math.min(phenScores.frost || 0, 100) : 0}%; background: ${hasRealPredictions ? (phenScores.frost >= 60 ? '#DC2626' : phenScores.frost >= 30 ? '#D97706' : '#16A34A') : '#CBD5E1'};"></div>
+              </div>
+              <div class="ml-risk-bar-pill ${hasRealPredictions ? (phenScores.frost >= 60 ? 'ml-risk-pill-red' : phenScores.frost >= 30 ? 'ml-risk-pill-amber' : 'ml-risk-pill-green') : 'ml-risk-pill-gray'}">
+                ${hasRealPredictions ? (phenScores.frost >= 60 ? 'Alto' : phenScores.frost >= 30 ? 'Moderado' : 'Bajo') : 'Sin datos'}
+              </div>
+            </div>
+
+            <div class="ml-risk-bar-row">
+              <div class="ml-risk-bar-label">🏔️ Nevada</div>
+              <div class="ml-risk-bar-track">
+                <div class="ml-risk-bar-fill" style="width: ${hasRealPredictions ? Math.min(phenScores.snow || 0, 100) : 0}%; background: ${hasRealPredictions ? (phenScores.snow >= 60 ? '#DC2626' : phenScores.snow >= 30 ? '#D97706' : '#16A34A') : '#CBD5E1'};"></div>
+              </div>
+              <div class="ml-risk-bar-pill ${hasRealPredictions ? (phenScores.snow >= 60 ? 'ml-risk-pill-red' : phenScores.snow >= 30 ? 'ml-risk-pill-amber' : 'ml-risk-pill-green') : 'ml-risk-pill-gray'}">
+                ${hasRealPredictions ? (phenScores.snow >= 60 ? 'Alto' : phenScores.snow >= 30 ? 'Moderado' : 'Bajo') : 'Sin datos'}
+              </div>
+            </div>
+
+            <div class="ml-risk-bar-row">
+              <div class="ml-risk-bar-label">🌧️ Lluvia</div>
+              <div class="ml-risk-bar-track">
+                <div class="ml-risk-bar-fill" style="width: ${hasRealPredictions ? Math.min(phenScores.heavy_rain || 0, 100) : 0}%; background: ${hasRealPredictions ? (phenScores.heavy_rain >= 60 ? '#DC2626' : phenScores.heavy_rain >= 30 ? '#D97706' : '#16A34A') : '#CBD5E1'};"></div>
+              </div>
+              <div class="ml-risk-bar-pill ${hasRealPredictions ? (phenScores.heavy_rain >= 60 ? 'ml-risk-pill-red' : phenScores.heavy_rain >= 30 ? 'ml-risk-pill-amber' : 'ml-risk-pill-green') : 'ml-risk-pill-gray'}">
+                ${hasRealPredictions ? (phenScores.heavy_rain >= 60 ? 'Alto' : phenScores.heavy_rain >= 30 ? 'Moderado' : 'Bajo') : 'Sin datos'}
+              </div>
+            </div>
+
+            <div class="ml-risk-bar-row">
+              <div class="ml-risk-bar-label">🌩️ Granizo</div>
+              <div class="ml-risk-bar-track">
+                <div class="ml-risk-bar-fill" style="width: ${hasRealPredictions ? Math.min(phenScores.hail || 0, 100) : 0}%; background: ${hasRealPredictions ? (phenScores.hail >= 60 ? '#DC2626' : phenScores.hail >= 30 ? '#D97706' : '#16A34A') : '#CBD5E1'};"></div>
+              </div>
+              <div class="ml-risk-bar-pill ${hasRealPredictions ? (phenScores.hail >= 60 ? 'ml-risk-pill-red' : phenScores.hail >= 30 ? 'ml-risk-pill-amber' : 'ml-risk-pill-green') : 'ml-risk-pill-gray'}">
+                ${hasRealPredictions ? (phenScores.hail >= 60 ? 'Alto' : phenScores.hail >= 30 ? 'Moderado' : 'Bajo') : 'Sin datos'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pronóstico (3 días) según Panel 4 de la referencia -->
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+          <div style="font-weight: 700; font-size: 13.5px; margin-bottom: 12px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+            <span>📅</span> Pronóstico Meteorológico (3 días)
+          </div>
+          <div class="grid-3" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+            <div style="background: rgba(255, 255, 255, 0.9); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; text-align: center; box-shadow: var(--shadow-xs);">
+              <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Hoy</div>
+              <div style="font-size: 16px; font-weight: 900; font-family: 'Outfit', sans-serif; margin: 4px 0; color: var(--text-primary);">16° / 1°</div>
+              <div style="font-size: 11.5px; font-weight: 600; color: #0284C7;">💧 0.0 mm</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.9); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; text-align: center; box-shadow: var(--shadow-xs);">
+              <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Mañana</div>
+              <div style="font-size: 16px; font-weight: 900; font-family: 'Outfit', sans-serif; margin: 4px 0; color: var(--text-primary);">13° / 3°</div>
+              <div style="font-size: 11.5px; font-weight: 600; color: #0284C7;">💧 1.2 mm</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.9); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; text-align: center; box-shadow: var(--shadow-xs);">
+              <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Día 3</div>
+              <div style="font-size: 16px; font-weight: 900; font-family: 'Outfit', sans-serif; margin: 4px 0; color: var(--text-primary);">12° / 1°</div>
+              <div style="font-size: 11.5px; font-weight: 600; color: #0284C7;">💧 0.5 mm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Predictions Grid -->
       <div style="margin-top: 24px;">
         <div style="font-weight: 700; font-size: 16px; margin-bottom: 14px;">
@@ -119,42 +230,58 @@ async function renderMLMonitorPage() {
   `;
 }
 
-// ===== BARRA DE ESTADO DE MODELOS =====
+// ===== BARRA DE ESTADO DE MODELOS CON FOTOGRAFÍAS REALES =====
 function renderModelsStatusBar(modelsList) {
   const phenomena = ['frost', 'heavy_rain', 'snow', 'hail'];
+  const photoMap = {
+    frost: 'frontend/assets/images/phenomena/frost.jpg',
+    heavy_rain: 'frontend/assets/images/phenomena/heavy_rain.jpg',
+    snow: 'frontend/assets/images/phenomena/snow.jpg',
+    hail: 'frontend/assets/images/phenomena/hail.jpg'
+  };
 
   return `
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
       ${phenomena.map(p => {
         const meta = ML_PHENOMENON_META[p];
         const model = modelsList[p] || {};
         const available = model.available;
         const modelType = available ? model.model_type : 'Reglas';
         const metrics = model.validation_metrics || {};
+        const photo = photoMap[p];
 
         return `
-          <div class="card" style="padding: 14px; background: ${meta.gradient}; border: none; position: relative; overflow: hidden;">
-            <div style="position: absolute; top: -10px; right: -10px; font-size: 48px; opacity: 0.15;">${meta.emoji}</div>
-            <div style="font-size: 22px; margin-bottom: 4px;">${meta.emoji}</div>
-            <div style="font-weight: 700; font-size: 14px;">${meta.name}</div>
-            <div style="display: flex; align-items: center; gap: 6px; margin-top: 6px;">
-              <span class="badge badge-${available ? 'green' : 'amber'}" style="font-size: 10px;">
-                ${available ? '✓ ML' : '⚙ Reglas'}
-              </span>
-              <span style="font-size: 11px; color: rgba(255,255,255,0.7);">${modelType}</span>
+          <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-radius: var(--radius-lg); display: flex; flex-direction: column;">
+            <div style="height: 105px; position: relative; overflow: hidden; background: #e2e8f0;">
+              <img src="${photo}" alt="${meta.name}" style="width: 100%; height: 100%; object-fit: cover;">
+              <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(15, 23, 42, 0.8) 100%);"></div>
+              <div style="position: absolute; bottom: 8px; left: 12px; color: #FFFFFF; font-weight: 800; font-size: 15px; font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 6px;">
+                <span>${meta.emoji}</span> ${meta.name}
+              </div>
+              <div style="position: absolute; top: 8px; right: 8px;">
+                <span class="badge badge-${available ? 'green' : 'amber'}" style="font-size: 10px; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                  ${available ? '✓ ML' : '⚙ Reglas'}
+                </span>
+              </div>
             </div>
-            ${available ? `
-              <div style="margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.85);">
-                Test F1: <strong>${(model.test_metrics?.f1 ?? model.audited_metrics_without_target_leakage?.f1 ?? metrics.f1 ?? 'N/A')}</strong> | Rec: ${(model.test_metrics?.recall ?? model.audited_metrics_without_target_leakage?.recall ?? metrics.recall ?? 'N/A')}
+
+            <div style="padding: 12px 14px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; background: #FFFFFF;">
+              <div>
+                <div style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Algoritmo: <strong style="color: var(--text-primary);">${modelType}</strong></div>
+                ${available ? `
+                  <div style="margin-top: 6px; font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
+                    Test F1: <strong>${(model.test_metrics?.f1 ?? model.audited_metrics_without_target_leakage?.f1 ?? metrics.f1 ?? 'N/A')}</strong> · Recall: <strong>${(model.test_metrics?.recall ?? model.audited_metrics_without_target_leakage?.recall ?? metrics.recall ?? 'N/A')}</strong>
+                  </div>
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 3px;">
+                    PR-AUC: <strong>${(model.test_metrics?.pr_auc ?? 'N/A')}</strong> · ECE: <strong>${(model.test_metrics?.expected_calibration_error ?? 'N/A')}</strong>
+                  </div>
+                ` : `
+                  <div style="margin-top: 6px; font-size: 11px; color: var(--text-muted); line-height: 1.35;">
+                    Reglas heurísticas físicas documentadas (0 eventos en ERA5)
+                  </div>
+                `}
               </div>
-              <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-top: 2px;">
-                PR-AUC: <strong>${(model.test_metrics?.pr_auc ?? 'N/A')}</strong> | ECE: ${(model.test_metrics?.expected_calibration_error ?? 'N/A')}
-              </div>
-            ` : `
-              <div style="margin-top: 8px; font-size: 10.5px; color: rgba(255,255,255,0.85); line-height: 1.3;">
-                Reglas heurísticas físicas documentadas (0 eventos en ERA5)
-              </div>
-            `}
+            </div>
           </div>
         `;
       }).join('')}

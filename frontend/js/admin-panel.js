@@ -44,7 +44,7 @@ async function renderAdminDashboard() {
       </div>
 
       <!-- Barra de Pestañas / Módulos de Administración -->
-      <div class="card mb-lg" style="padding: 6px; background: rgba(15,23,42,0.85); border: 1.5px solid var(--border);">
+      <div class="card mb-lg" style="padding: 6px; background: #FFFFFF; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
           <button class="btn ${currentAdminTab === 'pending' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="pending" style="flex: 1; min-width: 160px; font-weight: 700; position: relative;"
                   onclick="switchAdminTab('pending')">

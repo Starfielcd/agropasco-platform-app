@@ -117,14 +117,19 @@ async function renderWeatherPage() {
     headerSubtitle = 'Simulación activa para pruebas visuales y capacitación agronómica.';
   }
 
+  // Selección determinista de fotografía climática según datos reales
+  const dynamicWeatherImage = (typeof getDynamicWeatherImage === 'function') 
+    ? getDynamicWeatherImage(live, frost) 
+    : 'frontend/assets/images/weather/sunny.jpg';
+
   return `
     <div class="page-content">
       <!-- Estado de Integridad Meteorológica -->
-      <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: var(--radius-sm);">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">📡</span>
+      <div style="margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #FFFFFF; border: 1px solid var(--border); padding: 12px 20px; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">📡</span>
           <div>
-            <strong style="font-size: 13.5px; color: var(--text-primary);">${headerTitle}</strong>
+            <strong style="font-size: 14px; color: var(--text-primary); font-family: 'Outfit', sans-serif;">${headerTitle}</strong>
             <div class="text-sm text-muted">${headerSubtitle}</div>
           </div>
         </div>
@@ -133,12 +138,12 @@ async function renderWeatherPage() {
 
       ${!isAvailable ? `
         <!-- Tarjeta Informativa de Sincronización / No Disponible -->
-        <div class="card mb-lg" style="border-left: 4px solid var(--amber-400); background: rgba(245, 158, 11, 0.08);">
+        <div class="card mb-lg" style="border-left: 4px solid var(--amber-400); background: #FFFBEB;">
           <div class="flex items-center gap-md">
             <span style="font-size: 32px;">⏳</span>
             <div>
-              <div style="font-weight: 700; font-size: 15px; color: var(--amber-400);">Información meteorológica temporalmente no disponible</div>
-              <div class="text-sm text-muted" style="margin-top: 4px; line-height: 1.5;">
+              <div style="font-weight: 700; font-size: 15px; color: #92400E;">Información meteorológica temporalmente no disponible</div>
+              <div class="text-sm text-muted" style="margin-top: 4px; line-height: 1.5; color: #78350F;">
                 Estamos esperando la próxima consulta al servicio meteorológico. Las recomendaciones agronómicas se basan en pautas técnicas para Cerro de Pasco (4,380 msnm).
               </div>
             </div>
@@ -146,35 +151,35 @@ async function renderWeatherPage() {
         </div>
       ` : ''}
 
-      <!-- Weather Hero Widget -->
-      <div class="weather-hero">
+      <!-- Weather Hero Widget con Fotografía Dinámica Real -->
+      <div class="weather-hero" style="background: linear-gradient(135deg, rgba(20, 83, 45, 0.88), rgba(2, 132, 199, 0.78)), url('${dynamicWeatherImage}') center / cover no-repeat; box-shadow: var(--shadow-md); border-radius: var(--radius-xl);">
         <div class="weather-main">
-          <div class="weather-temp">
+          <div class="weather-temp" style="color: #FFFFFF; -webkit-text-fill-color: #FFFFFF;">
             ${temp !== null ? (typeof temp === 'number' ? temp.toFixed(1) : temp) : '--'}<span class="weather-temp-unit">°C</span>
           </div>
-          <div class="weather-details">
-            <h3>📍 Cerro de Pasco</h3>
-            <p style="font-size: 16px; color: var(--green-300); font-weight: 600;">
-              ${temp !== null ? (temp <= 0 ? '🥶 Helada Severa / Descenso Térmico' : temp <= 3 ? '⚠️ Frío Intenso' : '⛅ Tiempo Estable') : 'Información en sincronización'}
+          <div class="weather-details" style="color: #FFFFFF;">
+            <h3 style="color: #FFFFFF; font-size: 22px; font-weight: 800;">📍 Cerro de Pasco</h3>
+            <p style="font-size: 15px; color: #DCFCE7; font-weight: 600; margin-top: 2px;">
+              ${temp !== null ? (temp <= 0 ? '🥶 Helada Severa / Descenso Térmico' : temp <= 3 ? '⚠️ Frío Intenso' : '⛅ Tiempo Estable en la Región') : 'Información en sincronización'}
             </p>
 
             <!-- Grid de Indicadores Clave en Vivo -->
-            <div class="weather-meta" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px;">
-              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--blue-400);">
-                <div class="text-sm text-muted">💧 Humedad Aire</div>
-                <strong style="font-size: 16px;">${humidity !== null ? humidity + '%' : '--'}</strong>
+            <div class="weather-meta" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 16px;">
+              <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); padding: 10px 14px; border-radius: 10px; border-left: 3px solid #38BDF8;">
+                <div class="text-xs" style="color: rgba(255,255,255,0.85); font-weight: 600;">💧 Humedad Aire</div>
+                <strong style="font-size: 17px; color: #fff; font-family: 'Outfit', sans-serif;">${humidity !== null ? humidity + '%' : '--'}</strong>
               </div>
-              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--amber-400);">
-                <div class="text-sm text-muted">🌱 Temp. Suelo</div>
-                <strong style="font-size: 16px;">${typeof soilTemp === 'number' ? soilTemp.toFixed(1) + '°C' : '--'}</strong>
+              <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); padding: 10px 14px; border-radius: 10px; border-left: 3px solid #FBBF24;">
+                <div class="text-xs" style="color: rgba(255,255,255,0.85); font-weight: 600;">🌱 Temp. Suelo</div>
+                <strong style="font-size: 17px; color: #fff; font-family: 'Outfit', sans-serif;">${typeof soilTemp === 'number' ? soilTemp.toFixed(1) + '°C' : '--'}</strong>
               </div>
-              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--cyan-400);">
-                <div class="text-sm text-muted">🌧️ Humedad Suelo</div>
-                <strong style="font-size: 16px;">${typeof soilMoisture === 'number' ? (soilMoisture * 100).toFixed(0) + '%' : '--'}</strong>
+              <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); padding: 10px 14px; border-radius: 10px; border-left: 3px solid #34D399;">
+                <div class="text-xs" style="color: rgba(255,255,255,0.85); font-weight: 600;">🌧️ Humedad Suelo</div>
+                <strong style="font-size: 17px; color: #fff; font-family: 'Outfit', sans-serif;">${typeof soilMoisture === 'number' ? (soilMoisture * 100).toFixed(0) + '%' : '--'}</strong>
               </div>
-              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--purple-400);">
-                <div class="text-sm text-muted">☀️ Índice UV</div>
-                <strong style="font-size: 16px; color: ${typeof uvIndex === 'number' && uvIndex > 10 ? 'var(--red-400)' : 'var(--amber-400)'};">${typeof uvIndex === 'number' ? uvIndex.toFixed(1) : '--'}</strong>
+              <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); padding: 10px 14px; border-radius: 10px; border-left: 3px solid #A78BFA;">
+                <div class="text-xs" style="color: rgba(255,255,255,0.85); font-weight: 600;">☀️ Índice UV</div>
+                <strong style="font-size: 17px; color: #fff; font-family: 'Outfit', sans-serif;">${typeof uvIndex === 'number' ? uvIndex.toFixed(1) : '--'}</strong>
               </div>
             </div>
           </div>

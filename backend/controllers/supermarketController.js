@@ -307,4 +307,55 @@ async function getPendingProducts(req, res) {
   }
 }
 
-module.exports = { getProducts, getProduct, getProductTrace, publishProduct, validateProduct, getPendingProducts };
+// Actualizar producto registrado (Agricultor / Admin)
+async function updateProduct(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, crop_type, quality, origin, stock_kg, price_per_kg, unit, description, photo_url } = req.body;
+
+    const product = await dbGet('SELECT * FROM products WHERE id = ?', [id]);
+    if (!product) {
+      return res.status(404).json({ success: false, error: 'Producto no encontrado.' });
+    }
+
+    if (product.farmer_id && product.farmer_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'No tienes permiso para editar este producto.' });
+    }
+
+    const finalName = name || product.name;
+    const finalCrop = crop_type || product.crop_type;
+    const finalQuality = quality || product.quality;
+    const finalOrigin = origin || product.origin;
+    const finalStock = stock_kg !== undefined ? stock_kg : product.stock_kg;
+    const finalPrice = price_per_kg !== undefined ? price_per_kg : product.price_per_kg;
+    const finalUnit = unit || product.unit || 'kg';
+    const finalDesc = description !== undefined ? description : product.description;
+    const finalPhoto = photo_url !== undefined ? (photo_url ? photo_url.trim() : null) : product.photo_url;
+
+    await dbRun(
+      `UPDATE products SET
+        name = ?,
+        crop_type = ?,
+        quality = ?,
+        origin = ?,
+        stock_kg = ?,
+        price_per_kg = ?,
+        original_price = ?,
+        unit = ?,
+        description = ?,
+        photo_url = ?,
+        validation_status = 'pending',
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [finalName, finalCrop, finalQuality, finalOrigin, finalStock, finalPrice, finalPrice, finalUnit, finalDesc, finalPhoto, id]
+    );
+
+    const updated = await dbGet('SELECT * FROM products WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Producto actualizado y enviado a validación técnica.', data: updated });
+  } catch (err) {
+    console.error('Error al actualizar producto:', err);
+    res.status(500).json({ success: false, error: 'Error al actualizar producto.' });
+  }
+}
+
+module.exports = { getProducts, getProduct, getProductTrace, publishProduct, validateProduct, getPendingProducts, updateProduct };

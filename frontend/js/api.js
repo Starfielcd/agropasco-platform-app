@@ -8,32 +8,100 @@ const API_URL = (typeof window !== 'undefined' && window.location && (window.loc
   : '/api';
 const OPEN_METEO_LIVE_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-10.6674&longitude=-76.2567&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_1cm,uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FLima';
 
-// ===== BANCO DE IMÁGENES ILUSTRATIVAS DE ALTA CALIDAD PARA AGRICULTORES =====
+// ===== BANCO DE IMÁGENES LOCALES DE ALTA CALIDAD PARA AGRICULTORES (NATURAL MODERNO) =====
 const FIELD_IMAGES = {
-  // Labores de Siembra y Campo
-  preparacion_suelo: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80',
-  siembra: 'https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80',
-  riego: 'https://images.unsplash.com/photo-1563514227147-6d2ff665a6a0?auto=format&fit=crop&w=800&q=80',
-  fertilizacion: 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=800&q=80',
-  cosecha: 'https://images.unsplash.com/photo-1589923188900-85dae523342b?auto=format&fit=crop&w=800&q=80',
+  // Paisajes y Fondos
+  login_bg: 'frontend/assets/images/login/login_bg.jpg',
+  dashboard_hero: 'frontend/assets/images/landscapes/dashboard_hero.jpg',
 
-  // Mitigación de Heladas y Riesgos Climáticos
-  riego_aspersion: 'https://images.unsplash.com/photo-1584467735871-8e85353a8413?auto=format&fit=crop&w=800&q=80',
-  mantas_termicas: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80',
-  fogatas_humo: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=800&q=80',
-  bioestimulantes: 'https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?auto=format&fit=crop&w=800&q=80',
-  malla_sombra: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=800&q=80',
-  zanjas_drenaje: 'https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=800&q=80',
-  mulch_cobertura: 'https://images.unsplash.com/photo-1464226184884-fa280b87c399?auto=format&fit=crop&w=800&q=80',
+  // Fenómenos Meteorológicos ML
+  frost: 'frontend/assets/images/phenomena/frost.jpg',
+  heavy_rain: 'frontend/assets/images/phenomena/heavy_rain.jpg',
+  snow: 'frontend/assets/images/phenomena/snow.jpg',
+  hail: 'frontend/assets/images/phenomena/hail.jpg',
 
-  // Cultivos de la Región Pasco
-  papa: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=800&q=80',
-  maca: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=800&q=80',
-  quinua: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-  habas: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80',
-  palto: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&w=800&q=80',
-  oca: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80'
+  // Condiciones Climáticas
+  sunny: 'frontend/assets/images/weather/sunny.jpg',
+  cloudy: 'frontend/assets/images/weather/cloudy.jpg',
+  rain: 'frontend/assets/images/weather/rain.jpg',
+  storm: 'frontend/assets/images/weather/storm.jpg',
+  syncing: 'frontend/assets/images/weather/syncing.jpg',
+
+  // Cultivos de la Región Pasco (Locales)
+  papa: 'frontend/assets/images/crops/papa.jpg',
+  maca: 'frontend/assets/images/crops/maca.jpg',
+  habas: 'frontend/assets/images/crops/habas.jpg',
+  cebada: 'frontend/assets/images/crops/cebada.jpg',
+  quinua: 'frontend/assets/images/crops/cebada.jpg',
+  cafe: 'frontend/assets/images/crops/habas.jpg',
+  palto: 'frontend/assets/images/crops/maca.jpg',
+  oca: 'frontend/assets/images/crops/papa.jpg',
+
+  // Mitigación y Labores Agrícolas
+  preparacion_suelo: 'frontend/assets/images/crops/papa.jpg',
+  siembra: 'frontend/assets/images/crops/maca.jpg',
+  riego: 'frontend/assets/images/weather/rain.jpg',
+  fertilizacion: 'frontend/assets/images/crops/papa.jpg',
+  cosecha: 'frontend/assets/images/crops/cebada.jpg',
+  riego_aspersion: 'frontend/assets/images/weather/rain.jpg',
+  mantas_termicas: 'frontend/assets/images/phenomena/frost.jpg',
+  fogatas_humo: 'frontend/assets/images/landscapes/dashboard_hero.jpg',
+  bioestimulantes: 'frontend/assets/images/crops/habas.jpg',
+  malla_sombra: 'frontend/assets/images/weather/sunny.jpg',
+  zanjas_drenaje: 'frontend/assets/images/phenomena/heavy_rain.jpg',
+  mulch_cobertura: 'frontend/assets/images/crops/maca.jpg'
 };
+
+/**
+ * Determina determinísticamente la imagen meteorológica basada estrictamente
+ * en datos reales entregados por el backend (sin Math.random).
+ */
+function getDynamicWeatherImage(liveData, frostData) {
+  const live = liveData || {};
+  const isAvailable = live.is_available !== false && live.status !== 'unavailable' && (live.temp_2m !== null || live.main?.temp !== null);
+  
+  if (!isAvailable || live.status === 'pending' || live.status === 'unavailable') {
+    return FIELD_IMAGES.syncing;
+  }
+
+  const temp = live.temp_2m ?? live.main?.temp ?? 10;
+  const condition = (live.condition || live.weather?.[0]?.description || '').toLowerCase();
+  const weatherCode = live.weather_code ?? live.weathercode;
+  const frostRisk = (frostData?.risk_level || '').toLowerCase();
+
+  // 1. Helada confirmada o riesgo crítico/alto con temp <= 2°C
+  if (frostRisk === 'critico' || frostRisk === 'alto' || temp <= 0 || condition.includes('helada')) {
+    return FIELD_IMAGES.frost;
+  }
+
+  // 2. Nieve / Nevadas (códigos WMO 71-77, 85-86)
+  if (condition.includes('nieve') || condition.includes('nevada') || (weatherCode >= 71 && weatherCode <= 77) || weatherCode === 85 || weatherCode === 86) {
+    return FIELD_IMAGES.snow;
+  }
+
+  // 3. Granizo / Tormenta eléctrica severa (códigos WMO 95, 96, 99)
+  if (condition.includes('granizo') || condition.includes('tormenta') || weatherCode === 96 || weatherCode === 99) {
+    return FIELD_IMAGES.hail;
+  }
+
+  // 4. Lluvia Intensa (código WMO 65, 82)
+  if (condition.includes('intensa') || condition.includes('fuerte') || weatherCode === 65 || weatherCode === 82) {
+    return FIELD_IMAGES.heavy_rain;
+  }
+
+  // 5. Lluvia moderada o llovizna (códigos WMO 51-63, 80-81)
+  if (condition.includes('lluvia') || condition.includes('llovizna') || (weatherCode >= 51 && weatherCode <= 63) || weatherCode === 80 || weatherCode === 81) {
+    return FIELD_IMAGES.rain;
+  }
+
+  // 6. Nublado / Cubierto (códigos WMO 1, 2, 3)
+  if (condition.includes('nub') || condition.includes('cubierto') || (weatherCode >= 1 && weatherCode <= 3)) {
+    return FIELD_IMAGES.cloudy;
+  }
+
+  // 7. Por defecto: Despejado / Soleado
+  return FIELD_IMAGES.sunny;
+}
 
 // Generación / Epoch de sesión global en cliente para invalidación determinista (H-02)
 let _mlSessionEpoch = 1;
@@ -306,6 +374,7 @@ const api = {
   getProduct: (id) => apiRequest(`/v1/supermarket/products/${id}`),
   getProductTrace: (id) => apiRequest(`/v1/supermarket/products/${id}/trace`),
   publishProduct: (data) => apiRequest('/v1/supermarket/products', { method: 'POST', body: JSON.stringify(data) }),
+  updateProduct: (id, data) => apiRequest(`/v1/supermarket/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getPendingProducts: () => apiRequest('/v1/supermarket/products/pending'),
   validateProduct: (id, data) => apiRequest(`/v1/supermarket/products/${id}/validate`, { method: 'PUT', body: JSON.stringify(data) }),
 

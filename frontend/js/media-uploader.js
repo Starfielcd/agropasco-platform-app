@@ -62,17 +62,17 @@ const AgroMediaUploader = (function () {
 
           <!-- Barra de controles flotante sobre la imagen -->
           <div style="position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;">
-            <button type="button" class="btn btn-sm btn-secondary" style="background: rgba(15,23,42,0.85); font-size: 11px; padding: 4px 8px; backdrop-filter: blur(4px);"
+            <button type="button" class="btn btn-sm btn-secondary" style="background: rgba(255,255,255,0.92); color: var(--text-primary); border: 1px solid var(--border); font-size: 11px; padding: 4px 8px; backdrop-filter: blur(4px); box-shadow: var(--shadow-sm);"
                     title="Ver tamaño completo" onclick="event.preventDefault(); event.stopPropagation(); AgroMediaUploader.previewEnlarged(document.getElementById('${id}-preview-img')?.src);">
               🔍 Ampliar
             </button>
-            <button type="button" class="btn btn-sm btn-danger" style="background: rgba(239,68,68,0.9); font-size: 11px; padding: 4px 8px;"
+            <button type="button" class="btn btn-sm btn-danger" style="background: rgba(239,68,68,0.92); font-size: 11px; padding: 4px 8px; box-shadow: var(--shadow-sm);"
                     title="Quitar foto" onclick="event.preventDefault(); event.stopPropagation(); AgroMediaUploader.removePhoto('${id}', event);">
               ✕ Quitar
             </button>
           </div>
 
-          <div id="${id}-file-meta" style="padding: 4px 8px; background: rgba(15,23,42,0.85); font-size: 11px; color: #94a3b8; border-top: 1px solid var(--border); text-align: left;">
+          <div id="${id}-file-meta" style="padding: 6px 10px; background: #FFFFFF; font-size: 11.5px; color: var(--forest-green); font-weight: 600; border-top: 1px solid var(--border); text-align: left;">
             ✓ Fotografía lista para asociar al registro
           </div>
         </div>

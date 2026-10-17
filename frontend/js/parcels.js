@@ -43,16 +43,16 @@ async function renderParcelsPage() {
       </div>
 
       <!-- Mapa Principal con Leyenda de Severidad -->
-      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1.5px solid var(--border);">
-        <div style="padding: 10px 16px; background: rgba(15,23,42,0.95); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
-          <strong style="color: #ffffff; font-size: 13.5px;">🛰️ Mapa Interactivo de Parcelas Registradas</strong>
-          <div style="display: flex; gap: 10px; align-items: center; font-size: 12px;">
-            <span style="color: #4ade80;">🟢 Leve / Sano</span>
-            <span style="color: #facc15;">🟡 Moderado</span>
-            <span style="color: #f87171;">🔴 Grave / Catástrofe</span>
+      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-radius: var(--radius-xl);">
+        <div style="padding: 12px 20px; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
+          <strong style="color: var(--text-primary); font-size: 14px; font-family: 'Outfit', sans-serif;">🛰️ Mapa Interactivo de Parcelas Registradas</strong>
+          <div style="display: flex; gap: 12px; align-items: center; font-size: 12px; font-weight: 600;">
+            <span style="color: #16A34A;">🟢 Leve / Sano</span>
+            <span style="color: #D97706;">🟡 Moderado</span>
+            <span style="color: #DC2626;">🔴 Grave / Riesgo</span>
           </div>
         </div>
-        <div id="parcel-map" class="map-container" style="height: 500px; width: 100%;"></div>
+        <div id="parcel-map" class="map-container" style="height: 500px; width: 100%; border: none;"></div>
       </div>
 
       <!-- Formulario oculto para nueva parcela -->
@@ -145,46 +145,57 @@ async function renderParcelsPage() {
 function renderParcelCard(parcel) {
   const statusColors = { activa: 'green', en_descanso: 'amber', planificada: 'blue', cosechada: 'purple' };
   const cropIcons = { papa: '🥔', maca: '🌿', cafe: '☕', quinua: '🌾', habas: '🫘', olluco: '🟡' };
+  const photoUrl = parcel.photo_url || (typeof FIELD_IMAGES !== 'undefined' && FIELD_IMAGES[parcel.crop_type]) || 'frontend/assets/images/crops/maca.jpg';
 
   return `
     <div class="crop-card" onclick="viewParcelOnMap(${parcel.id})" style="cursor: pointer; position: relative;">
-      <div class="crop-card-header">
-        <div>
-          <div class="crop-card-name">${parcel.name}</div>
-          <div class="crop-card-type">${parcel.crop_type ? (cropIcons[parcel.crop_type] || '🌱') + ' ' + parcel.crop_type : '📍 Sin cultivo asignado'}</div>
-        </div>
-        <div class="crop-card-icon">🗺️</div>
-      </div>
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 4px;">
-        <span class="badge badge-${statusColors[parcel.status] || 'green'}">${parcel.status}</span>
-        ${parcel.pest_severity ? `
-          <span class="badge badge-${parcel.pest_severity === 'critico' || parcel.pest_severity === 'grave' ? 'red' : parcel.pest_severity === 'moderado' ? 'amber' : 'green'}" style="font-size: 11px;">
-            ${parcel.pest_severity === 'critico' ? '🔴 Catástrofe' : parcel.pest_severity === 'grave' ? '🟠 Plaga Grave' : '🟡 Moderado'}: ${parcel.active_pest_name || ''}
-          </span>
-        ` : `
-          <span class="badge badge-green" style="font-size: 11px;">🟢 Sano</span>
-        `}
-        ${parcel.planting_date ? `<span class="text-sm text-muted">📅 ${parcel.planting_date}</span>` : ''}
-      </div>
-      <div class="crop-card-stats">
-        <div class="crop-card-stat">
-          <div class="crop-card-stat-value">${parcel.area_hectares || 0} ha</div>
-          <div class="crop-card-stat-label">Área</div>
-        </div>
-        <div class="crop-card-stat">
-          <div class="crop-card-stat-value" style="color: var(--green-400);">🏔️ ${parcel.altitude_masl || 4380}</div>
-          <div class="crop-card-stat-label">msnm</div>
-        </div>
+      <div style="height: 120px; position: relative; overflow: hidden; background: #E2E8F0; border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-lg);">
+        <img src="${photoUrl}" alt="${escapeHtml(parcel.name)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='frontend/assets/images/crops/maca.jpg'">
+        <span class="badge badge-${statusColors[parcel.status] || 'green'}" style="position: absolute; top: 10px; right: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+          ${escapeHtml(parcel.status || 'Activa')}
+        </span>
       </div>
 
-      <!-- Acciones de Gestión de Parcela -->
-      <div style="display: flex; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);">
-        <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="event.stopPropagation(); showEditParcelModal(${parcel.id})">
-          ✏️ Editar
-        </button>
-        <button class="btn btn-sm btn-danger" style="flex: 0.5;" onclick="event.stopPropagation(); handleDeleteParcel(${parcel.id}, '${parcel.name.replace(/'/g, "\\'")}')">
-          🗑️
-        </button>
+      <div style="padding: 16px 18px;">
+        <div class="crop-card-header" style="margin-bottom: 6px;">
+          <div>
+            <div class="crop-card-name" style="font-size: 16px; font-weight: 700;">${escapeHtml(parcel.name)}</div>
+            <div class="crop-card-type" style="font-size: 12.5px;">${parcel.crop_type ? (cropIcons[parcel.crop_type] || '🌱') + ' ' + escapeHtml(parcel.crop_type) : '📍 Sin cultivo asignado'}</div>
+          </div>
+          <div class="crop-card-icon" style="font-size: 24px;">🗺️</div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 4px;">
+          ${parcel.pest_severity ? `
+            <span class="badge badge-${parcel.pest_severity === 'critico' || parcel.pest_severity === 'grave' ? 'red' : parcel.pest_severity === 'moderado' ? 'amber' : 'green'}" style="font-size: 11px;">
+              ${parcel.pest_severity === 'critico' ? '🔴 Catástrofe' : parcel.pest_severity === 'grave' ? '🟠 Plaga Grave' : '🟡 Moderado'}: ${escapeHtml(parcel.active_pest_name || '')}
+            </span>
+          ` : `
+            <span class="badge badge-green" style="font-size: 11px;">🟢 Sano</span>
+          `}
+          ${parcel.planting_date ? `<span class="text-xs text-muted">📅 ${parcel.planting_date}</span>` : ''}
+        </div>
+
+        <div class="crop-card-stats" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light);">
+          <div>
+            <div class="crop-card-stat-label">Área</div>
+            <div class="crop-card-stat-value">${parcel.area_hectares || 0} ha</div>
+          </div>
+          <div>
+            <div class="crop-card-stat-label">Altitud</div>
+            <div class="crop-card-stat-value" style="color: var(--forest-green);">🏔️ ${parcel.altitude_masl || 4380} m</div>
+          </div>
+        </div>
+
+        <!-- Acciones de Gestión de Parcela -->
+        <div style="display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light);">
+          <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="event.stopPropagation(); showEditParcelModal(${parcel.id})">
+            ✏️ Editar
+          </button>
+          <button class="btn btn-sm btn-danger" style="flex: 0.4;" onclick="event.stopPropagation(); handleDeleteParcel(${parcel.id}, '${parcel.name.replace(/'/g, "\\'")}')">
+            🗑️
+          </button>
+        </div>
       </div>
     </div>
   `;

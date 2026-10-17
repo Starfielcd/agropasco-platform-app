@@ -15,135 +15,162 @@ async function renderSupermarketPage() {
   const cropIcons = { papa: '🥔', maca: '🌿', cafe: '☕', quinua: '🌾', habas: '🫘', olluco: '🟡', mashua: '🟠' };
   const qualityColors = { primera: 'green', segunda: 'amber', gourmet: 'purple', organica: 'green', premium: 'blue' };
 
+  window.activeSupermarketCategory = 'all';
+
   return `
-    <div class="page-content">
-      <!-- Encabezado con métricas rápidas -->
-      <div class="flex items-center justify-between mb-lg" style="flex-wrap: wrap; gap: 12px;">
+    <div class="page-content supermarket-catalog-container">
+      <!-- Encabezado Comercial Profesional -->
+      <div class="supermarket-header-card">
         <div>
-          <h2 style="font-size: 22px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-            🏪 Catálogo de Productos Certificados — Supermercado
-          </h2>
-          <p class="text-sm text-muted">
-            Productos agrícolas de la Región Pasco validados por asesores técnicos con trazabilidad digital y comercio justo.
-          </p>
+          <div class="supermarket-header-title">
+            <span>🏪</span> Catálogo de Productos Certificados — Supermercado
+          </div>
+          <div class="supermarket-header-subtitle">
+            Cosechas agrícolas de la Región Pasco validadas por asesores técnicos con trazabilidad digital y comercio justo.
+          </div>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <span class="badge badge-green" style="font-size: 13px; padding: 6px 14px;">
-            🛒 ${products.length} Productos Validados Disponibles
+        <div>
+          <span class="badge badge-green" style="font-size: 13.5px; font-weight: 700; padding: 7px 16px; border-radius: 99px;">
+            🛒 <span id="supermarket-count-badge">${products.length}</span> Productos Disponibles
           </span>
         </div>
       </div>
 
-      <!-- Banner de Garantía y API para Supermercados -->
-      <div class="card mb-lg" style="border-left: 4px solid var(--blue-500); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.05));">
-        <div class="flex items-center gap-md" style="flex-wrap: wrap;">
-          <div style="font-size: 32px;">🛡️</div>
-          <div style="flex: 1; min-width: 250px;">
-            <div style="font-weight: 700; font-size: 15px;">Garantía de Origen y Certificación AgroPasco</div>
-            <div class="text-sm text-muted">
-              Todos los productos aquí listados han sido inspeccionados técnicamente. Los productos marcados como <strong>🌿 100% Natural</strong> cuentan con +30% de bonificación certificada por ausencia total de químicos u hormonas.
+      <!-- Banner de Certificación y Origen Garantizado -->
+      <div class="supermarket-cert-banner">
+        <div class="supermarket-cert-info">
+          <div class="supermarket-cert-icon">🛡️</div>
+          <div>
+            <div class="supermarket-cert-title">Garantía de Origen y Certificación AgroPasco</div>
+            <div class="supermarket-cert-desc">
+              Todos los lotes han sido verificados en campo por asesores agronómicos. Los productos catalogados como <strong>🌿 100% Natural</strong> cuentan con +30% de bonificación garantizada al agricultor por ausencia comprobada de agroquímicos sintéticos u hormonas.
             </div>
           </div>
-          <div style="text-align: right;">
-            <div class="text-xs text-muted">Integración B2B REST API:</div>
-            <code style="background: var(--bg-card); padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid var(--border);">GET /api/v1/supermarket/products</code>
-          </div>
+        </div>
+        <div class="supermarket-cert-tags">
+          <span class="supermarket-cert-pill">🌿 100% Natural Certificado</span>
+          <span class="supermarket-cert-pill">📋 Trazabilidad Digital</span>
+          <span class="supermarket-cert-pill">🤝 Comercio Justo</span>
         </div>
       </div>
 
-      <!-- Grilla de Productos -->
+      <!-- Barra de Búsqueda y Filtros de Categorías -->
+      <div class="supermarket-filter-bar">
+        <div class="supermarket-search-box">
+          <span style="font-size: 15px; color: #64748B;">🔍</span>
+          <input type="text" id="supermarket-search-input" placeholder="Buscar por producto, variedad o procedencia..." oninput="window.filterSupermarketCatalog(this.value)">
+        </div>
+        <div class="supermarket-category-pills">
+          <button type="button" class="supermarket-pill active" data-category="all" onclick="window.filterSupermarketCategory('all', this)">Todos (${products.length})</button>
+          <button type="button" class="supermarket-pill" data-category="papa" onclick="window.filterSupermarketCategory('papa', this)">🥔 Papas Nativas</button>
+          <button type="button" class="supermarket-pill" data-category="maca" onclick="window.filterSupermarketCategory('maca', this)">🌿 Maca</button>
+          <button type="button" class="supermarket-pill" data-category="olluco" onclick="window.filterSupermarketCategory('olluco', this)">🟡 Olluco</button>
+          <button type="button" class="supermarket-pill" data-category="habas" onclick="window.filterSupermarketCategory('habas', this)">🫘 Habas</button>
+          <button type="button" class="supermarket-pill" data-category="quinua" onclick="window.filterSupermarketCategory('quinua', this)">🌾 Quinua</button>
+          <button type="button" class="supermarket-pill" data-category="cafe" onclick="window.filterSupermarketCategory('cafe', this)">☕ Café</button>
+        </div>
+      </div>
+
+      <!-- Grilla del Catálogo de Productos -->
       ${products.length > 0 ? `
-        <div class="grid-3">
+        <div class="supermarket-grid" id="supermarket-products-grid">
           ${products.map(prod => {
             const isNatural = prod.is_natural || prod.certified_natural;
             const originalP = prod.original_price || (isNatural ? prod.price_per_kg / 1.30 : prod.price_per_kg);
+            const photoSrc = (prod.photo_url && prod.photo_url.trim()) ? prod.photo_url.trim() : null;
+            const originText = prod.origin || prod.farmer_location || 'Región Pasco';
+            const farmerText = prod.farmer_name || 'Carlos (Agricultor de Pasco)';
+            const searchIndex = `${prod.name} ${prod.crop_type} ${originText} ${farmerText} ${prod.quality || ''}`.toLowerCase();
+
             return `
-              <div class="product-card" style="cursor: pointer; position: relative; transition: all 0.25s ease;" onclick="showProductDetailModal(${prod.id})">
-                <!-- Imagen o Icono con Badges -->
-                <div class="product-card-img" style="position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1));">
-                  ${prod.photo_url ? `
-                    <img src="${prod.photo_url}" alt="${prod.name}" style="width: 100%; height: 100%; object-fit: cover;">
+              <div class="product-card" data-crop="${prod.crop_type}" data-search="${searchIndex}" onclick="showProductDetailModal(${prod.id})">
+                <!-- Imagen Fotográfica o Fallback Botánico -->
+                <div class="product-card-media">
+                  ${photoSrc ? `
+                    <img src="${photoSrc}" alt="${prod.name}" loading="lazy">
                   ` : `
-                    <div style="font-size: 64px; text-shadow: 0 4px 12px rgba(0,0,0,0.2);">${cropIcons[prod.crop_type] || '🌾'}</div>
+                    <div class="product-card-media-fallback">
+                      <div class="product-card-media-icon">${cropIcons[prod.crop_type] || '🌾'}</div>
+                      <div class="product-card-media-label">${prod.crop_type || 'Cultivo Pasco'}</div>
+                    </div>
                   `}
 
-                  <!-- Badge Calidad -->
-                  <div class="product-card-badge" style="position: absolute; top: 10px; right: 10px;">
-                    <span class="badge badge-${qualityColors[prod.quality] || 'green'}" style="text-transform: capitalize;">
+                  <!-- Badge 100% Natural / Convencional (Superior Izquierda) -->
+                  <div class="product-badge-top-left">
+                    ${isNatural ? `
+                      <span class="badge badge-green" style="font-weight: 700; box-shadow: 0 2px 8px rgba(16,185,129,0.35); font-size: 11px;">
+                        🌿 100% Natural (+30%)
+                      </span>
+                    ` : `
+                      <span class="badge badge-blue" style="font-weight: 600; font-size: 11px;">
+                        📦 Convencional
+                      </span>
+                    `}
+                  </div>
+
+                  <!-- Badge Calidad Comercial (Superior Derecha) -->
+                  <div class="product-badge-top-right">
+                    <span class="badge badge-${qualityColors[prod.quality] || 'green'}" style="text-transform: capitalize; font-size: 11px; font-weight: 700;">
                       ${prod.quality || 'Primera'}
                     </span>
                   </div>
-
-                  <!-- Badge 100% Natural -->
-                  ${isNatural ? `
-                    <div style="position: absolute; top: 10px; left: 10px;">
-                      <span class="badge badge-green" style="font-weight: 700; box-shadow: 0 2px 8px rgba(16,185,129,0.4);">
-                        🌿 100% Natural (+30%)
-                      </span>
-                    </div>
-                  ` : `
-                    <div style="position: absolute; top: 10px; left: 10px;">
-                      <span class="badge badge-blue" style="font-weight: 600;">
-                        📦 Convencional
-                      </span>
-                    </div>
-                  `}
                 </div>
 
-                <!-- Contenido -->
+                <!-- Contenido Informativo y Comercial -->
                 <div class="product-card-body">
-                  <div class="product-card-name" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">
+                  <div class="product-card-title">
                     ${prod.name}
                   </div>
 
-                  <div class="product-card-origin" style="color: var(--green-400); font-weight: 600; font-size: 13px; margin-top: 2px;">
-                    📍 ${prod.origin || prod.farmer_location || 'Región Pasco'}
-                  </div>
-
-                  <!-- Datos del Agricultor -->
-                  <div style="display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--text-secondary);">
-                    <span>👨‍🌾</span>
-                    <span style="font-weight: 600;">${prod.farmer_name || 'Agricultor de Pasco'}</span>
+                  <div class="product-card-meta-row">
+                    <span class="product-card-origin">
+                      📍 ${originText}
+                    </span>
+                    <span class="product-card-farmer">
+                      👨‍🌾 ${farmerText}
+                    </span>
                   </div>
 
                   <!-- Descripción resumida -->
-                  <p class="text-sm text-muted" style="margin: 8px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 38px;">
-                    ${prod.description || 'Producto agrícola cosechado en los valles y alturas de Pasco bajo buenas prácticas agrícolas.'}
+                  <p class="product-card-desc">
+                    ${prod.description || 'Producto agrícola cultivado en los valles andinos de Pasco bajo buenas prácticas agrícolas e inspección técnica.'}
                   </p>
 
                   <!-- Validación del Asesor Técnico -->
-                  <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span style="color: var(--green-400); font-weight: 600;">
+                  <div class="product-card-validation">
+                    <span class="product-card-validation-label">
                       ✅ Validado por Asesor
                     </span>
-                    <span class="text-muted" style="font-size: 11px;">
-                      ${prod.validator_name ? prod.validator_name : 'Asesor Certificado'}
+                    <span class="product-card-validation-badge">
+                      ${prod.validator_name ? prod.validator_name : 'Ing. Asesor Certificado'}
                     </span>
                   </div>
 
-                  <!-- Footer con Desglose de Precio y Stock -->
-                  <div class="product-card-footer" style="padding-top: 8px; border-top: 1px solid var(--border); display: flex; align-items: flex-end; justify-content: space-between;">
-                    <div>
-                      <div class="product-card-price" style="font-size: 18px; font-weight: 800; color: var(--green-400);">
+                  <!-- Footer con Precio Prominente y Stock -->
+                  <div class="product-card-footer">
+                    <div class="product-price-section">
+                      <div class="product-price-amount">
                         S/ ${prod.price_per_kg?.toFixed(2)}
-                        <span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">/ ${prod.unit || 'kg'}</span>
+                        <span class="product-price-unit">/ ${prod.unit || 'kg'}</span>
                       </div>
                       ${isNatural && originalP ? `
-                        <div style="font-size: 11px; color: var(--text-muted);">
+                        <div class="product-price-subtext">
                           Base S/ ${originalP.toFixed(2)} + 30% bonif.
                         </div>
                       ` : ''}
                     </div>
 
-                    <div style="text-align: right;">
-                      <div class="badge badge-purple" style="font-size: 12px; font-weight: 600;">
-                        ${prod.stock_kg || 0} kg disp.
-                      </div>
-                      <div style="font-size: 11px; color: var(--blue-400); margin-top: 4px; font-weight: 600;">
-                        Ver Ficha Completa →
-                      </div>
+                    <div class="product-stock-section">
+                      <span class="product-stock-badge">
+                        ${prod.stock_kg || 0} ${prod.unit || 'kg'} disp.
+                      </span>
                     </div>
                   </div>
+
+                  <!-- Botón Funcional Ficha Completa -->
+                  <button type="button" class="product-action-btn" onclick="event.stopPropagation(); showProductDetailModal(${prod.id})">
+                    Ver Ficha Completa →
+                  </button>
                 </div>
               </div>
             `;
@@ -162,6 +189,35 @@ async function renderSupermarketPage() {
   `;
 }
 
+// Controladores de Filtrado y Búsqueda en Vivo
+window.filterSupermarketCatalog = function(query) {
+  const q = (query || '').toLowerCase().trim();
+  const cards = document.querySelectorAll('#supermarket-products-grid .product-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const text = (card.getAttribute('data-search') || '').toLowerCase();
+    const crop = card.getAttribute('data-crop');
+    const matchesQuery = !q || text.includes(q);
+    const matchesCat = !window.activeSupermarketCategory || window.activeSupermarketCategory === 'all' || crop === window.activeSupermarketCategory;
+    if (matchesQuery && matchesCat) {
+      card.style.display = 'flex';
+      visible++;
+    } else {
+      card.style.display = 'none';
+    }
+  });
+  const countEl = document.getElementById('supermarket-count-badge');
+  if (countEl) countEl.textContent = visible;
+};
+
+window.filterSupermarketCategory = function(cat, btn) {
+  window.activeSupermarketCategory = cat;
+  document.querySelectorAll('.supermarket-pill').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const input = document.getElementById('supermarket-search-input');
+  window.filterSupermarketCatalog(input ? input.value : '');
+};
+
 // ==========================================
 // 2. MODAL DETALLADO DE PRODUCTO (SUPERMERCADO / CATÁLOGO)
 // ==========================================
@@ -175,6 +231,7 @@ async function showProductDetailModal(productId) {
 
   const prod = result.data;
   const cropIcons = { papa: '🥔', maca: '🌿', cafe: '☕', quinua: '🌾', habas: '🫘', olluco: '🟡', mashua: '🟠' };
+  const photoSrc = (prod.photo_url && prod.photo_url.trim()) ? prod.photo_url.trim() : null;
   const isNatural = prod.is_natural || prod.certified_natural;
   const originalPrice = prod.original_price || (isNatural ? prod.price_per_kg / 1.30 : prod.price_per_kg);
   const naturalBonus = isNatural ? (prod.price_per_kg - originalPrice) : 0;
@@ -199,21 +256,21 @@ async function showProductDetailModal(productId) {
   modal.onclick = (e) => { if (e.target === modal) closeDetailModal(); };
 
   modal.innerHTML = `
-    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
-      <div class="modal-header">
+    <div class="modal" style="max-width: 680px; max-height: 90vh; overflow-y: auto; background: #FFFFFF; color: #0F172A;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid #E2E8F0; padding-bottom: 14px;">
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 28px;">${cropIcons[prod.crop_type] || '🌾'}</span>
           <div>
-            <h3 id="product-detail-title" style="margin: 0; font-size: 20px;">${prod.name}</h3>
-            <span class="text-xs text-muted">Código Trazabilidad: ${prod.traceability_code || 'AP-PASCO-2026'}</span>
+            <h3 id="product-detail-title" style="margin: 0; font-size: 20px; font-weight: 800; color: #0F172A;">${prod.name}</h3>
+            <span class="text-xs" style="color: #64748B;">Código Trazabilidad: <strong>${prod.traceability_code || 'AP-PASCO-2026'}</strong></span>
           </div>
         </div>
         <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('product-detail-modal')?.remove()">✕</button>
       </div>
 
       <!-- Badges Superiores -->
-      <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-        <span class="badge badge-green" style="text-transform: capitalize;">Calidad: ${prod.quality || 'Primera'}</span>
+      <div style="display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap;">
+        <span class="badge badge-green" style="text-transform: capitalize; font-weight: 700;">Calidad: ${prod.quality || 'Primera'}</span>
         ${isNatural ? `
           <span class="badge badge-green" style="font-weight: 700; padding: 4px 10px;">
             🌿 Certificación: 100% Natural (+30%)
@@ -225,12 +282,12 @@ async function showProductDetailModal(productId) {
       </div>
 
       <!-- Foto del Producto -->
-      ${prod.photo_url ? `
-        <div style="margin-bottom: 16px; border-radius: 12px; overflow: hidden; max-height: 280px; border: 1px solid var(--border);">
-          <img src="${prod.photo_url}" style="width: 100%; height: 100%; object-fit: cover;" alt="${prod.name}">
+      ${photoSrc ? `
+        <div style="margin-bottom: 16px; border-radius: 12px; overflow: hidden; max-height: 280px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(15,23,42,0.06);">
+          <img src="${photoSrc}" style="width: 100%; height: 100%; object-fit: cover; display: block;" alt="${prod.name}">
         </div>
       ` : `
-        <div style="margin-bottom: 16px; border-radius: 12px; padding: 24px; text-align: center; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1)); border: 1px solid var(--border);">
+        <div style="margin-bottom: 16px; border-radius: 12px; padding: 24px; text-align: center; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1)); border: 1px solid #E2E8F0;">
           <div style="font-size: 54px;">${cropIcons[prod.crop_type] || '🌾'}</div>
           <div class="text-sm text-muted mt-sm">Producto certificado de la Región Pasco</div>
         </div>
@@ -260,7 +317,7 @@ async function showProductDetailModal(productId) {
           </div>
           <div style="padding: 8px; background: var(--bg-glass); border-radius: 6px;">
             <span class="text-muted" style="display: block; font-size: 11px;">📞 Contacto Directo:</span>
-            <strong>${prod.farmer_phone || '+51 963 852 741'}</strong>
+            <strong>${prod.farmer_phone || '+51 901387303'}</strong>
           </div>
           <div style="padding: 8px; background: var(--bg-glass); border-radius: 6px;">
             <span class="text-muted" style="display: block; font-size: 11px;">📅 Fecha de Cosecha:</span>
@@ -295,9 +352,9 @@ async function showProductDetailModal(productId) {
             <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
               Precio Final de Venta al Supermercado:
             </div>
-            <div style="font-size: 30px; font-weight: 900; color: var(--green-400);">
+            <div style="font-size: 30px; font-weight: 900; color: #15803D;">
               S/ ${prod.price_per_kg?.toFixed(2)}
-              <span style="font-size: 14px; font-weight: 500; color: var(--text-secondary);">/ ${prod.unit || 'kg'}</span>
+              <span style="font-size: 14px; font-weight: 600; color: #475569;">/ ${prod.unit || 'kg'}</span>
             </div>
             <div class="text-xs text-muted">Stock Disponible: <strong>${prod.stock_kg || 0} kg</strong></div>
           </div>
@@ -409,7 +466,25 @@ async function renderFarmerSalesPage() {
                   </span>
                 </div>
 
-                <p class="text-sm text-muted mb-sm">${p.description || 'Sin descripción adicional.'}</p>
+                <!-- Fotografía Original Subida por el Agricultor -->
+                ${p.photo_url ? `
+                  <div style="display: flex; align-items: center; gap: 12px; margin: 10px 0; padding: 10px 14px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;">
+                    <img src="${p.photo_url}" alt="${p.name}" style="width: 58px; height: 58px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);"
+                         onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                    <div style="font-size: 12px; flex: 1;">
+                      <div style="color: var(--green-400); font-weight: 700;">📸 Fotografía Original Registrada</div>
+                      <div class="text-muted" style="margin-top: 2px;">Imagen auténtica de campo vinculada a la trazabilidad y visible para el supermercado.</div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;"
+                            onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                      🔍 Ver
+                    </button>
+                  </div>
+                ` : `
+                  <div style="margin: 8px 0; font-size: 12px; color: var(--amber-400);">
+                    📷 Sin fotografía adjunta. Puedes editar el producto para subir su foto original.
+                  </div>
+                `}
 
                 <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; margin-bottom: 8px;">
                   <span>🌱 <strong>Cultivo:</strong> ${p.crop_type}</span>
@@ -430,13 +505,16 @@ async function renderFarmerSalesPage() {
                   </div>
                 ` : ''}
 
-                ${isApproved ? `
-                  <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
-                    <button class="btn btn-secondary btn-sm" onclick="showProductDetailModal(${p.id})">
+                <div style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+                  <button class="btn btn-secondary btn-sm" onclick="window.editFarmerProduct(${p.id})">
+                    ✏️ Editar Producto / Foto
+                  </button>
+                  ${isApproved ? `
+                    <button class="btn btn-primary btn-sm" onclick="showProductDetailModal(${p.id})">
                       👁️ Ver Ficha Pública en Supermercado
                     </button>
-                  </div>
-                ` : ''}
+                  ` : ''}
+                </div>
               </div>
             `;
           }).join('')}
@@ -457,9 +535,10 @@ async function renderFarmerSalesPage() {
   `;
 }
 
-// Modal para poner producto en venta (Agricultor)
-async function showPublishModal() {
+// Modal para poner producto en venta o editarlo (Agricultor)
+async function showPublishModal(editProduct = null) {
   const user = getUser();
+  window._currentEditingProductId = editProduct ? editProduct.id : null;
 
   // Obtener parcelas y cultivos del agricultor para facilitar selección
   let myCrops = [];
@@ -472,6 +551,16 @@ async function showPublishModal() {
     console.warn('No se pudieron cargar cultivos previos:', err);
   }
 
+  const isEditing = !!editProduct;
+  const initialName = editProduct ? (editProduct.name || '') : '';
+  const initialType = editProduct ? (editProduct.crop_type || 'papa') : 'papa';
+  const initialQuality = editProduct ? (editProduct.quality || 'primera') : 'primera';
+  const initialOrigin = editProduct ? (editProduct.origin || user?.location || 'Yanahuanca, Pasco') : (user?.location || 'Yanahuanca, Pasco');
+  const initialStock = editProduct ? (editProduct.stock_kg || '') : '';
+  const initialPrice = editProduct ? (editProduct.original_price || editProduct.price_per_kg || '') : '';
+  const initialDesc = editProduct ? (editProduct.description || '') : '';
+  const initialPhoto = editProduct ? (editProduct.photo_url || '') : '';
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'publish-modal';
@@ -480,6 +569,7 @@ async function showPublishModal() {
   modal.setAttribute('aria-labelledby', 'publish-modal-title');
 
   const closePublishModal = () => {
+    window._currentEditingProductId = null;
     window.removeEventListener('keydown', handleEsc);
     modal.remove();
   };
@@ -495,9 +585,9 @@ async function showPublishModal() {
     <div class="modal" style="max-width: 580px;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <h3 id="publish-modal-title" style="display: flex; align-items: center; gap: 8px;">
-          <span>💰</span> Poner Producto en Venta al Supermercado
+          <span>${isEditing ? '✏️' : '💰'}</span> ${isEditing ? 'Editar Producto en Venta al Supermercado' : 'Poner Producto en Venta al Supermercado'}
         </h3>
-        <button class="modal-close" aria-label="Cerrar modal" onclick="document.getElementById('publish-modal')?.remove()">✕</button>
+        <button class="modal-close" aria-label="Cerrar modal" onclick="window._currentEditingProductId=null; document.getElementById('publish-modal')?.remove()">✕</button>
       </div>
 
       <!-- Banner de Bonificación Natural -->
@@ -511,7 +601,7 @@ async function showPublishModal() {
       </div>
 
       <form onsubmit="handlePublishProduct(event)">
-        ${myCrops.length > 0 ? `
+        ${!isEditing && myCrops.length > 0 ? `
           <div class="form-group">
             <label class="form-label">🌾 Cargar desde cultivo registrado (opcional)</label>
             <select class="form-select" id="pub-crop-autofill" onchange="autoFillPublishFromCrop(this.value)">
@@ -527,54 +617,59 @@ async function showPublishModal() {
 
         <div class="form-group">
           <label class="form-label">Nombre del Producto *</label>
-          <input type="text" class="form-input" id="pub-name" placeholder="Ej: Papa Nativa Huayro Orgánica" required>
+          <input type="text" class="form-input" id="pub-name" value="${initialName}" placeholder="Ej: Papa Nativa Huayro Orgánica" required>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Tipo de Cultivo *</label>
             <select class="form-select" id="pub-type" required>
-              <option value="papa">🥔 Papa</option>
-              <option value="maca">🌿 Maca</option>
-              <option value="quinua">🌾 Quinua</option>
-              <option value="habas">🫘 Habas</option>
-              <option value="cafe">☕ Café</option>
-              <option value="olluco">🟡 Olluco</option>
-              <option value="mashua">🟠 Mashua</option>
+              <option value="papa" ${initialType === 'papa' ? 'selected' : ''}>🥔 Papa</option>
+              <option value="maca" ${initialType === 'maca' ? 'selected' : ''}>🌿 Maca</option>
+              <option value="quinua" ${initialType === 'quinua' ? 'selected' : ''}>🌾 Quinua</option>
+              <option value="habas" ${initialType === 'habas' ? 'selected' : ''}>🫘 Habas</option>
+              <option value="cafe" ${initialType === 'cafe' ? 'selected' : ''}>☕ Café</option>
+              <option value="olluco" ${initialType === 'olluco' ? 'selected' : ''}>🟡 Olluco</option>
+              <option value="mashua" ${initialType === 'mashua' ? 'selected' : ''}>🟠 Mashua</option>
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">Calidad del Producto</label>
             <select class="form-select" id="pub-quality">
-              <option value="primera">Primera</option>
-              <option value="premium">Premium</option>
-              <option value="organica">Orgánica</option>
-              <option value="gourmet">Gourmet</option>
-              <option value="segunda">Segunda</option>
+              <option value="primera" ${initialQuality === 'primera' ? 'selected' : ''}>Primera</option>
+              <option value="premium" ${initialQuality === 'premium' ? 'selected' : ''}>Premium</option>
+              <option value="organica" ${initialQuality === 'organica' ? 'selected' : ''}>Orgánica</option>
+              <option value="gourmet" ${initialQuality === 'gourmet' ? 'selected' : ''}>Gourmet</option>
+              <option value="segunda" ${initialQuality === 'segunda' ? 'selected' : ''}>Segunda</option>
             </select>
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label">📍 Lugar de Cosecha / Origen *</label>
-          <input type="text" class="form-input" id="pub-origin" value="${user?.location || 'Yanahuanca, Pasco'}" placeholder="Ej: Yanahuanca, Daniel Alcides Carrión" required>
+          <input type="text" class="form-input" id="pub-origin" value="${initialOrigin}" placeholder="Ej: Yanahuanca, Daniel Alcides Carrión" required>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Cantidad Disponible (kg) *</label>
-            <input type="number" class="form-input" id="pub-stock" placeholder="Ej: 500" min="1" step="1" required>
+            <input type="number" class="form-input" id="pub-stock" value="${initialStock}" placeholder="Ej: 500" min="1" step="1" required>
           </div>
           <div class="form-group">
             <label class="form-label">Precio Base por kg (S/) *</label>
-            <input type="number" class="form-input" id="pub-price" step="0.10" min="0.10" placeholder="Ej: 4.50" required oninput="updatePriceEstimate(this.value)">
+            <input type="number" class="form-input" id="pub-price" value="${initialPrice}" step="0.10" min="0.10" placeholder="Ej: 4.50" required oninput="updatePriceEstimate(this.value)">
           </div>
         </div>
 
         <!-- Estimación dinámica de precio -->
-        <div id="price-estimate-box" style="display: none; background: rgba(34,197,94,0.08); border-radius: 6px; padding: 10px; margin-bottom: 14px; font-size: 13px;">
+        <div id="price-estimate-box" style="display: ${initialPrice ? 'block' : 'none'}; background: rgba(34,197,94,0.08); border-radius: 6px; padding: 10px; margin-bottom: 14px; font-size: 13px;">
           <div style="font-weight: 600; color: var(--green-400);">Simulación de Precio de Venta:</div>
-          <div id="price-estimate-text" class="text-muted mt-xs"></div>
+          <div id="price-estimate-text" class="text-muted mt-xs">
+            ${initialPrice ? `
+              • Si es validado como <strong>100% Natural (+30%)</strong>: <strong>S/ ${(parseFloat(initialPrice) * 1.30).toFixed(2)} / kg</strong><br>
+              • Si es validado como <strong>Convencional</strong>: <strong>S/ ${parseFloat(initialPrice).toFixed(2)} / kg</strong>
+            ` : ''}
+          </div>
         </div>
 
         <!-- Fotografía en Vivo (Cámara) o Subir Imagen -->
@@ -582,17 +677,18 @@ async function showPublishModal() {
           ${AgroMediaUploader.render({
             id: 'pub-photo',
             folder: 'products',
-            label: 'Fotografía del Producto / Cosecha (Cámara en Vivo o Subir Imagen) — OBLIGATORIA *'
+            existingUrl: initialPhoto,
+            label: 'Fotografía Original del Producto / Cosecha (Cámara en Vivo o Subir Imagen) — OBLIGATORIA *'
           })}
         </div>
 
         <div class="form-group">
           <label class="form-label">Descripción y Prácticas Empleadas</label>
-          <textarea class="form-textarea" id="pub-description" rows="3" placeholder="Describe los métodos de siembra, si utilizaste abonos naturales (biol, compost), fecha aproximada de cosecha..."></textarea>
+          <textarea class="form-textarea" id="pub-description" rows="3" placeholder="Describe los métodos de siembra, si utilizaste abonos naturales (biol, compost), fecha aproximada de cosecha...">${initialDesc}</textarea>
         </div>
 
         <button type="submit" id="publish-submit-btn" class="btn btn-primary btn-block btn-lg" style="box-shadow: 0 4px 14px rgba(16,185,129,0.3); font-weight: 700;">
-          🚀 Vender Producto al Supermercado (Enviar a Validación)
+          ${isEditing ? '💾 Guardar Cambios y Enviar a Validación' : '🚀 Vender Producto al Supermercado (Enviar a Validación)'}
         </button>
       </form>
     </div>
@@ -634,6 +730,15 @@ async function showPublishModal() {
   };
 }
 
+window.editFarmerProduct = async function(productId) {
+  const result = await api.getProduct(productId);
+  if (result.success && result.data) {
+    showPublishModal(result.data);
+  } else {
+    showToast('No se pudo cargar el producto para edición', 'error');
+  }
+};
+
 async function handlePublishProduct(e) {
   e.preventDefault();
   const name = document.getElementById('pub-name')?.value?.trim();
@@ -661,27 +766,45 @@ async function handlePublishProduct(e) {
   const submitBtn = document.getElementById('publish-submit-btn') || e.target.querySelector('button[type="submit"]');
 
   const executePublish = async () => {
-    if (window.AgroLogger) AgroLogger.action('SUPERMARKET', `Publicando producto "${name}"`);
+    if (window._currentEditingProductId) {
+      if (window.AgroLogger) AgroLogger.action('SUPERMARKET', `Actualizando producto "${name}"`);
+      const result = await api.updateProduct(window._currentEditingProductId, {
+        name, crop_type, quality, origin, stock_kg, price_per_kg, photo_url: photo_url.trim(), description
+      });
 
-    const result = await api.publishProduct({
-      name, crop_type, quality, origin, stock_kg, price_per_kg, photo_url: photo_url.trim(), description
-    });
-
-    if (result.success) {
-      if (window.AgroLogger) AgroLogger.info('SUPERMARKET', `Producto "${name}" publicado exitosamente`);
-      document.getElementById('publish-modal')?.remove();
-      showToast('¡Producto puesto en venta! Enviado al Asesor Técnico para validación.', 'success');
-      navigateTo('/farmer/sales');
+      if (result.success) {
+        if (window.AgroLogger) AgroLogger.info('SUPERMARKET', `Producto "${name}" actualizado exitosamente`);
+        document.getElementById('publish-modal')?.remove();
+        window._currentEditingProductId = null;
+        showToast('¡Producto y fotografía actualizados! Enviado al Asesor Técnico para revalidación.', 'success');
+        navigateTo('/farmer/sales');
+      } else {
+        const errorMsg = result.error || 'Error al actualizar producto';
+        if (window.AgroLogger) AgroLogger.error('SUPERMARKET', 'Fallo al actualizar producto', { error: errorMsg });
+        showToast(`Error al actualizar producto: ${errorMsg}`, 'error');
+      }
     } else {
-      const errorMsg = result.error || 'Error al publicar producto';
-      if (window.AgroLogger) AgroLogger.error('SUPERMARKET', 'Fallo al publicar producto', { error: errorMsg });
-      showToast(`Error al publicar producto: ${errorMsg}`, 'error');
-      // El modal permanece abierto para que el usuario pueda corregir
+      if (window.AgroLogger) AgroLogger.action('SUPERMARKET', `Publicando producto "${name}"`);
+
+      const result = await api.publishProduct({
+        name, crop_type, quality, origin, stock_kg, price_per_kg, photo_url: photo_url.trim(), description
+      });
+
+      if (result.success) {
+        if (window.AgroLogger) AgroLogger.info('SUPERMARKET', `Producto "${name}" publicado exitosamente`);
+        document.getElementById('publish-modal')?.remove();
+        showToast('¡Producto puesto en venta! Enviado al Asesor Técnico para validación.', 'success');
+        navigateTo('/farmer/sales');
+      } else {
+        const errorMsg = result.error || 'Error al publicar producto';
+        if (window.AgroLogger) AgroLogger.error('SUPERMARKET', 'Fallo al publicar producto', { error: errorMsg });
+        showToast(`Error al publicar producto: ${errorMsg}`, 'error');
+      }
     }
   };
 
   if (window.AgroLogger && AgroLogger.wrapButtonAction) {
-    await AgroLogger.wrapButtonAction(submitBtn, '🚀 Publicando Producto...', executePublish);
+    await AgroLogger.wrapButtonAction(submitBtn, window._currentEditingProductId ? '💾 Guardando Cambios...' : '🚀 Publicando Producto...', executePublish);
   } else {
     await executePublish();
   }
@@ -777,8 +900,8 @@ async function renderValidateProductsPage() {
 
                   <!-- FOTOGRAFÍA DEL PRODUCTO SUBIDA POR EL AGRICULTOR -->
                   ${p.photo_url ? `
-                    <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1.5px solid var(--border); max-width: 440px; background: #000;">
-                      <div style="background: rgba(15,23,42,0.9); padding: 5px 10px; font-size: 11.5px; color: #4ade80; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+                    <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); max-width: 440px; background: #FFFFFF; box-shadow: var(--shadow-sm);">
+                      <div style="background: #F8FAFC; padding: 6px 12px; font-size: 11.5px; color: var(--forest-green); font-weight: 600; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
                         <span>📸 Fotografía de la Cosecha enviada por el Agricultor</span>
                         <button type="button" class="btn btn-sm btn-secondary" style="font-size: 10.5px; padding: 2px 8px;"
                                 onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">

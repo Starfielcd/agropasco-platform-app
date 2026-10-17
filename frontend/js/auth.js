@@ -8,132 +8,264 @@
 function renderLoginPage() {
   return `
     <div class="login-page">
-      <div class="login-container">
-        <div class="login-header">
-          <div class="login-logo">🌾</div>
-          <h1>AgroPasco Digital</h1>
-          <p>Plataforma Agrícola Inteligente — Región Pasco, Perú</p>
+      <!-- Fondo Agrícola Inmersivo y Marco Botánico -->
+      <div class="login-bg-overlay"></div>
+      <div class="login-leaves-frame"></div>
+
+      <div class="login-container-wrap">
+        <!-- Zona Izquierda: Título Principal, Descripción y Accesos Rápidos -->
+        <div class="login-left-pane">
+          <div class="login-left-content">
+            <h1 class="login-left-title">
+              Tecnología<br>y conocimiento<br>para una agricultura<br>más productiva
+            </h1>
+            <p class="login-left-subtitle">
+              Monitorea el clima, recibe alertas,<br>obtén asesoría y gestiona tus cultivos<br>en la región Pasco.
+            </p>
+          </div>
+
+          <!-- 4 Características Inferiores con Separadores Verticales (Fiel a Ref 1) -->
+          <div class="login-hero-features">
+            <div class="login-feat-item">
+              <div class="login-feat-icon">⛅</div>
+              <div class="login-feat-text">Clima en<br>tiempo real</div>
+            </div>
+            <div class="login-feat-sep"></div>
+            <div class="login-feat-item">
+              <div class="login-feat-icon">❄️</div>
+              <div class="login-feat-text">Predicciones<br>con IA</div>
+            </div>
+            <div class="login-feat-sep"></div>
+            <div class="login-feat-item">
+              <div class="login-feat-icon">🌿</div>
+              <div class="login-feat-text">Asesoría<br>agrícola</div>
+            </div>
+            <div class="login-feat-sep"></div>
+            <div class="login-feat-item">
+              <div class="login-feat-icon">🗺️</div>
+              <div class="login-feat-text">Gestión<br>de parcelas</div>
+            </div>
+          </div>
         </div>
-        <div class="login-card">
-          <!-- Banner dinámico para configuración inicial del administrador si no existe -->
-          <div id="initial-setup-banner-container"></div>
 
-          <div class="login-tabs">
-            <button class="login-tab active" id="tab-login" onclick="switchAuthTab('login')">Iniciar Sesión</button>
-            <button class="login-tab" id="tab-register" onclick="switchAuthTab('register')">Registrarse</button>
-          </div>
+        <!-- Zona Derecha: Tarjeta Flotante Translúcida Fiel a Ref 1 -->
+        <div class="login-floating-card-wrap">
+          <div class="login-floating-card">
+            <!-- Colinas y Ondulaciones Verdes Decorativas Inferiores -->
+            <div class="login-card-wave">
+              <svg viewBox="0 0 440 90" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+                <path d="M0 45C80 20 180 65 280 35C350 15 400 40 440 30V90H0V45Z" fill="url(#wave-grad-1)" opacity="0.35"/>
+                <path d="M0 60C100 35 220 75 320 45C380 30 420 50 440 45V90H0V60Z" fill="url(#wave-grad-2)" opacity="0.85"/>
+                <defs>
+                  <linearGradient id="wave-grad-1" x1="0" y1="20" x2="440" y2="90" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#86EFAC"/>
+                    <stop offset="1" stop-color="#22C55E"/>
+                  </linearGradient>
+                  <linearGradient id="wave-grad-2" x1="0" y1="35" x2="440" y2="90" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#22C55E"/>
+                    <stop offset="1" stop-color="#15803D"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
 
-          <div id="login-form-container">
-            <form id="login-form" onsubmit="handleLogin(event)">
-              <div class="form-group">
-                <label class="form-label">Correo Electrónico</label>
-                <input type="email" class="form-input" id="login-email" placeholder="tu@correo.com" required>
+            <!-- Cabecera de Marca con Logotipo Botánico Oficial -->
+            <div class="login-brand-header">
+              <div class="login-botanical-logo">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M24 4C24 4 29 16 40 18C40 29 29 36 24 36C24 31 25.5 22 24 4Z" fill="url(#logo-grad-1)"/>
+                  <path d="M11 22C11 22 18 22 24 28C20 35 11 35 7 30C7 26 9 23 11 22Z" fill="url(#logo-grad-2)"/>
+                  <path d="M22 31C22 31 27 25 35 27C33 34 27 38 20 36C21 33.5 22 32 22 31Z" fill="url(#logo-grad-3)"/>
+                  <defs>
+                    <linearGradient id="logo-grad-1" x1="24" y1="4" x2="40" y2="36" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#22C55E"/>
+                      <stop offset="1" stop-color="#15803D"/>
+                    </linearGradient>
+                    <linearGradient id="logo-grad-2" x1="7" y1="22" x2="24" y2="35" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#34D399"/>
+                      <stop offset="1" stop-color="#059669"/>
+                    </linearGradient>
+                    <linearGradient id="logo-grad-3" x1="20" y1="25" x2="35" y2="38" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#4ADE80"/>
+                      <stop offset="1" stop-color="#16A34A"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
-              <div class="form-group">
-                <label class="form-label">Contraseña</label>
-                <input type="password" class="form-input" id="login-password" placeholder="••••••" required>
-              </div>
-              <button type="submit" class="btn btn-primary btn-block btn-lg" id="login-btn">
-                🔐 Iniciar Sesión
-              </button>
-            </form>
-          </div>
+              <h1 class="login-brand-title">AgroPasco<br>Digital</h1>
+              <div class="login-brand-sub">Plataforma Agrícola Inteligente</div>
+              <div class="login-brand-region">Región Pasco, Perú</div>
+            </div>
 
-          <div id="register-form-container" class="hidden">
-            <form id="register-form" onsubmit="handleRegister(event)">
-              <div class="form-group">
-                <label class="form-label">Nombre Completo</label>
-                <input type="text" class="form-input" id="reg-name" placeholder="Juan Pérez" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Correo Electrónico</label>
-                <input type="email" class="form-input" id="reg-email" placeholder="tu@correo.com" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Contraseña</label>
-                <input type="password" class="form-input" id="reg-password" placeholder="Mínimo 6 caracteres" required minlength="6">
-              </div>
+            <div class="login-card-container">
+              <!-- Banner dinámico para configuración inicial del administrador si no existe -->
+              <div id="initial-setup-banner-container"></div>
 
-              <!-- Selector de Rol Visual -->
-              <div class="form-group">
-                <label class="form-label" style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Selecciona tu Rol</label>
-                <div class="role-selector">
-                  <div class="role-card active" data-role="farmer" onclick="selectRole('farmer')">
-                    <div class="role-card-icon">🌱</div>
-                    <div class="role-card-title">Agricultor</div>
-                    <div class="role-card-desc">Gestiona cultivos, parcelas y comercializa productos</div>
+              <div id="login-form-container">
+                <div class="login-form-intro">
+                  <h2 class="login-form-title">Iniciar sesión</h2>
+                  <p class="login-form-desc">Accede a tu cuenta para gestionar tus parcelas</p>
+                </div>
+
+                <form id="login-form" onsubmit="handleLogin(event)">
+                  <div class="form-group login-field-group">
+                    <div class="login-input-wrap">
+                      <span class="login-input-icon">✉️</span>
+                      <input type="email" class="login-input" id="login-email" placeholder="Correo electrónico" required autocomplete="username">
+                    </div>
                   </div>
-                  <div class="role-card" data-role="advisor" onclick="selectRole('advisor')">
-                    <div class="role-card-icon">📋</div>
-                    <div class="role-card-title">Asesor Técnico</div>
-                    <div class="role-card-desc">Monitorea parcelas, valida productos y asesora</div>
-                    <div class="role-card-approval-notice">⏳ Requiere aprobación del Admin</div>
+
+                  <div class="form-group login-field-group">
+                    <div class="login-input-wrap">
+                      <span class="login-input-icon">🔒</span>
+                      <input type="password" class="login-input" id="login-password" placeholder="Contraseña" required autocomplete="current-password">
+                      <button type="button" class="login-eye-btn" onclick="togglePasswordVisibility('login-password', this)" title="Mostrar u ocultar contraseña">
+                        👁️
+                      </button>
+                    </div>
                   </div>
-                  <div class="role-card" data-role="supermarket" onclick="selectRole('supermarket')">
-                    <div class="role-card-icon">🏪</div>
-                    <div class="role-card-title">Supermercado</div>
-                    <div class="role-card-desc">Accede al catálogo de productos certificados</div>
-                    <div class="role-card-approval-notice">⏳ Requiere aprobación del Admin</div>
+
+                  <div class="login-aux-row">
+                    <label class="login-remember-label">
+                      <input type="checkbox" id="login-remember" checked class="login-checkbox">
+                      <span>Recordarme</span>
+                    </label>
+                    <a href="javascript:void(0)" onclick="alert('Para restablecer su contraseña comuníquese con el soporte técnico (+51 901387303) o use su clave de administrador.')" class="login-forgot-link">
+                      ¿Olvidaste tu contraseña?
+                    </a>
+                  </div>
+
+                  <button type="submit" class="btn-login-submit" id="login-btn">
+                    Iniciar sesión <span style="font-size: 16px;">→</span>
+                  </button>
+
+                  <div class="login-divider-row">
+                    <span class="login-divider-line"></span>
+                    <span class="login-divider-text">¿No tienes cuenta?</span>
+                    <span class="login-divider-line"></span>
+                  </div>
+
+                  <button type="button" class="btn-login-register" onclick="switchAuthTab('register')">
+                    👤 Registrarse
+                  </button>
+                </form>
+              </div>
+
+            <div id="register-form-container" class="hidden">
+              <form id="register-form" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                  <label class="form-label" for="reg-name">Nombre Completo</label>
+                  <input type="text" class="form-input" id="reg-name" placeholder="Juan Pérez" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="reg-email">Correo Electrónico</label>
+                  <input type="email" class="form-input" id="reg-email" placeholder="tu@correo.com" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="reg-password">Contraseña</label>
+                  <div style="position: relative;">
+                    <input type="password" class="form-input" id="reg-password" placeholder="Mínimo 6 caracteres" required minlength="6" autocomplete="new-password">
+                    <button type="button" onclick="togglePasswordVisibility('reg-password', this)" title="Mostrar u ocultar contraseña" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; color: var(--text-muted); padding: 4px;">
+                      👁️
+                    </button>
                   </div>
                 </div>
-                <input type="hidden" id="reg-role" value="farmer">
-              </div>
 
-              <div class="form-group">
-                <label class="form-label">📍 Zona / Distrito (Región Pasco)</label>
-                <select class="form-select" id="reg-location-select" onchange="toggleCustomLocation(this.value)">
-                  <optgroup label="Provincia Daniel Alcides Carrión">
-                    <option value="Yanahuanca, Pasco" selected>📍 Yanahuanca</option>
-                    <option value="Chacayán, Pasco">📍 Chacayán</option>
-                    <option value="Tapuc, Pasco">📍 Tapuc</option>
-                    <option value="Paucar, Pasco">📍 Paucar</option>
-                    <option value="Vilcabamba, Pasco">📍 Vilcabamba</option>
-                    <option value="Santa Ana de Tusi, Pasco">📍 Santa Ana de Tusi</option>
-                    <option value="Goyllarisquizga, Pasco">📍 Goyllarisquizga</option>
-                  </optgroup>
-                  <optgroup label="Provincia de Pasco">
-                    <option value="Chaupimarca, Pasco">📍 Chaupimarca (Cerro de Pasco)</option>
-                    <option value="Yanacancha, Pasco">📍 Yanacancha</option>
-                    <option value="Tinyahuarco, Pasco">📍 Tinyahuarco</option>
-                    <option value="Paucartambo, Pasco">📍 Paucartambo</option>
-                    <option value="Huachón, Pasco">📍 Huachón</option>
-                    <option value="Ninacaca, Pasco">📍 Ninacaca</option>
-                    <option value="Huayllay, Pasco">📍 Huayllay</option>
-                    <option value="Vicco, Pasco">📍 Vicco</option>
-                    <option value="Simón Bolívar, Pasco">📍 Simón Bolívar</option>
-                  </optgroup>
-                  <optgroup label="Provincia de Oxapampa">
-                    <option value="Villa Rica, Oxapampa">📍 Villa Rica</option>
-                    <option value="Oxapampa">📍 Oxapampa</option>
-                    <option value="Chontabamba, Oxapampa">📍 Chontabamba</option>
-                    <option value="Huancabamba, Oxapampa">📍 Huancabamba</option>
-                    <option value="Constitución, Oxapampa">📍 Constitución</option>
-                    <option value="Puerto Bermúdez, Oxapampa">📍 Puerto Bermúdez</option>
-                  </optgroup>
-                  <option value="custom">✏️ Escribir otro lugar o caserío...</option>
-                </select>
-              </div>
-              <div class="form-group hidden" id="custom-location-group">
-                <label class="form-label">Nombre del Caserío / Anexo / Zona</label>
-                <input type="text" class="form-input" id="reg-location-custom" placeholder="Ej: Caserío Tambopampa, Yanahuanca">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Teléfono (opcional)</label>
-                <input type="tel" class="form-input" id="reg-phone" placeholder="963 XXX XXX">
-              </div>
-              <button type="submit" class="btn btn-primary btn-block btn-lg" id="register-btn">
-                🌾 Crear Cuenta
-              </button>
-            </form>
+                <!-- Selector de Rol Visual Natural Moderno -->
+                <div class="form-group">
+                  <label class="form-label" style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">Selecciona tu Rol</label>
+                  <div class="role-selector">
+                    <div class="role-card active" data-role="farmer" onclick="selectRole('farmer')">
+                      <div class="role-card-icon">🌱</div>
+                      <div class="role-card-title">Agricultor</div>
+                      <div class="role-card-desc">Gestiona cultivos, parcelas y comercializa</div>
+                    </div>
+                    <div class="role-card" data-role="advisor" onclick="selectRole('advisor')">
+                      <div class="role-card-icon">📋</div>
+                      <div class="role-card-title">Asesor Técnico</div>
+                      <div class="role-card-desc">Monitorea parcelas y valida productos</div>
+                      <div class="role-card-approval-notice">⏳ Requiere aprobación</div>
+                    </div>
+                    <div class="role-card" data-role="supermarket" onclick="selectRole('supermarket')">
+                      <div class="role-card-icon">🏪</div>
+                      <div class="role-card-title">Supermercado</div>
+                      <div class="role-card-desc">Catálogo de productos certificados</div>
+                      <div class="role-card-approval-notice">⏳ Requiere aprobación</div>
+                    </div>
+                  </div>
+                  <input type="hidden" id="reg-role" value="farmer">
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="reg-location-select">📍 Zona / Distrito (Región Pasco)</label>
+                  <select class="form-select" id="reg-location-select" onchange="toggleCustomLocation(this.value)">
+                    <optgroup label="Provincia Daniel Alcides Carrión">
+                      <option value="Yanahuanca, Pasco" selected>📍 Yanahuanca</option>
+                      <option value="Chacayán, Pasco">📍 Chacayán</option>
+                      <option value="Tapuc, Pasco">📍 Tapuc</option>
+                      <option value="Paucar, Pasco">📍 Paucar</option>
+                      <option value="Vilcabamba, Pasco">📍 Vilcabamba</option>
+                      <option value="Santa Ana de Tusi, Pasco">📍 Santa Ana de Tusi</option>
+                      <option value="Goyllarisquizga, Pasco">📍 Goyllarisquizga</option>
+                    </optgroup>
+                    <optgroup label="Provincia de Pasco">
+                      <option value="Chaupimarca, Pasco">📍 Chaupimarca (Cerro de Pasco)</option>
+                      <option value="Yanacancha, Pasco">📍 Yanacancha</option>
+                      <option value="Tinyahuarco, Pasco">📍 Tinyahuarco</option>
+                      <option value="Paucartambo, Pasco">📍 Paucartambo</option>
+                      <option value="Huachón, Pasco">📍 Huachón</option>
+                      <option value="Ninacaca, Pasco">📍 Ninacaca</option>
+                      <option value="Huayllay, Pasco">📍 Huayllay</option>
+                      <option value="Vicco, Pasco">📍 Vicco</option>
+                      <option value="Simón Bolívar, Pasco">📍 Simón Bolívar</option>
+                    </optgroup>
+                    <optgroup label="Provincia de Oxapampa">
+                      <option value="Villa Rica, Oxapampa">📍 Villa Rica</option>
+                      <option value="Oxapampa">📍 Oxapampa</option>
+                      <option value="Chontabamba, Oxapampa">📍 Chontabamba</option>
+                      <option value="Huancabamba, Oxapampa">📍 Huancabamba</option>
+                      <option value="Constitución, Oxapampa">📍 Constitución</option>
+                      <option value="Puerto Bermúdez, Oxapampa">📍 Puerto Bermúdez</option>
+                    </optgroup>
+                    <option value="custom">✏️ Escribir otro lugar o caserío...</option>
+                  </select>
+                </div>
+                <div class="form-group hidden" id="custom-location-group">
+                  <label class="form-label" for="reg-location-custom">Nombre del Caserío / Anexo / Zona</label>
+                  <input type="text" class="form-input" id="reg-location-custom" placeholder="Ej: Caserío Tambopampa, Yanahuanca">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="reg-phone">Teléfono (opcional)</label>
+                  <input type="tel" class="form-input" id="reg-phone" placeholder="963 XXX XXX">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="register-btn" style="box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);">
+                  🌾 Crear Cuenta
+                </button>
+              </form>
+            </div>
+
+            <!-- Firma Elegante del Desarrollador (Obligatoria) -->
+            <div class="starfiel-signature">
+              <span>🌱 Desarrollado por <strong>Starfiel-CD</strong></span>
+            </div>
           </div>
-
-          <p class="text-center text-sm" style="color: var(--text-secondary); margin-top: 16px;">
-            Plataforma para agricultores de la Región Pasco 🇵🇪
-          </p>
         </div>
       </div>
     </div>
   `;
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input) {
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (btn) btn.textContent = '👁️‍🗨️';
+    } else {
+      input.type = 'password';
+      if (btn) btn.textContent = '👁️';
+    }
+  }
 }
 
 function selectRole(role) {
@@ -680,6 +812,7 @@ async function handleChangePassword(e) {
 }
 
 function handleLogout() {
+  document.body.className = '';
   if (typeof api !== 'undefined' && typeof api.clearMLClientCache === 'function') {
     api.clearMLClientCache();
   }

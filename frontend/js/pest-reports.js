@@ -658,12 +658,12 @@ async function showPestResponsesHistory(reportId) {
           const hasVideo = resp.attachment_video_url && (/\.(mp4|webm|mov)$/i.test(resp.attachment_video_url) || resp.attachment_video_url.includes('/videos/'));
 
           return `
-            <div style="margin-bottom: 14px; padding: 14px; background: rgba(15,23,42,0.85); border-radius: 8px; border-left: 4px solid ${borderClr};">
+            <div style="margin-bottom: 14px; padding: 14px; background: #FFFFFF; border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid ${borderClr}; box-shadow: var(--shadow-sm);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                 <strong style="color: ${titleClr}; font-size: 13.5px;">${title}</strong>
                 <span class="text-xs text-muted">${new Date(resp.created_at).toLocaleString('es-PE')}</span>
               </div>
-              <div style="font-size: 13px; color: #e2e8f0; line-height: 1.5; margin-bottom: 8px; white-space: pre-line;">
+              <div style="font-size: 13px; color: var(--text-primary); line-height: 1.5; margin-bottom: 8px; white-space: pre-line;">
                 ${resp.response_text}
               </div>
 
@@ -750,16 +750,16 @@ async function renderAdvisorPestReportsPage() {
       </div>
 
       <!-- FICHA TÉCNICA DINÁMICA DE PARCELA ENFOCADA (Requerimiento 1) -->
-      <div id="focused-parcel-card" class="card mb-lg" style="display: none; border-left: 6px solid #ef4444; background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(15,23,42,0.95));">
+      <div id="focused-parcel-card" class="card mb-lg" style="display: none; border-left: 6px solid #ef4444; background: #FFFFFF; border: 1px solid #FCA5A5; box-shadow: var(--shadow-sm);">
         <!-- Inyectado dinámicamente al presionar Ubicar Parcela en el Mapa -->
       </div>
 
       <!-- MAPA SATELITAL DE INFECCIONES Y PARCELAS -->
-      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1.5px solid var(--border);">
-        <div style="background: rgba(15, 23, 42, 0.95); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
+      <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-radius: var(--radius-xl);">
+        <div style="background: #FFFFFF; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 18px;">🛰️</span>
-            <strong style="color: #ffffff; font-size: 14px;">Mapa Satelital de Parcelas y Zonas de Infección</strong>
+            <strong style="color: var(--text-primary); font-size: 14px; font-family: 'Outfit', sans-serif;">Mapa Satelital de Parcelas y Zonas de Infección</strong>
           </div>
           <span id="pest-map-beacon-text" class="badge badge-amber">Haz clic en "🗺️ Ubicar Parcela en el Mapa" para inspeccionar límites</span>
         </div>

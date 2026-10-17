@@ -199,24 +199,24 @@ async function renderAdvisoryPage() {
             role="log"
             aria-label="Historial de mensajes de la consulta agrícola"
           >
-            <!-- Mensaje Inicial de Bienvenida -->
+            <!-- Mensaje Inicial de Bienvenida (Estilo Agrícola Cálido) -->
             <div class="chat-msg chat-msg-assistant" id="advisory-welcome-bubble">
-              <div class="chat-msg-avatar" aria-hidden="true">🌾</div>
+              <div class="chat-msg-avatar" aria-hidden="true" style="background: #DCFCE7; color: #166534; font-size: 20px;">🌿</div>
               <div class="chat-msg-content" style="max-width: 100%;">
                 <div class="chat-msg-header">
-                  <strong>Asistente Agrícola AgroPasco</strong>
-                  <span>• Ahora</span>
+                  <strong style="color: #166534;">🌱 Asistente Agrícola AgroPasco</strong>
+                  <span>• Activo</span>
                 </div>
-                <div class="chat-msg-bubble">
-                  <p style="margin: 0 0 8px; font-weight: 600; font-size: 15px;">
+                <div class="chat-msg-bubble" style="background: #FFFFFF; border: 1.5px solid #BBF7D0; box-shadow: 0 4px 16px rgba(22, 163, 74, 0.08);">
+                  <p style="margin: 0 0 8px; font-weight: 700; font-size: 15px; color: #14532D;">
                     ¡Hola! Soy tu asistente de asesoría agrícola para la región Pasco.
                   </p>
-                  <p style="margin: 0 0 8px; color: var(--text-secondary); line-height: 1.5;">
+                  <p style="margin: 0 0 8px; color: var(--text-secondary); line-height: 1.55;">
                     Puedo orientarte sobre prevención de heladas, manejo de cultivos andinos y de selva central,
                     buenas prácticas de riego y recomendaciones frente a riesgos meteorológicos.
                   </p>
-                  <div style="font-size: 12.5px; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
-                    💡 <em>Tus consultas se evalúan con reglas técnicas agronómicas validadas localmente para las altitudes de Pasco.</em>
+                  <div style="font-size: 12px; color: #15803D; background: #F0FDF4; padding: 6px 10px; border-radius: 6px; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>💡</span> <em>Tus consultas se evalúan con reglas técnicas agronómicas validadas para las altitudes de Pasco.</em>
                   </div>
                 </div>
               </div>

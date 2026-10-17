@@ -14,7 +14,7 @@ const routes = {
   '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
   '/ml-monitor': { title: 'Monitoreo ML', subtitle: 'Predicciones meteorológicas inteligentes por parcela', icon: '🔬', render: renderMLMonitorPage, roles: ['farmer', 'advisor', 'admin'] },
-  '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor'] },
+  '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor', 'admin'] },
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
   '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/farmer/sales': { title: 'Mis Ventas', subtitle: 'Productos publicados y su estado de validación', icon: '📦', render: renderFarmerSalesPage, roles: ['farmer', 'admin'] },
@@ -107,13 +107,18 @@ async function navigateTo(path) {
 
   // Full page routes (login)
   if (routeConfig.fullPage) {
+    document.body.className = '';
     const content = typeof routeConfig.render === 'function' ? routeConfig.render() : '';
     appContainer.innerHTML = content;
     return;
   }
 
-  // Build app layout if not present
-  if (!document.getElementById('page-content')) {
+  const role = user?.role || 'farmer';
+  document.body.className = 'role-' + role;
+
+  // Build app layout if not present or if active role changed
+  const currentLayoutRole = appContainer.querySelector('.app-layout')?.getAttribute('data-role');
+  if (!document.getElementById('page-content') || currentLayoutRole !== role) {
     appContainer.innerHTML = buildAppLayout(user);
   }
 
@@ -162,21 +167,148 @@ async function navigateTo(path) {
   updateNotificationBadge();
 }
 
-// ===== ROLE-BASED SIDEBAR =====
+// ===== ROLE-BASED SIDEBAR & HELPERS =====
+
+function getRoleAvatar(role) {
+  const avatars = {
+    farmer: 'frontend/assets/images/roles/agricultor/farmer_hero.jpg',
+    admin: 'frontend/assets/images/roles/agricultor/farmer_hero.jpg',
+    advisor: 'frontend/assets/images/roles/asesor/advisor_hero.jpg',
+    supermarket: 'frontend/assets/images/roles/supermercado/supermarket_hero.jpg'
+  };
+  return avatars[role] || 'frontend/assets/images/roles/agricultor/farmer_hero.jpg';
+}
+
+function getRoleDisplayName(role) {
+  const names = {
+    farmer: 'Agricultor',
+    admin: 'Administrador',
+    advisor: 'Asesor Técnico',
+    supermarket: 'Supermercado'
+  };
+  return names[role] || 'Usuario';
+}
+
+function getSearchPlaceholder(role) {
+  const placeholders = {
+    farmer: 'Buscar parcelas, cultivos, productos...',
+    admin: 'Buscar usuarios, registros, auditoría...',
+    advisor: 'Buscar parcelas, plagas, recomendaciones...',
+    supermarket: 'Buscar productos certificados, lotes, trazabilidad...'
+  };
+  return placeholders[role] || 'Buscar...';
+}
+
+function getMobileBottomNavForRole(role) {
+  if (role === 'admin') {
+    return `
+      <nav class="mobile-bottom-nav" aria-label="Navegación rápida de Administrador">
+        <button class="mobile-nav-btn ${window.location.hash.includes('admin') && !window.location.hash.includes('users') && !window.location.hash.includes('audit') ? 'active' : ''}" onclick="window.location.hash='#/admin'">
+          <span class="mobile-nav-icon">📊</span>
+          <span>Admin</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('users') ? 'active' : ''}" onclick="window.location.hash='#/admin/users'">
+          <span class="mobile-nav-icon">👥</span>
+          <span>Usuarios</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('ml-monitor') ? 'active' : ''}" onclick="window.location.hash='#/ml-monitor'">
+          <span class="mobile-nav-icon">🔬</span>
+          <span>ML</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('audit') ? 'active' : ''}" onclick="window.location.hash='#/admin/audit'">
+          <span class="mobile-nav-icon">📋</span>
+          <span>Auditoría</span>
+        </button>
+      </nav>
+    `;
+  }
+  if (role === 'advisor') {
+    return `
+      <nav class="mobile-bottom-nav" aria-label="Navegación rápida de Asesor Técnico">
+        <button class="mobile-nav-btn ${window.location.hash.includes('advisor/parcels') ? 'active' : ''}" onclick="window.location.hash='#/advisor/parcels'">
+          <span class="mobile-nav-icon">🗺️</span>
+          <span>Parcelas</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('pest-reports') ? 'active' : ''}" onclick="window.location.hash='#/advisor/pest-reports'">
+          <span class="mobile-nav-icon">🐛</span>
+          <span>Plagas</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('validate-products') ? 'active' : ''}" onclick="window.location.hash='#/advisor/validate-products'">
+          <span class="mobile-nav-icon">✅</span>
+          <span>Validar</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('ml-monitor') ? 'active' : ''}" onclick="window.location.hash='#/ml-monitor'">
+          <span class="mobile-nav-icon">🔬</span>
+          <span>ML</span>
+        </button>
+      </nav>
+    `;
+  }
+  if (role === 'supermarket') {
+    return `
+      <nav class="mobile-bottom-nav" aria-label="Navegación rápida de Supermercado">
+        <button class="mobile-nav-btn ${window.location.hash.includes('supermarket') && !window.location.hash.includes('traceability') && !window.location.hash.includes('logistics') && !window.location.hash.includes('inventory') ? 'active' : ''}" onclick="window.location.hash='#/supermarket'">
+          <span class="mobile-nav-icon">🏪</span>
+          <span>Catálogo</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('traceability') ? 'active' : ''}" onclick="window.location.hash='#/supermarket/traceability'">
+          <span class="mobile-nav-icon">📋</span>
+          <span>Trazabilidad</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('logistics') ? 'active' : ''}" onclick="window.location.hash='#/supermarket/logistics'">
+          <span class="mobile-nav-icon">🚛</span>
+          <span>Rutas</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('inventory') ? 'active' : ''}" onclick="window.location.hash='#/supermarket/inventory'">
+          <span class="mobile-nav-icon">📦</span>
+          <span>Stock</span>
+        </button>
+      </nav>
+    `;
+  }
+  // Default: Farmer
+  return `
+    <nav class="mobile-bottom-nav" aria-label="Navegación rápida de Agricultor">
+      <button class="mobile-nav-btn ${window.location.hash.includes('dashboard') ? 'active' : ''}" onclick="window.location.hash='#/dashboard'">
+        <span class="mobile-nav-icon">📊</span>
+        <span>Inicio</span>
+      </button>
+      <button class="mobile-nav-btn ${window.location.hash.includes('parcels') ? 'active' : ''}" onclick="window.location.hash='#/parcels'">
+        <span class="mobile-nav-icon">🗺️</span>
+        <span>Parcelas</span>
+      </button>
+      <button class="mobile-nav-btn ${window.location.hash.includes('weather') ? 'active' : ''}" onclick="window.location.hash='#/weather'">
+        <span class="mobile-nav-icon">⛅</span>
+        <span>Clima</span>
+      </button>
+      <button class="mobile-nav-btn ${window.location.hash.includes('advisory') ? 'active' : ''}" onclick="window.location.hash='#/advisory'">
+        <span class="mobile-nav-icon">🤖</span>
+        <span>Asesoría</span>
+      </button>
+    </nav>
+  `;
+}
 
 function buildAppLayout(user) {
   const role = user?.role || 'farmer';
   const navItems = getNavItemsForRole(role);
+  const homeRoute = defaultRoutes[role] || '/dashboard';
 
   return `
-    <div class="app-layout">
-      <!-- Sidebar -->
+    <div class="app-layout" data-role="${role}">
+      <!-- Sidebar Agrícola Fiel a Referencia 2 -->
       <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-          <div class="sidebar-brand-icon">🌾</div>
-          <div>
-            <h1>AgroPasco</h1>
-            <span>Plataforma Agrícola</span>
+        <div class="sidebar-brand" onclick="window.location.hash='#${homeRoute}'" style="cursor: pointer;">
+          <div class="sidebar-brand-logo">
+            <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 4C24 4 29 16 40 18C40 29 29 36 24 36C24 31 25.5 22 24 4Z" fill="#16A34A"/>
+              <path d="M11 22C11 22 18 22 24 28C20 35 11 35 7 30C7 26 9 23 11 22Z" fill="#22C55E"/>
+              <path d="M22 31C22 31 27 25 35 27C33 34 27 38 20 36C21 33.5 22 32 22 31Z" fill="#4ADE80"/>
+            </svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-title">AgroPasco</div>
+            <div class="sidebar-brand-title">Digital</div>
           </div>
         </div>
 
@@ -186,9 +318,11 @@ function buildAppLayout(user) {
 
         <div class="sidebar-footer">
           <div class="sidebar-user">
-            <div class="sidebar-user-avatar">${(user?.name || 'U')[0].toUpperCase()}</div>
+            <div class="sidebar-user-avatar">
+              <img src="${getRoleAvatar(role)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+            </div>
             <div class="sidebar-user-info">
-              <div class="sidebar-user-name">${user?.name || 'Usuario'}</div>
+              <div class="sidebar-user-name">${user?.name || getRoleDisplayName(role)}</div>
               <div class="sidebar-user-role">${getRoleLabel(role)}</div>
             </div>
             <button class="btn-logout" onclick="handleLogout()" title="Cerrar Sesión">🚪</button>
@@ -199,27 +333,34 @@ function buildAppLayout(user) {
       <!-- Main Content -->
       <main class="main-content">
         <header class="main-header">
-          <div class="header-left">
-            <h2 id="header-title">📊 Panel Principal</h2>
-            <p id="header-subtitle">Vista general de tus operaciones agrícolas</p>
+          <div class="header-search">
+            <span class="header-search-icon">🔍</span>
+            <input type="text" class="header-search-input" id="global-search-input" placeholder="${getSearchPlaceholder(role)}" onkeydown="if(event.key==='Enter')handleGlobalSearch(this.value)">
           </div>
+
           <div class="header-right">
-            <div class="role-indicator">
-              <span class="badge badge-${role === 'admin' ? 'red' : role === 'advisor' ? 'blue' : role === 'supermarket' ? 'purple' : 'green'}" style="font-size: 12px; padding: 5px 12px;">
-                ${getRoleLabel(role)}
-              </span>
-            </div>
-            <button class="btn-icon" title="Alertas" onclick="window.location.hash='#/weather'">
+            <button class="btn-icon header-notif-btn" title="Alertas" onclick="window.location.hash='#/weather'" style="position: relative;">
               🔔
-              <span class="badge" id="notif-badge" style="display: none;">0</span>
+              <span class="header-notif-badge" id="notif-badge">1</span>
             </button>
+            <div class="header-user-profile" onclick="window.location.hash='#${homeRoute}'">
+              <div class="header-avatar-circle">
+                <img src="${getRoleAvatar(role)}" alt="Usuario" class="header-avatar-img">
+              </div>
+              <span class="header-user-role-text">${getRoleDisplayName(role)}</span>
+              <span class="header-chevron-down">▾</span>
+            </div>
           </div>
         </header>
+
         <div id="page-content"></div>
       </main>
 
-      <!-- Mobile menu toggle -->
-      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <!-- Mobile menu toggle button -->
+      <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Abrir menú">☰</button>
+
+      <!-- Mobile Bottom Navigation Bar adaptada por rol -->
+      ${getMobileBottomNavForRole(role)}
     </div>
   `;
 }
@@ -238,38 +379,37 @@ function getNavItemsForRole(role) {
   const navConfigs = {
     // ===== AGRICULTOR =====
     farmer: `
-      <div class="nav-section-title">Principal</div>
-      <div class="nav-item" data-route="/dashboard" onclick="window.location.hash='#/dashboard'">
-        <span class="nav-item-icon">📊</span> Panel Principal
+      <div class="nav-item active" data-route="/dashboard" onclick="window.location.hash='#/dashboard'">
+        <span class="nav-item-icon">🏠</span> Panel Principal
       </div>
       <div class="nav-item" data-route="/parcels" onclick="window.location.hash='#/parcels'">
         <span class="nav-item-icon">🗺️</span> Mis Parcelas
       </div>
       <div class="nav-item" data-route="/crops" onclick="window.location.hash='#/crops'">
-        <span class="nav-item-icon">🌿</span> Mis Cultivos
+        <span class="nav-item-icon">🌱</span> Mis Cultivos
       </div>
 
-      <div class="nav-section-title">Monitoreo</div>
+      <div class="nav-section-title">MONITOREO</div>
       <div class="nav-item" data-route="/weather" onclick="window.location.hash='#/weather'">
         <span class="nav-item-icon">⛅</span> Clima & Alertas
-        <span class="nav-badge" id="alert-badge" style="display: none;">0</span>
+        <span class="nav-badge-red">1</span>
       </div>
       <div class="nav-item" data-route="/ml-monitor" onclick="window.location.hash='#/ml-monitor'">
         <span class="nav-item-icon">🔬</span> Monitoreo ML
       </div>
       <div class="nav-item" data-route="/advisory" onclick="window.location.hash='#/advisory'">
-        <span class="nav-item-icon">📚</span> Asesoría
+        <span class="nav-item-icon">🤖</span> Asesoría IA
       </div>
       <div class="nav-item" data-route="/pest-reports" onclick="window.location.hash='#/pest-reports'">
-        <span class="nav-item-icon">🐛</span> Reportar Plagas
+        <span class="nav-item-icon">🌱</span> Reportar Plagas
       </div>
 
-      <div class="nav-section-title">Comercio</div>
+      <div class="nav-section-title">COMERCIO</div>
       <div class="nav-item" data-route="/farmer/sales" onclick="window.location.hash='#/farmer/sales'">
         <span class="nav-item-icon">📦</span> Vender Productos
       </div>
 
-      <div class="nav-section-title">Trazabilidad</div>
+      <div class="nav-section-title">TRAZABILIDAD</div>
       <div class="nav-item" data-route="/traceability" onclick="window.location.hash='#/traceability'">
         <span class="nav-item-icon">📋</span> Trazabilidad
       </div>
@@ -383,6 +523,24 @@ async function updateNotificationBadge() {
       notifBadge.textContent = count;
     }
   } catch (e) {}
+}
+
+function handleGlobalSearch(query) {
+  if (!query || !query.trim()) return;
+  const q = query.toLowerCase().trim();
+  if (q.includes('parcel') || q.includes('mapa') || q.includes('tierra')) {
+    window.location.hash = '#/parcels';
+  } else if (q.includes('cultiv') || q.includes('papa') || q.includes('maca') || q.includes('habas')) {
+    window.location.hash = '#/crops';
+  } else if (q.includes('clima') || q.includes('alert') || q.includes('helada')) {
+    window.location.hash = '#/weather';
+  } else if (q.includes('ml') || q.includes('predicci') || q.includes('model')) {
+    window.location.hash = '#/ml-monitor';
+  } else if (q.includes('product') || q.includes('vent') || q.includes('preci')) {
+    window.location.hash = '#/supermarket';
+  } else {
+    window.location.hash = '#/crops';
+  }
 }
 
 // ===== HASH ROUTER LISTENER =====
