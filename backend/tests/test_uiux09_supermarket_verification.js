@@ -153,8 +153,8 @@ async function runSupermarketVerificationSuite() {
       const p = mockDb.products.find(item => item.id === Number(params[0]));
       return p ? { ...p, farmer_name: 'Carlos Agricultor' } : null;
     }
-    if (sql.includes('SELECT location FROM users WHERE id = ?')) {
-      return { location: 'Yanahuanca, Pasco' };
+    if (sql.includes('FROM users WHERE id = ?') || sql.includes('SELECT location FROM users WHERE id = ?')) {
+      return { id: Number(params[0]) || 5, name: 'Carlos Agricultor', role: 'farmer', location: 'Yanahuanca, Pasco' };
     }
     return null;
   };

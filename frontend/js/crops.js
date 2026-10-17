@@ -748,7 +748,8 @@ async function handleCreateCrop(e) {
     } else {
       const errorMsg = result.error || 'Verifique que los datos sean correctos.';
       if (window.AgroLogger) AgroLogger.error('CROP', 'Fallo al registrar cultivo en el servidor', { error: errorMsg });
-      showToast(`Error al registrar cultivo: ${errorMsg}`, 'error');
+      const displayMsg = errorMsg.toLowerCase().startsWith('error al registrar') ? errorMsg : `Error al registrar cultivo: ${errorMsg}`;
+      showToast(displayMsg, 'error');
       // El modal permanece abierto para que el usuario corrija sin perder sus datos
     }
   };

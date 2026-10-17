@@ -811,7 +811,8 @@ async function handlePublishProduct(e) {
       } else {
         const errorMsg = result.error || 'Error al publicar producto';
         if (window.AgroLogger) AgroLogger.error('SUPERMARKET', 'Fallo al publicar producto', { error: errorMsg });
-        showToast(`Error al publicar producto: ${errorMsg}`, 'error');
+        const displayMsg = errorMsg.toLowerCase().startsWith('error al publicar') ? errorMsg : `Error al publicar producto: ${errorMsg}`;
+        showToast(displayMsg, 'error');
       }
     }
   };

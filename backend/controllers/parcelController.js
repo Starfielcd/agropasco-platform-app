@@ -100,22 +100,22 @@ async function createParcel(req, res) {
       });
     }
 
-    // 1. Identificar y validar user_id (clave foránea a tabla users)
-    const effectiveUserId = req.user?.id || user_id || usuario_id;
+    // 1. Identificar y validar user_id (clave foránea a tabla users) exclusivamente desde req.user.id
+    const effectiveUserId = req.user?.id;
     if (!effectiveUserId) {
       return res.status(401).json({
         success: false,
-        error: 'No se pudo determinar el usuario autenticado (user_id ausente). Inicia sesión nuevamente.',
-        field: 'user_id'
+        error: 'No se pudo determinar el usuario autenticado. Inicia sesión nuevamente.',
+        code: 'UNAUTHORIZED'
       });
     }
 
     const userRecord = await dbGet('SELECT id, name, role FROM users WHERE id = ?', [effectiveUserId]);
     if (!userRecord) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        error: `El usuario con ID ${effectiveUserId} no existe en la base de datos. Por favor inicia sesión nuevamente.`,
-        field: 'user_id'
+        error: 'Sesión inválida o el usuario no existe en la base de datos. Por favor inicia sesión nuevamente.',
+        code: 'USER_NOT_FOUND'
       });
     }
 
@@ -198,16 +198,17 @@ async function createParcel(req, res) {
         ]
       );
     } catch (dbErr) {
-      if (dbErr.message && dbErr.message.includes('FOREIGN KEY constraint failed')) {
+      if (dbErr.code === '23503' || (dbErr.message && (dbErr.message.includes('FOREIGN KEY') || dbErr.message.includes('violates foreign key constraint')))) {
         console.error('Error de Foreign Key al insertar parcela:', {
           userId: effectiveUserId,
           cropId: resolvedCropId,
+          code: dbErr.code,
           dbError: dbErr.message
         });
         return res.status(400).json({
           success: false,
           error: 'Error de integridad referencial: Uno de los registros asociados (usuario o cultivo) no existe en la base de datos.',
-          field: !userRecord ? 'user_id' : 'crop_id',
+          code: 'FOREIGN_KEY_VIOLATION',
           details: { user_id: effectiveUserId, crop_id: resolvedCropId }
         });
       }
@@ -414,11 +415,11 @@ async function updateParcel(req, res) {
         }
       });
     } catch (dbErr) {
-      if (dbErr.message && dbErr.message.includes('FOREIGN KEY constraint failed')) {
+      if (dbErr.code === '23503' || (dbErr.message && (dbErr.message.includes('FOREIGN KEY') || dbErr.message.includes('violates foreign key constraint')))) {
         return res.status(400).json({
           success: false,
           error: 'Error de integridad referencial: El cultivo seleccionado no existe en la base de datos.',
-          field: 'crop_id'
+          code: 'FOREIGN_KEY_VIOLATION'
         });
       }
       throw dbErr;
