@@ -61,12 +61,14 @@ const upload = multer({
   fileFilter
 });
 
+const { persistFile, generateSafeFilename } = require('../services/storageService');
+
 // Middleware multer para aceptar cualquier campo de archivo ('image', 'file', 'attachment')
 const uploadAnySingle = upload.any();
 
 // Handler de carga multipart
 function handleFileUpload(req, res) {
-  uploadAnySingle(req, res, function (err) {
+  uploadAnySingle(req, res, async function (err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ success: false, error: `Error de subida: ${err.message}` });
     } else if (err) {
@@ -81,17 +83,43 @@ function handleFileUpload(req, res) {
 
     const folder = req.query.folder || req.body.folder || 'general';
     const safeFolder = ALLOWED_FOLDERS.includes(folder) ? folder : 'general';
-    const relativeUrl = `/uploads/${safeFolder}/${file.filename}`;
 
-    res.json({
-      success: true,
-      message: 'Archivo cargado exitosamente.',
-      url: relativeUrl,
-      filename: file.filename,
-      originalName: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size
-    });
+    try {
+      // Leer el buffer para garantizar persistencia remota en Supabase
+      const fileBuffer = fs.readFileSync(file.path);
+
+      const result = await persistFile({
+        buffer: fileBuffer,
+        filename: file.filename,
+        folder: safeFolder,
+        mimeType: file.mimetype
+      });
+
+      res.json({
+        success: true,
+        message: 'Archivo cargado exitosamente.',
+        url: result.url,
+        storage: result.storageType,
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      });
+    } catch (persistErr) {
+      console.error('Error al persistir archivo:', persistErr);
+      // Fallback de contingencia a la URL local
+      const relativeUrl = `/uploads/${safeFolder}/${file.filename}`;
+      res.json({
+        success: true,
+        message: 'Archivo cargado exitosamente (modo local).',
+        url: relativeUrl,
+        storage: 'local',
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      });
+    }
   });
 }
 
@@ -118,22 +146,20 @@ async function handleBase64Upload(req, res) {
     else if (mimeType.includes('webp')) ext = '.webp';
 
     const safeFolder = ['pests', 'products'].includes(folder) ? folder : 'general';
-    const targetDir = path.join(UPLOADS_ROOT, safeFolder);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
+    const filename = generateSafeFilename('capture', ext);
 
-    const filename = `capture_${Date.now()}_${Math.round(Math.random() * 1E6)}${ext}`;
-    const filePath = path.join(targetDir, filename);
-
-    fs.writeFileSync(filePath, buffer);
-
-    const relativeUrl = `/uploads/${safeFolder}/${filename}`;
+    const result = await persistFile({
+      buffer,
+      filename,
+      folder: safeFolder,
+      mimeType
+    });
 
     res.json({
       success: true,
       message: 'Fotografía guardada exitosamente.',
-      url: relativeUrl,
+      url: result.url,
+      storage: result.storageType,
       filename: filename,
       size: buffer.length
     });
