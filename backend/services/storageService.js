@@ -116,21 +116,78 @@ async function uploadToSupabaseStorage(buffer, destinationPath, mimeType) {
 }
 
 /**
- * Guarda un archivo de forma persistente, intentando Supabase Storage primero
- * y degradando con gracia a disco local si no está configurado o falla.
+ * Guarda un archivo de forma persistente.
+ *
+ * POLÍTICA DIFERENCIADA POR ENTORNO:
+ * - Producción (process.env.NODE_ENV === 'production' && !process.env.FORCE_LOCAL_STORAGE):
+ *   Exige persistencia real en Supabase Storage. Si Supabase no está configurado,
+ *   el bucket no existe o la subida falla, retorna { success: false, error: ... }.
+ *   NUNCA guarda silenciosamente en disco efímero de producción para evitar pérdidas de fotos.
+ *
+ * - Desarrollo Local (process.env.NODE_ENV !== 'production' || process.env.FORCE_LOCAL_STORAGE):
+ *   Si Supabase está configurado lo utiliza; si no, guarda en disco local (/uploads/)
+ *   para permitir desarrollo offline y pruebas unitarias aisladas.
  *
  * @param {Object} options
  * @param {Buffer} options.buffer - Buffer binario
  * @param {string} options.filename - Nombre final del archivo (con extensión)
  * @param {string} options.folder - Subcarpeta ('products', 'pests', etc.)
  * @param {string} options.mimeType - Tipo MIME
- * @returns {Promise<{ success: boolean, url: string, storageType: 'supabase'|'local', filename: string, size: number }>}
+ * @returns {Promise<{ success: boolean, url?: string, storageType?: 'supabase'|'local', filename: string, size?: number, error?: string, code?: string }>}
  */
 async function persistFile({ buffer, filename, folder = 'general', mimeType = 'image/jpeg' }) {
   const safeFolder = ALLOWED_FOLDERS.includes(folder) ? folder : 'general';
   const destinationPath = `${safeFolder}/${filename}`;
+  const isProduction = process.env.NODE_ENV === 'production' && !process.env.FORCE_LOCAL_STORAGE;
+  const config = getSupabaseConfig();
 
-  // 1. Siempre guardar una copia local (sirve como respaldo, caché y desarrollo local)
+  // En PRODUCCIÓN: Exigencia estricta de almacenamiento persistente
+  if (isProduction) {
+    if (!config.isConfigured) {
+      const errMsg = 'Error de configuración en producción: Supabase Storage no está configurado. Las variables SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY son obligatorias para garantizar que las fotografías de los agricultores no se pierdan tras reinicios.';
+      console.error(`[STORAGE_CRITICAL_PROD_ERROR] ${errMsg}`);
+      return {
+        success: false,
+        filename,
+        error: 'Almacenamiento persistente no configurado en el servidor. La fotografía no pudo guardarse de forma duradera.',
+        code: 'STORAGE_UNCONFIGURED'
+      };
+    }
+
+    const supabaseResult = await uploadToSupabaseStorage(buffer, destinationPath, mimeType);
+    if (supabaseResult.success && supabaseResult.publicUrl) {
+      // También guardar copia local como caché temporal
+      try {
+        const localTargetDir = path.join(UPLOADS_ROOT, safeFolder);
+        if (!fs.existsSync(localTargetDir)) fs.mkdirSync(localTargetDir, { recursive: true });
+        fs.writeFileSync(path.join(localTargetDir, filename), buffer);
+      } catch (cacheErr) {
+        // no-op si falla caché local
+      }
+
+      return {
+        success: true,
+        url: supabaseResult.publicUrl,
+        storageType: 'supabase',
+        filename,
+        size: buffer.length,
+        mimeType
+      };
+    }
+
+    // Si falló la subida en producción, NO degradar silenciosamente a disco efímero
+    const failMsg = `Fallo crítico al subir archivo a Supabase Storage en producción: ${supabaseResult.error || 'Error desconocido'}. La operación fue cancelada para evitar pérdida de datos.`;
+    console.error(`[STORAGE_PROD_UPLOAD_FAILED] ${failMsg}`);
+    return {
+      success: false,
+      filename,
+      error: `No se pudo almacenar la fotografía de forma permanente (${supabaseResult.error || 'Error de servicio'}). Intente nuevamente.`,
+      code: 'STORAGE_UPLOAD_FAILED'
+    };
+  }
+
+  // En DESARROLLO / PRUEBAS LOCALES:
+  // 1. Guardar copia local en /uploads/
   const localTargetDir = path.join(UPLOADS_ROOT, safeFolder);
   if (!fs.existsSync(localTargetDir)) {
     fs.mkdirSync(localTargetDir, { recursive: true });
@@ -139,8 +196,7 @@ async function persistFile({ buffer, filename, folder = 'general', mimeType = 'i
   fs.writeFileSync(localFilePath, buffer);
   const localRelativeUrl = `/uploads/${safeFolder}/${filename}`;
 
-  // 2. Intentar subir a Supabase Storage si está configurado
-  const config = getSupabaseConfig();
+  // 2. Si Supabase está configurado en desarrollo, probar subida
   if (config.isConfigured) {
     const supabaseResult = await uploadToSupabaseStorage(buffer, destinationPath, mimeType);
     if (supabaseResult.success && supabaseResult.publicUrl) {
@@ -153,10 +209,10 @@ async function persistFile({ buffer, filename, folder = 'general', mimeType = 'i
         mimeType
       };
     }
-    console.warn(`[STORAGE] Falló subida a Supabase, utilizando fallback local para ${filename}: ${supabaseResult.error}`);
+    console.warn(`[STORAGE_DEV_WARN] Falló subida a Supabase en desarrollo, usando fallback local: ${supabaseResult.error}`);
   }
 
-  // 3. Retornar URL local de fallback
+  // 3. Retornar URL local en desarrollo
   return {
     success: true,
     url: localRelativeUrl,

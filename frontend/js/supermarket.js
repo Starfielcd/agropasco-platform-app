@@ -3,6 +3,18 @@
  * Conexión completa entre Agricultor, Asesor Técnico y Supermercado.
  */
 
+// Función de sanitización y validación estricta de URLs de imágenes
+function safePhotoUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  // Solo permitir rutas relativas seguras (/uploads/...) o URLs absolutas HTTPS
+  if (trimmed.startsWith('/uploads/') || /^https:\/\/[a-zA-Z0-9_.-]+/.test(trimmed) || /^http:\/\/localhost(:\d+)?\//.test(trimmed)) {
+    return trimmed.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  return null;
+}
+
 // ==========================================
 // 1. CATÁLOGO DEL SUPERMERCADO (ROL SUPERMERCADO & PÚBLICO)
 // ==========================================
@@ -77,7 +89,7 @@ async function renderSupermarketPage() {
           ${products.map(prod => {
             const isNatural = prod.is_natural || prod.certified_natural;
             const originalP = prod.original_price || (isNatural ? prod.price_per_kg / 1.30 : prod.price_per_kg);
-            const photoSrc = (prod.photo_url && prod.photo_url.trim()) ? prod.photo_url.trim() : null;
+            const photoSrc = safePhotoUrl(prod.photo_url);
             const originText = prod.origin || prod.farmer_location || 'Región Pasco';
             const farmerText = prod.farmer_name || 'Carlos (Agricultor de Pasco)';
             const searchIndex = `${prod.name} ${prod.crop_type} ${originText} ${farmerText} ${prod.quality || ''}`.toLowerCase();
@@ -231,7 +243,7 @@ async function showProductDetailModal(productId) {
 
   const prod = result.data;
   const cropIcons = { papa: '🥔', maca: '🌿', cafe: '☕', quinua: '🌾', habas: '🫘', olluco: '🟡', mashua: '🟠' };
-  const photoSrc = (prod.photo_url && prod.photo_url.trim()) ? prod.photo_url.trim() : null;
+  const photoSrc = safePhotoUrl(prod.photo_url);
   const isNatural = prod.is_natural || prod.certified_natural;
   const originalPrice = prod.original_price || (isNatural ? prod.price_per_kg / 1.30 : prod.price_per_kg);
   const naturalBonus = isNatural ? (prod.price_per_kg - originalPrice) : 0;
@@ -457,6 +469,7 @@ async function renderFarmerSalesPage() {
           ${myProducts.map(p => {
             const isApproved = p.validation_status === 'approved';
             const isNatural = p.is_natural || p.certified_natural;
+            const safeImg = safePhotoUrl(p.photo_url);
             return `
               <div class="card" style="border-left: 4px solid var(--${statusColors[p.validation_status] || 'amber'}-500);">
                 <div class="flex items-center justify-between mb-sm" style="flex-wrap: wrap; gap: 8px;">
@@ -467,16 +480,16 @@ async function renderFarmerSalesPage() {
                 </div>
 
                 <!-- Fotografía Original Subida por el Agricultor -->
-                ${p.photo_url ? `
+                ${safeImg ? `
                   <div style="display: flex; align-items: center; gap: 12px; margin: 10px 0; padding: 10px 14px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;">
-                    <img src="${p.photo_url}" alt="${p.name}" style="width: 58px; height: 58px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);"
-                         onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                    <img src="${safeImg}" alt="${p.name}" style="width: 58px; height: 58px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);"
+                         onclick="AgroMediaUploader.previewEnlarged('${safeImg}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
                     <div style="font-size: 12px; flex: 1;">
                       <div style="color: var(--green-400); font-weight: 700;">📸 Fotografía Original Registrada</div>
                       <div class="text-muted" style="margin-top: 2px;">Imagen auténtica de campo vinculada a la trazabilidad y visible para el supermercado.</div>
                     </div>
                     <button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;"
-                            onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                            onclick="AgroMediaUploader.previewEnlarged('${safeImg}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
                       🔍 Ver
                     </button>
                   </div>
@@ -899,23 +912,26 @@ async function renderValidateProductsPage() {
                   </div>
 
                   <!-- FOTOGRAFÍA DEL PRODUCTO SUBIDA POR EL AGRICULTOR -->
-                  ${p.photo_url ? `
-                    <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); max-width: 440px; background: #FFFFFF; box-shadow: var(--shadow-sm);">
-                      <div style="background: #F8FAFC; padding: 6px 12px; font-size: 11.5px; color: var(--forest-green); font-weight: 600; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
-                        <span>📸 Fotografía de la Cosecha enviada por el Agricultor</span>
-                        <button type="button" class="btn btn-sm btn-secondary" style="font-size: 10.5px; padding: 2px 8px;"
-                                onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
-                          🔍 Ver Tamaño Completo
-                        </button>
+                  ${(() => {
+                    const safeAdvisorImg = safePhotoUrl(p.photo_url);
+                    return safeAdvisorImg ? `
+                      <div style="margin-bottom: 14px; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); max-width: 440px; background: #FFFFFF; box-shadow: var(--shadow-sm);">
+                        <div style="background: #F8FAFC; padding: 6px 12px; font-size: 11.5px; color: var(--forest-green); font-weight: 600; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+                          <span>📸 Fotografía de la Cosecha enviada por el Agricultor</span>
+                          <button type="button" class="btn btn-sm btn-secondary" style="font-size: 10.5px; padding: 2px 8px;"
+                                  onclick="AgroMediaUploader.previewEnlarged('${safeAdvisorImg}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
+                            🔍 Ver Tamaño Completo
+                          </button>
+                        </div>
+                        <img src="${safeAdvisorImg}" alt="${p.name}" style="max-height: 220px; width: 100%; object-fit: contain; cursor: pointer; display: block;"
+                             onclick="AgroMediaUploader.previewEnlarged('${safeAdvisorImg}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
                       </div>
-                      <img src="${p.photo_url}" alt="${p.name}" style="max-height: 220px; width: 100%; object-fit: contain; cursor: pointer; display: block;"
-                           onclick="AgroMediaUploader.previewEnlarged('${p.photo_url}', 'Foto Cosecha: ${p.name.replace(/'/g, "\\'")}')">
-                    </div>
-                  ` : `
-                    <div style="margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
-                      📷 Sin fotografía adjunta por el agricultor.
-                    </div>
-                  `}
+                    ` : `
+                      <div style="margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                        📷 Sin fotografía adjunta por el agricultor.
+                      </div>
+                    `;
+                  })()}
 
                   <!-- REVISIÓN DEL HISTORIAL DE PRÁCTICAS DEL AGRICULTOR -->
                   <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">

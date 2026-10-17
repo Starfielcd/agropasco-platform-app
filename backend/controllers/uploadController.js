@@ -95,6 +95,14 @@ function handleFileUpload(req, res) {
         mimeType: file.mimetype
       });
 
+      if (!result.success) {
+        return res.status(503).json({
+          success: false,
+          error: result.error || 'No se pudo almacenar la fotografía de forma permanente.',
+          code: result.code || 'STORAGE_ERROR'
+        });
+      }
+
       res.json({
         success: true,
         message: 'Archivo cargado exitosamente.',
@@ -107,11 +115,19 @@ function handleFileUpload(req, res) {
       });
     } catch (persistErr) {
       console.error('Error al persistir archivo:', persistErr);
-      // Fallback de contingencia a la URL local
+      const isProduction = process.env.NODE_ENV === 'production' && !process.env.FORCE_LOCAL_STORAGE;
+      if (isProduction) {
+        return res.status(503).json({
+          success: false,
+          error: 'Fallo crítico al procesar la fotografía en almacenamiento permanente.',
+          code: 'STORAGE_EXCEPTION'
+        });
+      }
+      // Fallback de contingencia a la URL local (solo en desarrollo)
       const relativeUrl = `/uploads/${safeFolder}/${file.filename}`;
       res.json({
         success: true,
-        message: 'Archivo cargado exitosamente (modo local).',
+        message: 'Archivo cargado exitosamente (modo local dev).',
         url: relativeUrl,
         storage: 'local',
         filename: file.filename,
@@ -154,6 +170,14 @@ async function handleBase64Upload(req, res) {
       folder: safeFolder,
       mimeType
     });
+
+    if (!result.success) {
+      return res.status(503).json({
+        success: false,
+        error: result.error || 'No se pudo almacenar la fotografía capturada de forma permanente.',
+        code: result.code || 'STORAGE_ERROR'
+      });
+    }
 
     res.json({
       success: true,
