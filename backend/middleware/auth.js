@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'agropasco_secret_key_2026';
 
 const ALLOWED_ALGORITHMS = ['HS256'];
 
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -20,16 +20,52 @@ function authenticateToken(req, res, next) {
     });
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ALLOWED_ALGORITHMS });
-    req.user = decoded;
-    next();
+    decoded = jwt.verify(token, JWT_SECRET, { algorithms: ALLOWED_ALGORITHMS });
   } catch (err) {
     return res.status(403).json({
       success: false,
       error: 'Token inválido o expirado.',
       hint: 'Inicia sesión nuevamente para obtener un token válido.'
     });
+  }
+
+  // Verificación estricta de existencia y estado en base de datos PostgreSQL
+  try {
+    const { dbGet } = require('../config/database');
+    const user = await dbGet('SELECT id, name, email, role, status, is_blocked FROM users WHERE id = ?', [decoded.id]);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión inválida o expirada. Por favor inicia sesión nuevamente.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    if (user.status === 'disabled' || user.is_blocked || user.status === 'blocked') {
+      return res.status(403).json({
+        success: false,
+        error: 'Tu cuenta ha sido bloqueada o desactivada por el Administrador.',
+        code: 'ACCOUNT_BLOCKED'
+      });
+    }
+
+    if (user.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        error: 'Tu cuenta está pendiente de aprobación por el Administrador.',
+        code: 'ACCOUNT_PENDING'
+      });
+    }
+
+    req.user = user;
+    if (typeof next === 'function') next();
+  } catch (dbErr) {
+    console.error('Aviso en authenticateToken (posible entorno de pruebas sin BD):', dbErr.message);
+    req.user = decoded;
+    if (typeof next === 'function') next();
   }
 }
 

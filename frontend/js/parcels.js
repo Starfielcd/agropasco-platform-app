@@ -472,7 +472,6 @@ async function handleCreateParcel(e) {
     if (window.AgroLogger) AgroLogger.action('PARCEL', 'Enviando registro de parcela delimitada');
 
     const result = await api.createParcel({
-      user_id: currentUserId,
       name: document.getElementById('parcel-name').value.trim(),
       geo_json: geoJson,
       area_hectares: parseFloat(document.getElementById('parcel-area-ha').value) || 0,

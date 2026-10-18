@@ -75,6 +75,13 @@ function convertPlaceholders(sql) {
 }
 
 /**
+ * Retorna el pool activo (permite inyectar pools aislados para pruebas de integración).
+ */
+function getActivePool() {
+  return (module.exports && module.exports.pool) ? module.exports.pool : pool;
+}
+
+/**
  * Ejecuta un INSERT, UPDATE o DELETE.
  * Para INSERTs, agrega RETURNING id automáticamente para compatibilidad con lastID.
  * Retorna { lastID, changes } igual que el wrapper anterior de SQLite.
@@ -92,7 +99,8 @@ async function dbRun(sql, params = []) {
     finalSql = pgSql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
   }
 
-  const result = await pool.query(finalSql, params);
+  const activePool = getActivePool();
+  const result = await activePool.query(finalSql, params);
 
   return {
     lastID: isInsert && result.rows && result.rows.length > 0 ? result.rows[0].id : null,
@@ -108,7 +116,8 @@ async function dbGet(sql, params = []) {
     return module.exports.dbGet(sql, params);
   }
   const pgSql = convertPlaceholders(sql);
-  const result = await pool.query(pgSql, params);
+  const activePool = getActivePool();
+  const result = await activePool.query(pgSql, params);
   return result.rows[0] || undefined;
 }
 
@@ -120,7 +129,8 @@ async function dbAll(sql, params = []) {
     return module.exports.dbAll(sql, params);
   }
   const pgSql = convertPlaceholders(sql);
-  const result = await pool.query(pgSql, params);
+  const activePool = getActivePool();
+  const result = await activePool.query(pgSql, params);
   return result.rows;
 }
 
@@ -128,7 +138,7 @@ async function dbAll(sql, params = []) {
  * Retorna el pool de conexiones (equivalente a getDb para código legado).
  */
 function getDb() {
-  return pool;
+  return getActivePool();
 }
 
 /**
@@ -146,14 +156,15 @@ async function withTransaction(callback) {
   if (module.exports && (module.exports.dbRun !== dbRun || module.exports.dbGet !== dbGet)) {
     const mockTx = {
       client: null,
-      query: (sql, params) => (module.exports.query ? module.exports.query(sql, params) : pool.query(sql, params)),
+      query: (sql, params) => (module.exports.query ? module.exports.query(sql, params) : getActivePool().query(sql, params)),
       dbGet: (sql, params) => module.exports.dbGet(sql, params),
       dbAll: (sql, params) => module.exports.dbAll(sql, params),
       dbRun: (sql, params) => module.exports.dbRun(sql, params),
     };
     return await callback(mockTx);
   }
-  const client = await pool.connect();
+  const activePool = getActivePool();
+  const client = await activePool.connect();
   try {
     await client.query('BEGIN');
 
@@ -225,7 +236,8 @@ const EXPECTED_SCHEMA_TABLES = [
  * Es estrictamente idempotente: utiliza CREATE TABLE IF NOT EXISTS.
  * Acepta un ejecutor opcional (client o pool), por defecto usa el pool del módulo.
  */
-async function initializeSchema(executor = pool) {
+async function initializeSchema(executor = null) {
+  executor = executor || getActivePool();
   console.log('📦 Creando/verificando esquema PostgreSQL (16 tablas)...');
 
   // ===== TABLA: users =====
@@ -528,8 +540,103 @@ async function initializeSchema(executor = pool) {
 }
 
 /**
+ * Esquema Comercial B2B (COMERCIO01):
+ * Crea de forma idempotente las tablas de órdenes de compra B2B (purchase_orders)
+ * y trazabilidad de estados (order_status_history), y añade columnas de enlace en notifications.
+ */
+async function initializeCommercialSchema(executor = null) {
+  executor = executor || getActivePool();
+  // ===== TABLA: purchase_orders =====
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      id SERIAL PRIMARY KEY,
+      order_code VARCHAR(32) UNIQUE NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+      farmer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      supermarket_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      supermarket_name TEXT NOT NULL,
+      buyer_representative_name TEXT NOT NULL,
+      buyer_contact_phone TEXT NOT NULL,
+      buyer_contact_email TEXT,
+      farmer_name TEXT NOT NULL,
+      farmer_contact_phone TEXT,
+      product_name TEXT NOT NULL,
+      crop_type TEXT NOT NULL,
+      quality TEXT NOT NULL DEFAULT 'primera',
+      unit TEXT NOT NULL DEFAULT 'kg',
+      quantity DOUBLE PRECISION NOT NULL,
+      unit_price DOUBLE PRECISION NOT NULL,
+      subtotal DOUBLE PRECISION NOT NULL,
+      transport_modality TEXT NOT NULL CHECK(transport_modality IN ('farmer_delivery', 'supermarket_pickup')),
+      transport_cost DOUBLE PRECISION DEFAULT 0,
+      transport_payer TEXT DEFAULT 'supermarket' CHECK(transport_payer IN ('supermarket', 'farmer', 'shared', 'none')),
+      transport_cost_status TEXT DEFAULT 'not_applicable' CHECK(transport_cost_status IN ('not_applicable', 'pending_quote', 'quoted', 'accepted', 'rejected')),
+      delivery_address TEXT,
+      delivery_reference TEXT,
+      pickup_location TEXT,
+      pickup_reference TEXT,
+      requested_date DATE NOT NULL,
+      agreed_date DATE,
+      agreed_time_slot TEXT,
+      packaging_instructions TEXT,
+      notes TEXT,
+      total_amount DOUBLE PRECISION NOT NULL,
+      status TEXT NOT NULL DEFAULT 'solicitud_enviada' CHECK(status IN (
+        'solicitud_enviada',
+        'pendiente_respuesta',
+        'transporte_por_cotizar',
+        'pendiente_aceptacion_condiciones',
+        'aceptada',
+        'en_preparacion',
+        'lista_para_entrega',
+        'en_traslado',
+        'entregada',
+        'rechazada',
+        'cancelada'
+      )),
+      farmer_response_notes TEXT,
+      rejection_reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // ===== TABLA: order_status_history =====
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS order_status_history (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      changed_by_name TEXT NOT NULL,
+      changed_by_role TEXT NOT NULL,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Agregar columna order_id a notifications si no existe
+  try {
+    await executor.query(`
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS order_id INTEGER REFERENCES purchase_orders(id) ON DELETE SET NULL
+    `);
+  } catch (_) {}
+
+  // Índices para optimización de consultas B2B
+  await executor.query(`
+    CREATE INDEX IF NOT EXISTS idx_orders_farmer_id ON purchase_orders(farmer_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_supermarket_id ON purchase_orders(supermarket_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON purchase_orders(status);
+    CREATE INDEX IF NOT EXISTS idx_order_history_order_id ON order_status_history(order_id);
+  `);
+
+  console.log('✅ Esquema Comercial B2B verificado (purchase_orders, order_status_history, notifications.order_id).');
+}
+
+/**
  * Inicialización completa para desarrollo/servidor:
- * 1. Inicializa el esquema limpio (16 tablas, idempotente)
+ * 1. Inicializa el esquema limpio (16 tablas base + esquema comercial B2B, idempotente)
  * 2. Aplica datos semilla iniciales SOLO en entornos no-producción
  *
  * En NODE_ENV=production se omite seedData para proteger los datos
@@ -541,10 +648,12 @@ async function initializeDatabase() {
   if (isProduction) {
     console.log('🔒 Modo PRODUCCIÓN: inicializando solo esquema (seedData omitido).');
     await initializeSchema();
+    await initializeCommercialSchema();
     console.log('✅ Esquema PostgreSQL verificado en modo producción.');
   } else {
     console.log('📦 Inicializando base de datos PostgreSQL con datos semilla...');
     await initializeSchema();
+    await initializeCommercialSchema();
     await seedData();
     console.log('✅ Base de datos PostgreSQL inicializada correctamente');
   }
@@ -675,6 +784,8 @@ async function seedData() {
 }
 
 module.exports = {
+  pool,
+  getActivePool,
   getDb,
   dbRun,
   dbGet,
@@ -682,6 +793,7 @@ module.exports = {
   withTransaction,
   convertPlaceholders,
   initializeSchema,
+  initializeCommercialSchema,
   seedData,
   initializeDatabase,
   EXPECTED_SCHEMA_TABLES

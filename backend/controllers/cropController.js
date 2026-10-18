@@ -54,6 +54,24 @@ async function createCrop(req, res) {
       return res.status(400).json({ success: false, error: 'Nombre y tipo de cultivo son obligatorios.' });
     }
 
+    const effectiveUserId = req.user?.id;
+    if (!effectiveUserId) {
+      return res.status(401).json({
+        success: false,
+        error: 'No se pudo determinar el usuario autenticado. Inicia sesión nuevamente.',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    const userRecord = await dbGet('SELECT id, name, role FROM users WHERE id = ?', [effectiveUserId]);
+    if (!userRecord) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión inválida o el usuario no existe en la base de datos. Por favor inicia sesión nuevamente.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
     // Si no se proporcionó foto en vivo, usar imagen ilustrativa de alta calidad según tipo de cultivo
     const finalPhoto = (photo_url && typeof photo_url === 'string' && photo_url.trim() !== '')
       ? photo_url.trim()
@@ -62,7 +80,7 @@ async function createCrop(req, res) {
     const result = await dbRun(
       `INSERT INTO crops (user_id, name, crop_type, variety, area_hectares, planting_date, status, location_detail, altitude_masl, notes, photo_url)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, name, crop_type, variety || null, area_hectares || 0, planting_date || null,
+      [effectiveUserId, name, crop_type, variety || null, area_hectares || 0, planting_date || null,
        status || 'planificado', location_detail || null, altitude_masl || 4380, notes || null, finalPhoto]
     );
 
@@ -76,7 +94,14 @@ async function createCrop(req, res) {
     res.status(201).json({ success: true, message: 'Cultivo registrado exitosamente.', data: crop });
   } catch (err) {
     console.error('Error al crear cultivo:', err);
-    res.status(500).json({ success: false, error: 'Error al registrar cultivo.' });
+    if (err.code === '23503' || (err.message && (err.message.includes('FOREIGN KEY') || err.message.includes('violates foreign key constraint')))) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión inválida o usuario no encontrado en la base de datos.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    res.status(500).json({ success: false, error: 'Error al registrar cultivo.', code: 'CROP_CREATE_FAILED' });
   }
 }
 

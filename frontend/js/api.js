@@ -381,6 +381,18 @@ const api = {
   getPendingProducts: () => apiRequest('/v1/supermarket/products/pending'),
   validateProduct: (id, data) => apiRequest(`/v1/supermarket/products/${id}/validate`, { method: 'PUT', body: JSON.stringify(data) }),
 
+  // B2B Purchase Orders (COMERCIO01)
+  createPurchaseOrder: (data) => apiRequest('/v1/supermarket/orders', { method: 'POST', body: JSON.stringify(data) }),
+  getPurchaseOrders: () => apiRequest('/v1/supermarket/orders'),
+  getPurchaseOrder: (id) => apiRequest(`/v1/supermarket/orders/${id}`),
+  farmerOrderResponse: (id, data) => apiRequest(`/v1/supermarket/orders/${id}/farmer-response`, { method: 'PUT', body: JSON.stringify(data) }),
+  supermarketOrderResponse: (id, data) => apiRequest(`/v1/supermarket/orders/${id}/supermarket-response`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // User Notifications (COMERCIO01)
+  getNotifications: (limit = 30, unreadOnly = false) => apiRequest(`/notifications?limit=${limit}${unreadOnly ? '&unread=true' : ''}`),
+  markNotificationRead: (id) => apiRequest(`/notifications/${id}/read`, { method: 'PUT' }),
+  markAllNotificationsRead: () => apiRequest('/notifications/read-all', { method: 'PUT' }),
+
   // Pest Reports (farmer → advisor)
   createPestReport: (data) => apiRequest('/pest-reports', { method: 'POST', body: JSON.stringify(data) }),
   getPestReports: (params = '') => apiRequest(`/pest-reports${params ? '?' + params : ''}`),

@@ -176,15 +176,40 @@ async function publishProduct(req, res) {
 
     const traceabilityCode = `AP-${crop_type.toUpperCase().substring(0, 4)}-${Date.now().toString(36).toUpperCase()}`;
 
-    const user = await dbGet('SELECT location FROM users WHERE id = ?', [req.user.id]);
-    const finalOrigin = origin || user?.location || 'Yanahuanca, Pasco';
+    const effectiveUserId = req.user?.id;
+    if (!effectiveUserId) {
+      return res.status(401).json({
+        success: false,
+        error: 'No se pudo determinar el usuario autenticado. Inicia sesión nuevamente.',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    const user = await dbGet('SELECT id, name, role, location FROM users WHERE id = ?', [effectiveUserId]);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión inválida o el usuario no existe en la base de datos. Por favor inicia sesión nuevamente.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    if (user.role !== 'farmer') {
+      return res.status(403).json({
+        success: false,
+        error: 'Solo los usuarios con rol de agricultor están autorizados para publicar productos comerciales.',
+        code: 'FORBIDDEN_ROLE'
+      });
+    }
+
+    const finalOrigin = origin || user.location || 'Yanahuanca, Pasco';
 
     const result = await dbRun(
       `INSERT INTO products (farmer_id, name, crop_type, quality, origin, stock_kg, price_per_kg, unit, description,
                              traceability_code, certified_natural, harvest_date, photo_url,
                              validation_status, original_price)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_DATE, ?, 'pending', ?)`,
-      [req.user.id, name, crop_type, quality || 'primera', finalOrigin,
+      [effectiveUserId, name, crop_type, quality || 'primera', finalOrigin,
        stock_kg || 0, price_per_kg, unit || 'kg', description || '', traceabilityCode,
        photo_url.trim(), price_per_kg]
     );
@@ -196,7 +221,7 @@ async function publishProduct(req, res) {
         `INSERT INTO notifications (user_id, type, title, message, severity)
          VALUES (?, 'mercado', ?, ?, 'info')`,
         [adv.id, `📦 Producto pendiente de validación: ${name}`,
-         `El agricultor ${req.user.name} ha publicado "${name}" y necesita validación técnica.`]
+         `El agricultor ${user.name} ha publicado "${name}" y necesita validación técnica.`]
       );
     }
 
@@ -204,7 +229,14 @@ async function publishProduct(req, res) {
     res.status(201).json({ success: true, message: 'Producto enviado para validación del asesor técnico.', data: product });
   } catch (err) {
     console.error('Error al publicar producto:', err);
-    res.status(500).json({ success: false, error: 'Error al publicar producto.' });
+    if (err.code === '23503' || (err.message && (err.message.includes('FOREIGN KEY') || err.message.includes('violates foreign key constraint')))) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sesión inválida o usuario no encontrado en la base de datos.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    res.status(500).json({ success: false, error: 'Error al publicar producto.', code: 'PRODUCT_PUBLISH_FAILED' });
   }
 }
 

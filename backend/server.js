@@ -53,6 +53,7 @@ app.use('/api/pest-reports', require('./routes/pestReports'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/ml', require('./routes/ml'));
 app.use('/api/phytosanitary', require('./routes/phytosanitary'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // ===== CONFIGURACIÓN DE MAPAS (público, para frontend) =====
 app.get('/api/config/maps', (req, res) => {
