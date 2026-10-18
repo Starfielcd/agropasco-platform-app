@@ -405,25 +405,19 @@ git push origin main
 ```
 *Esto crea commits inversos limpios en el historial público sin requerir force-push.*
 
-#### B. Comportamiento y Reversión en Base de Datos (PostgreSQL)
+#### B. Comportamiento de Base de Datos ante Reversión (PostgreSQL)
 
-1. **Inocuidad del Esquema sin Down-Migration**:
-   Las modificaciones introducidas por COMERCIO01 son **puramente aditivas y compatibles hacia atrás**:
-   - Las tablas `purchase_orders` y `order_status_history` son nuevas; el código legado en `26f64bb` no las consulta ni las modifica.
-   - La columna `notifications.order_id` acepta valores `NULL`. Las inserciones del código legado omiten este campo y se insertan sin error.
-   - En consecuencia, el código previo puede operar perfectamente en producción sin requerir la eliminación inmediata de las tablas.
-2. **Script de Down-Migration Opcional (Limpieza Estricta)**:
-   Si el equipo decide eliminar formalmente el esquema comercial de PostgreSQL:
-   ```sql
-   -- SCRIPT DE REVERSIÓN DDL COMERCIO01
-   DROP INDEX IF EXISTS idx_orders_farmer_id;
-   DROP INDEX IF EXISTS idx_orders_supermarket_id;
-   DROP INDEX IF EXISTS idx_orders_status;
-   DROP INDEX IF EXISTS idx_order_history_order_id;
-   ALTER TABLE notifications DROP COLUMN IF EXISTS order_id;
-   DROP TABLE IF EXISTS order_status_history CASCADE;
-   DROP TABLE IF EXISTS purchase_orders CASCADE;
-   ```
+1. **Conservación Íntegra de Datos y Tablas Comerciales**:
+   - **Regla Estricta**: El procedimiento de reversión de código **NO elimina tablas comerciales ni destruye datos históricos**.
+   - Las modificaciones introducidas en PostgreSQL por COMERCIO01 son **puramente aditivas y compatibles hacia atrás**:
+     - Las tablas `purchase_orders` y `order_status_history` son independientes; si el código de Node.js se revierte a la versión previa (`26f64bb`), la versión anterior no interactúa con estas tablas y la plataforma sigue operando con normalidad.
+     - La columna `notifications.order_id` admite valores `NULL`. Las inserciones generadas por el código legado no envían dicho campo y se ejecutan sin inconveniente alguno.
+2. **Prohibición de Eliminación Automática**:
+   - Queda estrictamente descartada la ejecución automática de scripts `DROP TABLE ... CASCADE` o `ALTER TABLE ... DROP COLUMN` durante un rollback.
+   - Cualquier depuración, desmantelamiento de tablas comerciales o modificación física del esquema de base de datos requerirá:
+     - Un análisis de impacto independiente.
+     - Un respaldo físico verificado y cotejado.
+     - **Autorización explícita e independiente del usuario.**
 
 ---
 
