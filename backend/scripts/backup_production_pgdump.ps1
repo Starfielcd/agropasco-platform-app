@@ -224,22 +224,58 @@ try {
 
         Write-Host "  Destino local seguro: ${targetHost}:${LocalSandboxPort} (BD: $LocalSandboxDb)" -ForegroundColor Gray
 
-        try {
-            & $dropdbExe -h $targetHost -p $LocalSandboxPort -U postgres --if-exists $LocalSandboxDb 2>$null
-            & $createdbExe -h $targetHost -p $LocalSandboxPort -U postgres $LocalSandboxDb
-            Write-Host "  Base temporal '$LocalSandboxDb' creada localmente." -ForegroundColor Gray
+        $psqlExe = Join-Path $PgBinPath "psql.exe"
+        $sandboxStatus = "FAILED"
 
+        try {
+            # CONDICION OBLIGATORIA: Verificar si la base ya existe antes de crearla
+            Write-Host "  Verificando que '$LocalSandboxDb' no exista previamente..." -ForegroundColor Gray
+            $dbExists = & $psqlExe -h $targetHost -p $LocalSandboxPort -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$LocalSandboxDb'" 2>$null
+
+            if ($null -ne $dbExists -and $dbExists.Trim() -eq "1") {
+                throw "ABORTO DE SEGURIDAD: La base de datos '$LocalSandboxDb' ya existe en PostgreSQL local. Por directiva de proteccion, NO se sobrescribira ni eliminara. Proceso detenido."
+            }
+
+            # Crear base sandbox
+            & $createdbExe -h $targetHost -p $LocalSandboxPort -U postgres $LocalSandboxDb
+            Write-Host "  Base temporal '$LocalSandboxDb' creada localmente sin conflictos." -ForegroundColor Gray
+
+            # Ejecutar restauracion
             Write-Host "  Restaurando objetos con pg_restore..." -ForegroundColor Gray
-            & $pgRestoreExe -h $targetHost -p $LocalSandboxPort -U postgres -d $LocalSandboxDb --no-owner --no-privileges $dumpFilePath 2>&1 | Out-Null
-            
-            Write-Host "  [OK] Restauracion de prueba en sandbox completada sin errores." -ForegroundColor Green
+            & $pgRestoreExe -h $targetHost -p $LocalSandboxPort -U postgres -d $LocalSandboxDb --no-owner --no-privileges $dumpFilePath
+            $restoreExitCode = $LASTEXITCODE
+
+            if ($restoreExitCode -ne 0) {
+                throw "pg_restore finalizo con codigo de error $restoreExitCode en el sandbox local."
+            }
+
+            # Verificar tablas y registros recuperados
+            Write-Host "  Comprobando tablas y registros restaurados en sandbox..." -ForegroundColor Gray
+            $tablesCount = & $psqlExe -h $targetHost -p $LocalSandboxPort -U postgres -d $LocalSandboxDb -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+            $usersCount = & $psqlExe -h $targetHost -p $LocalSandboxPort -U postgres -d $LocalSandboxDb -tAc "SELECT count(*) FROM users" 2>$null
+
+            Write-Host "  [OK] Tablas restauradas: $tablesCount | Usuarios verificados: $usersCount" -ForegroundColor Green
+            Write-Host "  [OK] Restauracion de prueba completada exitosamente y sin errores." -ForegroundColor Green
+            $sandboxStatus = "SUCCESSFUL_VERIFIED"
+
+            # Limpiar base sandbox de prueba
             Write-Host "  Destruyendo base de pruebas local temporal..." -ForegroundColor Gray
             & $dropdbExe -h $targetHost -p $LocalSandboxPort -U postgres $LocalSandboxDb 2>$null
             Write-Host "  [OK] Base temporal destruida. Sandbox limpio." -ForegroundColor Green
         } catch {
             Write-Warning "La restauracion de prueba en sandbox local no pudo completarse: $($_.Exception.Message)"
-            Write-Warning "Nota: El respaldo primario en $dumpFilePath se encuentra integro y verificado por TOC."
+            Write-Warning "El respaldo en $dumpFilePath mantiene su estado verificado por TOC y hash SHA-256."
+            $sandboxStatus = "FAILED_OR_SKIPPED: $($_.Exception.Message)"
         }
+
+        # Actualizar manifiesto con el resultado del sandbox
+        $manifest.sandbox_test = @{
+            status = $sandboxStatus
+            tested_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+            target_host = $targetHost
+            target_port = $LocalSandboxPort
+        }
+        $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestFilePath -Encoding utf8
     }
 
 } catch {
