@@ -321,6 +321,51 @@ async function runPreDeployValidationSuite() {
       parseFloat(finalProdRow.rows[0].stock_kg) === 40.00
     );
 
+    // Protección contra descuento duplicado: segundo confirm_delivery sobre la misma orden
+    const mSmDeliverDup = mockReqRes(supermarket, { action: 'confirm_delivery' }, { id: order1.id });
+    await orderController.supermarketResponse(mSmDeliverDup.req, mSmDeliverDup.res);
+    report('Segundo intento de confirm_delivery es bloqueado (HTTP 409 Conflicto)',
+      mSmDeliverDup.getStatus() === 409 && mSmDeliverDup.getBody()?.error?.includes('ALREADY_DELIVERED')
+    );
+
+    const checkNoDoubleDiscount = await pool.query('SELECT stock_kg FROM products WHERE id = $1', [product.id]);
+    report('Inventario no fue descontado dos veces (permanece estrictamente en 40.00 kg)',
+      parseFloat(checkNoDoubleDiscount.rows[0].stock_kg) === 40.00
+    );
+
+    // Protección contra inconsistencia de inventario (stock en BD menor a cantidad de orden)
+    // Se siembra orden con 50 kg cuando en BD solo quedan 40 kg
+    const fakeOrderRes = await pool.query(`
+      INSERT INTO purchase_orders (
+        order_code, product_id, farmer_id, supermarket_id, supermarket_name,
+        buyer_representative_name, buyer_contact_phone, farmer_name, product_name,
+        crop_type, quantity, unit_price, subtotal, transport_modality, total_amount,
+        requested_date, status
+      ) VALUES (
+        'PO-TEST-INCONSISTENT-99', $1, $2, $3, 'Plaza Pasco',
+        'Alberto Ramos', '+51 988444555', 'Pedro Mendoza', 'Papa Nativa Huayro',
+        'papa', 50.00, 4.50, 225.00, 'supermarket_pickup', 225.00,
+        CURRENT_DATE + INTERVAL '5 days', 'lista_para_entrega'
+      ) RETURNING id
+    `, [product.id, farmer.id, supermarket.id]);
+    const inconsistentOrderId = fakeOrderRes.rows[0].id;
+
+    const mInconsistentDeliver = mockReqRes(supermarket, { action: 'confirm_delivery' }, { id: inconsistentOrderId });
+    await orderController.supermarketResponse(mInconsistentDeliver.req, mInconsistentDeliver.res);
+    report('Confirmación con stock insuficiente es abortada con rollback (HTTP 409 STOCK_INCONSISTENCY)',
+      mInconsistentDeliver.getStatus() === 409 && mInconsistentDeliver.getBody()?.error?.includes('STOCK_INCONSISTENCY')
+    );
+
+    const checkRollbackStock = await pool.query('SELECT stock_kg FROM products WHERE id = $1', [product.id]);
+    report('Stock en PostgreSQL permanece intacto en 40.00 kg tras aborto y rollback transaccional',
+      parseFloat(checkRollbackStock.rows[0].stock_kg) === 40.00
+    );
+
+    const checkRollbackOrder = await pool.query('SELECT status FROM purchase_orders WHERE id = $1', [inconsistentOrderId]);
+    report('Estado de orden no se alteró a entregada tras aborto transaccional (permanece lista_para_entrega)',
+      checkRollbackOrder.rows[0].status === 'lista_para_entrega'
+    );
+
     // -------------------------------------------------------------------------
     // 7. Persistencia y Reingreso tras Cierre de Sesión (Simulación JWT)
     // -------------------------------------------------------------------------

@@ -337,52 +337,100 @@ En cumplimiento estricto de las directivas:
 
 ---
 
-## 7. RIESGOS PENDIENTES, PLAN DE DESPLIEGUE Y PLAN DE REVERSIÓN
+## 7. PREPARACIÓN PARA PRODUCCIÓN, PLAN DE DESPLIEGUE Y PLAN DE REVERSIÓN
 
-### 7.1. Riesgos Técnicos Identificados y Mitigaciones
-1. **Concurrencia en Catálogo con Alto Tráfico**:
-   - *Mitigación implementada*: Bloqueo a nivel de fila `SELECT ... FOR UPDATE` dentro de la transacción atómica de `createOrder` y ventana de debounce de 15 segundos para doble clic.
-2. **Compatibilidad de Esquema en Render**:
-   - *Mitigación implementada*: DDL con cláusulas `IF NOT EXISTS` en tablas, columnas e índices. La función `initializeCommercialSchema()` es totalmente no-destructiva y segura frente a múltiples reinicios del contenedor web.
-3. **Consumo de Conexiones en Pool**:
-   - *Mitigación implementada*: El sondeo de notificaciones está configurado a 45 segundos con abort controller en cambios de vista.
+### 7.1. Estado Verificado de Respaldos de Producción
+En estricto apego a la directiva de no acceder a producción ni simular verificaciones inexistentes:
+1. **Respaldo Local Recuperable Existente**:
+   - Archivo verificado: [`backend/data/production-backup/production_live_backup_complete.json`](file:///c:/Users/DEYVIS/Desktop/agropasco-platform/backend/data/production-backup/production_live_backup_complete.json)
+   - Hash SHA-256 verificado por test suite de seguridad: `9c55e6548058ce77...`
+   - Fecha de extracción: **5 de octubre de 2026** (Commit `9b995b2`)
+   - Contenido: 18 usuarios, 7 cultivos, 8 registros de trazabilidad, 12 productos agrícolas.
+2. **Respaldo de Producción al Día de Hoy (17 de Octubre de 2026)**:
+   - **NO existe un respaldo verificado de la base viva de Render/Supabase al 17 de octubre de 2026**, ya que no se ha abierto ninguna conexión hacia el entorno remoto de producción.
+   - **Requisito mandatorio pre-despliegue**: Antes de fusionar o publicar en Render, se debe ejecutar una extracción en caliente con `backend/scripts/extract_production_backup.js` para respaldar el estado actual de la base de datos de producción.
 
-### 7.2. Propuesta de Despliegue Seguro (Cuando el Usuario lo Autorice)
-- **Paso 1 (Respaldo Preventivo en Render)**: Ejecutar exportación de esquema y tablas `users`, `products` y `crops` de PostgreSQL.
-- **Paso 2 (Merge Controlado)**:
-  ```bash
-  git checkout main
-  git merge --ff-only feature/comercio01
-  ```
-- **Paso 3 (Publicación en Remoto)**:
-  ```bash
-  git push origin main
-  ```
-- **Paso 4 (Verificación de Arranque en Render)**:
-  - Monitorear logs de Render: verificar la salida `✅ Esquema Comercial B2B verificado`.
-  - Confirmar que no existan errores de conexión ni violación de claves foráneas.
-
-### 7.3. Plan de Reversión Inmediata (Rollback)
-Si durante o después del despliegue en Render se detectara cualquier anomalía imprevista:
-1. **Reversión de Código**:
-   ```bash
-   git checkout main
-   git revert -m 1 HEAD --no-edit
-   git push origin main
+### 7.2. Control Robusto de Inventario y Concurrencia
+Se eliminó la instrucción permisiva `GREATEST(0, stock_kg - quantity)`, la cual podía ocultar inconsistencias o déficit de existencias, sustituyéndola por una arquitectura transaccional de tres niveles:
+1. **Bloqueo Pesimista (`FOR UPDATE`)**:
+   Tanto en la reserva (`createOrder`) como en la entrega final (`supermarketResponse`), se adquiere un bloqueo exclusivo sobre las filas afectadas en `products` y `purchase_orders`, serializando transacciones concurrentes.
+2. **Actualización Condicionada Estricta**:
+   ```sql
+   UPDATE products 
+   SET stock_kg = stock_kg - ?
+   WHERE id = ? AND stock_kg >= ?
    ```
-2. **Aislamiento en Base de Datos**:
-   - Las tablas `purchase_orders` y `order_status_history` no interfieren con las consultas de versiones anteriores. La columna `notifications.order_id` tiene valor por defecto `NULL` y no bloquea inserts legados.
-   - En caso extremo de requerir limpieza:
-     ```sql
-     ALTER TABLE notifications DROP COLUMN IF EXISTS order_id;
-     DROP TABLE IF EXISTS order_status_history CASCADE;
-     DROP TABLE IF EXISTS purchase_orders CASCADE;
-     ```
+3. **Verificación de Filas Afectadas y Aborto Transaccional**:
+   Si `result.changes !== 1` o si el stock físico en base de datos es inferior a la cantidad solicitada, el sistema arroja una excepción `STOCK_INCONSISTENCY`, abortando la transacción y ejecutando un `ROLLBACK` completo en PostgreSQL.
+4. **Protección contra Descuentos Duplicados**:
+   Si una orden ya se encuentra en estado `entregada`, cualquier intento posterior de invocar `confirm_delivery` es rechazado de inmediato con **HTTP 409 `ALREADY_DELIVERED`**, garantizando que el inventario jamás se descuente más de una vez.
+
+### 7.3. Procedimiento Seguro de Publicación (Solo con Autorización)
+Dado que `feature/comercio01` contiene FIX02 y COMERCIO01 (3 commits por delante de `main` que está en `26f64bb`):
+```bash
+# 1. Cambiar a main
+git checkout main
+
+# 2. Fusión controlada recomendada (con commit de merge para trazabilidad explícita):
+git merge --no-ff feature/comercio01 -m "merge: integrar FIX02 y COMERCIO01 (catalogo profesional, ordenes B2B y transporte)"
+
+# 3. Publicación al repositorio remoto (desencadena despliegue en Render):
+git push origin main
+```
+
+### 7.4. Plan de Reversión Seguro (Rollback del Código y Base de Datos)
+
+> [!WARNING]
+> Una reversión de código mediante Git **NO revierte automáticamente los cambios de base de datos** en PostgreSQL. A continuación se detalla el procedimiento para ambos componentes.
+
+#### A. Reversión de Código en Git
+
+**Escenario 1: Si se utilizó Merge Commit (`git merge --no-ff`)**:
+El commit en la punta de `main` es un commit de fusión con dos padres (`parent 1: main previo`, `parent 2: feature/comercio01`). En este caso, el comando de reversión es:
+```bash
+git checkout main
+# Revertir el merge commit especificando la rama principal (parent 1)
+git revert -m 1 <hash_del_merge_commit> --no-edit
+git push origin main
+```
+
+**Escenario 2: Si se utilizó Fast-Forward (`git merge --ff-only`)**:
+En este caso NO existe un commit de merge; `main` avanzó secuencialmente por commits ordinarios (`0872560`, `9552a7a`, `60bf9f1`). El comando `git revert -m 1` fallaría con error `commit is not a merge`.
+El procedimiento seguro para revertir commits ordinarios publicados es:
+```bash
+git checkout main
+# Revertir el rango de commits ordinarios introducidos desde 26f64bb (FIX01) hasta HEAD
+git revert --no-edit 26f64bb..HEAD
+git push origin main
+```
+*Esto crea commits inversos limpios en el historial público sin requerir force-push.*
+
+#### B. Comportamiento y Reversión en Base de Datos (PostgreSQL)
+
+1. **Inocuidad del Esquema sin Down-Migration**:
+   Las modificaciones introducidas por COMERCIO01 son **puramente aditivas y compatibles hacia atrás**:
+   - Las tablas `purchase_orders` y `order_status_history` son nuevas; el código legado en `26f64bb` no las consulta ni las modifica.
+   - La columna `notifications.order_id` acepta valores `NULL`. Las inserciones del código legado omiten este campo y se insertan sin error.
+   - En consecuencia, el código previo puede operar perfectamente en producción sin requerir la eliminación inmediata de las tablas.
+2. **Script de Down-Migration Opcional (Limpieza Estricta)**:
+   Si el equipo decide eliminar formalmente el esquema comercial de PostgreSQL:
+   ```sql
+   -- SCRIPT DE REVERSIÓN DDL COMERCIO01
+   DROP INDEX IF EXISTS idx_orders_farmer_id;
+   DROP INDEX IF EXISTS idx_orders_supermarket_id;
+   DROP INDEX IF EXISTS idx_orders_status;
+   DROP INDEX IF EXISTS idx_order_history_order_id;
+   ALTER TABLE notifications DROP COLUMN IF EXISTS order_id;
+   DROP TABLE IF EXISTS order_status_history CASCADE;
+   DROP TABLE IF EXISTS purchase_orders CASCADE;
+   ```
 
 ---
 
 ## 8. CONCLUSIÓN TÉCNICA
 
-La iniciativa **COMERCIO01** ha cumplido rigurosamente con los 10 criterios de validación técnica. Todas las funcionalidades comerciales (fotografías con zoom, fichas reales, certificación legítima, órdenes de compra B2B, modalidades de transporte, notificaciones persistentes y control de inventario) están verificadas mediante 74 pruebas automatizadas sobre PostgreSQL 18 físico (51 de suite comercial + 23 de validación pre-despliegue) y 83 pruebas de regresión (24 FIX02 + 59 Seguridad).
-
-El sistema se encuentra en un estado estable, documentado y listo para ser publicado únicamente cuando el usuario emita su autorización explícita.
+La implementación de **COMERCIO01** en la rama `feature/comercio01` cuenta con:
+- **162 pruebas automatizadas aprobadas al 100%** en PostgreSQL físico (51 de suite comercial + 28 de validación pre-despliegue + 24 FIX02 + 59 Seguridad).
+- Control de concurrencia e inventario robusto con descarte de clamping silencioso y rollback automático.
+- Protocolos de despliegue y rollback claramente distinguidos para merge commits vs commits ordinarios.
+- Rama `main` y entorno de producción en Render preservados intactos.

@@ -617,6 +617,13 @@ async function supermarketResponse(req, res) {
         `Observación: ${notes || 'Monto fuera de rango esperado'}.\n` +
         `Se solicita reconsiderar la propuesta de transporte.`;
     } else if (action === 'confirm_delivery') {
+      if (previousStatus === 'entregada') {
+        return res.status(409).json({
+          success: false,
+          error: 'ALREADY_DELIVERED: La orden ya fue confirmada como entregada anteriormente. Descuento duplicado bloqueado.',
+          code: 'ALREADY_DELIVERED'
+        });
+      }
       if (!['lista_para_entrega', 'en_traslado'].includes(previousStatus)) {
         return res.status(400).json({ success: false, error: 'La orden debe estar lista para entrega o en traslado para confirmar recepción.' });
       }
@@ -645,6 +652,52 @@ async function supermarketResponse(req, res) {
     }
 
     const updatedOrder = await withTransaction(async (tx) => {
+      // 1. Bloqueo pesimista de la fila de la orden para evitar concurrencia en confirm_delivery
+      const lockedOrder = await tx.dbGet(
+        `SELECT id, status, product_id, quantity FROM purchase_orders WHERE id = ? FOR UPDATE`,
+        [id]
+      );
+      if (!lockedOrder) {
+        throw new Error('ORDER_NOT_FOUND: La orden no existe en el sistema.');
+      }
+      if (action === 'confirm_delivery' && lockedOrder.status === 'entregada') {
+        throw new Error('ALREADY_DELIVERED: La orden ya fue confirmada como entregada anteriormente. Descuento duplicado bloqueado.');
+      }
+      if (action === 'confirm_delivery' && !['lista_para_entrega', 'en_traslado'].includes(lockedOrder.status)) {
+        throw new Error('INVALID_STATUS_FOR_DELIVERY: La orden debe encontrarse lista para entrega o en traslado para confirmar recepción.');
+      }
+
+      // 2. Descuento atómico de inventario condicionado a existencia suficiente
+      if (action === 'confirm_delivery' && lockedOrder.product_id && lockedOrder.quantity > 0) {
+        const reqQty = parseFloat(lockedOrder.quantity);
+        const lockedProduct = await tx.dbGet(
+          `SELECT id, stock_kg, name FROM products WHERE id = ? FOR UPDATE`,
+          [lockedOrder.product_id]
+        );
+        const currentStock = parseFloat(lockedProduct?.stock_kg || 0);
+
+        if (!lockedProduct || currentStock < reqQty) {
+          throw new Error(
+            `STOCK_INCONSISTENCY: Stock insuficiente para procesar la entrega. ` +
+            `Stock actual: ${currentStock.toFixed(2)} kg, Requerido: ${reqQty.toFixed(2)} kg. Transacción abortada.`
+          );
+        }
+
+        // Actualización condicionada estricta: NO se usa GREATEST(0, ...), falla si no hay stock suficiente
+        const updateStockRes = await tx.dbRun(
+          `UPDATE products 
+           SET stock_kg = stock_kg - ?
+           WHERE id = ? AND stock_kg >= ?`,
+          [reqQty, lockedOrder.product_id, reqQty]
+        );
+
+        if (updateStockRes.changes !== 1) {
+          throw new Error(
+            `CONCURRENT_STOCK_CONFLICT: Conflicto de concurrencia al actualizar existencias. Reversión automática ejecutada.`
+          );
+        }
+      }
+
       await tx.dbRun(
         `UPDATE purchase_orders SET
           status = ?,
@@ -660,16 +713,6 @@ async function supermarketResponse(req, res) {
           id
         ]
       );
-
-      // Descuento atómico de inventario en entrega definitiva
-      if (action === 'confirm_delivery' && order.product_id && order.quantity > 0) {
-        await tx.dbRun(
-          `UPDATE products 
-           SET stock_kg = GREATEST(0, stock_kg - ?)
-           WHERE id = ?`,
-          [order.quantity, order.product_id]
-        );
-      }
 
       await tx.dbRun(
         `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by_user_id, changed_by_name, changed_by_role, notes)
@@ -691,6 +734,14 @@ async function supermarketResponse(req, res) {
     res.json({ success: true, message: 'Operación confirmada con éxito.', data: updatedOrder });
   } catch (err) {
     console.error('Error al responder orden como supermercado:', err);
+    if (err.message && (
+      err.message.includes('STOCK_INCONSISTENCY') ||
+      err.message.includes('ALREADY_DELIVERED') ||
+      err.message.includes('CONCURRENT_STOCK_CONFLICT') ||
+      err.message.includes('INVALID_STATUS_FOR_DELIVERY')
+    )) {
+      return res.status(409).json({ success: false, error: err.message, code: 'STOCK_OR_STATE_CONFLICT' });
+    }
     res.status(500).json({ success: false, error: 'Error al procesar la respuesta del supermercado.' });
   }
 }
