@@ -1,0 +1,18 @@
+{
+  "manifest_id": "MNF-DOC-INIA-MACA-002-1792104933904",
+  "document_id": "DOC-INIA-MACA-002",
+  "document_title": "MANEJO DEL CULTIVO DE LA MACA: PRODUCCIÓN DE RAÍCES",
+  "institution": "Instituto Nacional de Innovación Agraria (INIA - Perú, EEA Santa Ana)",
+  "version": "1.0",
+  "source_file_name": "DOC-INIA-MACA-002.txt",
+  "source_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+  "source_file_size_bytes": 1718,
+  "total_pages_analyzed": 2,
+  "unreadable_pages_count": 0,
+  "total_chunks_generated": 5,
+  "mandatory_review_chunks_count": 0,
+  "chunks_storage_path": "C:\\Users\\DEYVIS\\Desktop\\agropasco-platform\\backend\\knowledge\\chunks\\DOC-INIA-MACA-002_chunks.json",
+  "ingested_at": "2026-10-15T22:55:33.904Z",
+  "processing_time_ms": 3,
+  "reproducibility_signature": "a0c7fb81a3620569a8ca44a170ec8d73711eabdb050c1dace17547368cae2904"
+}

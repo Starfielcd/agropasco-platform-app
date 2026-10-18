@@ -433,7 +433,44 @@ const api = {
   updateMLPreferences: (data) => apiRequest('/ml/preferences', { method: 'PUT', body: JSON.stringify(data) }),
   getMLObservations: (phenomenon = '') => apiRequest(`/ml/observations${phenomenon ? `?phenomenon=${phenomenon}` : ''}`),
   createMLObservation: (data) => apiRequest('/ml/observations', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Dashboard Predictivo en Tiempo Real (FASE 3 & FASE 4)
+  getMLModelsComparison: () => apiRequest('/ml/models/comparison'),
+  predictMLManual: (data) => apiRequest('/ml/predict/manual', { method: 'POST', body: JSON.stringify(data) }),
+  getMLParcelHorizons: (parcelId) => apiRequest(`/ml/predict/${parcelId}/horizons`),
+  getMLPredictionsVsObservations: () => apiRequest('/ml/evaluation/predictions-vs-observations'),
+  getMLSimulationContract: () => apiRequest('/ml/simulation/contract'),
+  getMLAgentsStatus: () => apiRequest('/ml/agents/status'),
+  runMonteCarloSimulation: (data) => apiRequest('/ml/simulation/monte-carlo', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Estrategias de Mitigación Agrícola y Respuesta Agroclimática (FASE 5)
+  getMitigationStrategies: (parcelId, params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return apiRequest(`/ml/mitigation/strategies/${parcelId}${q ? `?${q}` : ''}`);
+  },
+  recordMitigationAction: (actionData) => apiRequest('/ml/mitigation/actions', { method: 'POST', body: JSON.stringify(actionData) }),
+  getParcelMitigationHistory: (parcelId) => apiRequest(`/ml/mitigation/actions/${parcelId}`),
+  addAdvisorMitigationNote: (noteData) => apiRequest('/ml/mitigation/advisor-note', { method: 'POST', body: JSON.stringify(noteData) }),
+
+  // Sistema Multiagente Inteligente (FASE 6)
+  executeMultiAgentWorkflow: (data) => apiRequest('/ml/agents/workflow/execute', { method: 'POST', body: JSON.stringify(data) }),
+  getAgentTaskStatus: (taskId) => apiRequest(`/ml/agents/tasks/${taskId}`),
+  getAgentParcelTasks: (parcelId, limit = 10) => apiRequest(`/ml/agents/tasks/parcel/${parcelId}?limit=${limit}`),
+  getAgentOperationalStatus: () => apiRequest('/ml/agents/operational-status'),
+  getAgentAuditLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return apiRequest(`/ml/agents/audit-logs${q ? `?${q}` : ''}`);
+  },
+
+  // Automatización, Historial de Predicciones y Validación (FASE 7)
+  getSchedulerStatus: () => apiRequest('/ml/scheduler/status'),
+  triggerSchedulerRun: (data = {}) => apiRequest('/ml/scheduler/trigger', { method: 'POST', body: JSON.stringify(data) }),
+  getPredictionHistory: (parcelId, limit = 20) => apiRequest(`/ml/predictions/history/${parcelId}?limit=${limit}`),
+  evaluatePredictions: (data = {}) => apiRequest('/ml/predictions/evaluate', { method: 'POST', body: JSON.stringify(data) }),
+  assignAdvisorParcel: (data) => apiRequest('/ml/advisors/assign-parcel', { method: 'POST', body: JSON.stringify(data) }),
 };
+
+
 
 // Toast notification system
 function showToast(message, type = 'success') {

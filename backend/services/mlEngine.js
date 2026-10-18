@@ -82,11 +82,20 @@ class MLEngine {
     }
 
     if (expectedPhenomenon === 'frost') {
-      if (!Array.isArray(model.trees) || model.trees.length === 0) {
-        throw new Error('Árboles ausentes en modelo de heladas');
-      }
-      if (typeof model.learning_rate !== 'number' || typeof model.init_raw_value !== 'number') {
-        throw new Error('Parámetros de ensamble ausentes en modelo de heladas');
+      if (model.algorithm === 'LogisticRegression' || Array.isArray(model.coefficients)) {
+        if (!Array.isArray(model.coefficients) || typeof model.intercept !== 'number') {
+          throw new Error('Coeficientes o intercepto ausentes en modelo de heladas');
+        }
+        if (!model.scaler || !Array.isArray(model.scaler.mean) || !Array.isArray(model.scaler.scale)) {
+          throw new Error('Parámetros de escalador ausentes en modelo de heladas');
+        }
+      } else {
+        if (!Array.isArray(model.trees) || model.trees.length === 0) {
+          throw new Error('Árboles ausentes en modelo de heladas');
+        }
+        if (typeof model.learning_rate !== 'number' || typeof model.init_raw_value !== 'number') {
+          throw new Error('Parámetros de ensamble ausentes en modelo de heladas');
+        }
       }
     } else if (expectedPhenomenon === 'heavy_rain') {
       if (!Array.isArray(model.trees) || model.trees.length === 0) {
@@ -160,14 +169,42 @@ class MLEngine {
   }
 
   /**
-   * Inferencia para Heladas (GradientBoostingClassifier).
+   * Inferencia para Heladas (LogisticRegression o GradientBoostingClassifier).
    */
   predictFrost(featuresInput) {
     if (!this.isLoaded) this.loadModels();
     const model = this.models.frost;
     const rawVector = this._prepareVector(featuresInput, model.features);
-    const x = new Float32Array(rawVector);
 
+    if (model.algorithm === 'LogisticRegression' || Array.isArray(model.coefficients)) {
+      const coefs = model.coefficients;
+      const intercept = model.intercept;
+      const mean = model.scaler.mean;
+      const scale = model.scaler.scale;
+
+      let z = intercept;
+      const n = rawVector.length;
+      for (let i = 0; i < n; i++) {
+        const xScaled = (rawVector[i] - mean[i]) / scale[i];
+        z += xScaled * coefs[i];
+      }
+
+      const probability = 1.0 / (1.0 + Math.exp(-z));
+      const { level, score } = this._mapRisk(probability, model.risk_thresholds);
+
+      return {
+        phenomenon: 'frost',
+        probability,
+        raw_score: z,
+        risk_level: level,
+        risk_score: score,
+        model_type: 'ml_trained',
+        algorithm: model.algorithm,
+        version: model.version
+      };
+    }
+
+    const x = new Float32Array(rawVector);
     let sumTrees = 0.0;
     const trees = model.trees;
     const nTrees = trees.length;
@@ -312,6 +349,13 @@ class MLEngine {
       model_type: 'rule_based',
       confidence_note: 'Evaluación física basada en reglas agronómicas (0 horas WMO de granizo en histórico ERA5).'
     };
+  }
+
+  /**
+   * Alias de predictHail para compatibilidad con la interfaz de 4 fenómenos.
+   */
+  predictHail(featuresInput) {
+    return this.evaluateHailRules(featuresInput);
   }
 
   /**

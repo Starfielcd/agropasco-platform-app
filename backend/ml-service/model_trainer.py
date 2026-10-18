@@ -21,6 +21,7 @@ Previene explícitamente Target Leakage:
   - Granizo: documentado formalmente como no viable para ML supervisado (0 eventos WMO 96-99).
 """
 
+import time
 import json
 import warnings
 import numpy as np
@@ -30,7 +31,12 @@ from datetime import datetime
 from pathlib import Path
 
 from sklearn.dummy import DummyClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    GradientBoostingClassifier,
+    ExtraTreesClassifier,
+    HistGradientBoostingClassifier,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
@@ -42,7 +48,7 @@ from sklearn.metrics import (
 from sklearn.calibration import calibration_curve
 
 from config import (
-    MODELS_DIR, REPORTS_DIR, PROCESSED_DIR,
+    MODELS_DIR, MODELS_JSON_DIR, REPORTS_DIR, PROCESSED_DIR,
     TRAIN_END_DATE, VAL_END_DATE, RANDOM_STATE,
     CSV_FILES,
 )
@@ -216,11 +222,14 @@ def prepare_training_data(all_data, target_label, feature_list):
 
 
 def evaluate_model(model, X, y, split_name="test"):
-    """Evalúa un modelo y retorna métricas detalladas."""
+    """Evalúa un modelo y retorna métricas detalladas con medición de latencia."""
     if len(X) == 0 or len(y) == 0:
         return {"error": f"Conjunto {split_name} vacío"}
     
+    t0 = time.perf_counter()
     y_pred = model.predict(X)
+    inf_time_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+    latency_per_sample_us = round((inf_time_ms / max(1, len(X))) * 1000.0, 2)
     
     metrics = {
         "split": split_name,
@@ -228,6 +237,8 @@ def evaluate_model(model, X, y, split_name="test"):
         "n_positive": int(y.sum()),
         "n_negative": int((y == 0).sum()),
         "class_balance": round(float(y.mean()), 4),
+        "inference_time_ms": inf_time_ms,
+        "latency_per_sample_us": latency_per_sample_us,
     }
     
     if y.nunique() < 2:
@@ -314,8 +325,13 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
     print(f"    - Dummy Estrat.:    F1 = {dummy_strat_test.get('f1', 0):.4f}")
     print(f"    - Regla Dominio:    F1 = {rule_base_test.get('f1', 0):.4f}")
 
-    # 2. MODELOS CANDIDATOS ML
+    # 2. MODELOS CANDIDATOS ML (5 ALGORITMOS EXIGIDOS POR FASE 2)
     candidates = {
+        "logistic_regression": LogisticRegression(
+            class_weight="balanced",
+            max_iter=1000,
+            random_state=RANDOM_STATE,
+        ),
         "random_forest": RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
@@ -323,7 +339,7 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
             min_samples_leaf=5,
             class_weight="balanced",
             random_state=RANDOM_STATE,
-            n_jobs=-1,
+            n_jobs=1,
         ),
         "gradient_boosting": GradientBoostingClassifier(
             n_estimators=100,
@@ -333,9 +349,21 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
             min_samples_leaf=5,
             random_state=RANDOM_STATE,
         ),
-        "logistic_regression": LogisticRegression(
+        "extra_trees": ExtraTreesClassifier(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=10,
+            min_samples_leaf=5,
             class_weight="balanced",
-            max_iter=1000,
+            random_state=RANDOM_STATE,
+            n_jobs=1,
+        ),
+        "hist_gradient_boosting": HistGradientBoostingClassifier(
+            max_iter=100,
+            max_depth=6,
+            learning_rate=0.1,
+            min_samples_leaf=10,
+            class_weight="balanced",
             random_state=RANDOM_STATE,
         ),
     }
@@ -343,32 +371,71 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
     results = {}
     best_model = None
     best_model_name = None
-    best_f1_val = -1
+    best_selection_score = -1.0
+    best_selection_justification = ""
     
     for model_name, model in candidates.items():
         try:
+            fit_t0 = time.perf_counter()
             if model_name == "logistic_regression":
                 model.fit(train_X_scaled, train_y)
+                fit_time_ms = round((time.perf_counter() - fit_t0) * 1000.0, 2)
+                train_metrics = evaluate_model(model, train_X_scaled, train_y, "train")
                 val_metrics = evaluate_model(model, val_X_scaled, val_y, "validation")
                 test_metrics = evaluate_model(model, test_X_scaled, test_y, "test")
             else:
                 model.fit(train_X, train_y)
+                fit_time_ms = round((time.perf_counter() - fit_t0) * 1000.0, 2)
+                train_metrics = evaluate_model(model, train_X, train_y, "train")
                 val_metrics = evaluate_model(model, val_X, val_y, "validation")
                 test_metrics = evaluate_model(model, test_X, test_y, "test")
             
+            # Cálculo de score de selección multi-criterio justificado (evitar overfitting y optimizar F1/PR-AUC/Calibración)
+            val_f1 = val_metrics.get("f1", 0.0)
+            val_pr_auc = val_metrics.get("pr_auc", 0.0)
+            val_brier = val_metrics.get("brier_score", 1.0)
+            val_ece = val_metrics.get("expected_calibration_error", 1.0)
+            train_f1 = train_metrics.get("f1", 0.0)
+            overfit_gap = max(0.0, train_f1 - val_f1)
+            
+            # Ponderación técnica Fase 2: F1 (30%), PR-AUC (30%), Calibración Brier/ECE (25%),
+            # Eficiencia/Costo computacional de latencia (10%), Penalización Sobreajuste (15%)
+            test_lat = test_metrics.get("latency_per_sample_us", 20.0)
+            latency_efficiency = max(0.0, 1.0 - (min(100.0, test_lat) / 100.0))
+            selection_score = (
+                0.30 * val_f1 +
+                0.30 * val_pr_auc +
+                0.15 * max(0.0, 1.0 - val_brier) +
+                0.10 * max(0.0, 1.0 - val_ece) +
+                0.15 * latency_efficiency -
+                0.15 * overfit_gap
+            )
+            selection_score = round(float(selection_score), 4)
+            
             results[model_name] = {
+                "algorithm": model.__class__.__name__,
+                "fit_time_ms": fit_time_ms,
+                "selection_score": selection_score,
+                "latency_efficiency": round(float(latency_efficiency), 4),
+                "train": train_metrics,
                 "validation": val_metrics,
                 "test": test_metrics,
             }
             
-            val_f1 = val_metrics.get("f1", 0)
-            test_f1 = test_metrics.get("f1", 0)
-            print(f"  {model_name}: Val F1 = {val_f1:.4f} | Test F1 = {test_f1:.4f} (Prec: {test_metrics.get('precision', 0):.4f}, Rec: {test_metrics.get('recall', 0):.4f}, PR-AUC: {test_metrics.get('pr_auc', 0):.4f})")
+            test_f1 = test_metrics.get("f1", 0.0)
+            test_pr_auc = test_metrics.get("pr_auc", 0.0)
+            test_brier = test_metrics.get("brier_score", "N/A")
+            print(f"  [{model_name}] Val F1: {val_f1:.4f} | PR-AUC: {val_pr_auc:.4f} | Test F1: {test_f1:.4f} | Test PR-AUC: {test_pr_auc:.4f} | Brier: {test_brier} | Lat: {test_lat} µs/sample | Score: {selection_score:.4f}")
             
-            if val_f1 > best_f1_val:
-                best_f1_val = val_f1
+            if selection_score > best_selection_score:
+                best_selection_score = selection_score
                 best_model = model
                 best_model_name = model_name
+                best_selection_justification = (
+                    f"Mayor score de selección multiobjetivo ({selection_score:.4f}): "
+                    f"Val F1={val_f1:.4f}, Val PR-AUC={val_pr_auc:.4f}, ECE={val_ece:.4f}, Brier={val_brier:.4f}, "
+                    f"con brecha de sobreajuste de {overfit_gap:.4f} y costo computacional/latencia de {test_lat} µs/muestra."
+                )
         except Exception as e:
             print(f"    ❌ Error entrenando {model_name}: {e}")
             results[model_name] = {"error": str(e)}
@@ -386,6 +453,11 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
         importances = best_model.feature_importances_
         for feat, imp in sorted(zip(used_features, importances), key=lambda x: -x[1]):
             feature_importance[feat] = round(float(imp), 4)
+    elif hasattr(best_model, "coef_"):
+        coefs = abs(best_model.coef_[0])
+        total = np.sum(coefs) or 1.0
+        for feat, imp in sorted(zip(used_features, coefs / total), key=lambda x: -x[1]):
+            feature_importance[feat] = round(float(imp), 4)
     
     best_test_metrics = results[best_model_name]["test"]
     best_val_metrics = results[best_model_name]["validation"]
@@ -396,7 +468,8 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
         "label_type": "proxy_rule_based_era5",
         "status": "trained",
         "selected_model": best_model_name,
-        "selection_reason": f"Mejor F1 en validación ({best_f1_val:.4f})",
+        "selected_algorithm": best_model.__class__.__name__,
+        "selection_reason": best_selection_justification,
         "features_used": used_features,
         "n_features": len(used_features),
         "data_summary": {
@@ -425,7 +498,8 @@ def train_phenomenon_model(all_data, phenomenon, target_label, feature_list):
         ],
     }
     
-    print(f"\n  🏆 Modelo Seleccionado: {best_model_name}")
+    print(f"\n  🏆 Modelo Seleccionado para {phenomenon.upper()}: {best_model_name} ({best_model.__class__.__name__})")
+    print(f"     Justificación: {best_selection_justification}")
     print(f"     Test F1: {best_test_metrics.get('f1', 0):.4f} | Prec: {best_test_metrics.get('precision', 0):.4f} | Rec: {best_test_metrics.get('recall', 0):.4f} | PR-AUC: {best_test_metrics.get('pr_auc', 0):.4f}")
     print(f"     Matriz Confusión (TN, FP, FN, TP): {best_test_metrics.get('confusion_matrix')}")
     print(f"     Brier Score: {best_test_metrics.get('brier_score')} | ECE: {best_test_metrics.get('expected_calibration_error')}")
@@ -529,8 +603,44 @@ def train_all_models():
         json.dump(training_results, f, indent=2, ensure_ascii=False, default=str)
     print(f"\n✅ Informe consolidado de entrenamiento: {report_path}")
     
+    # Exportar matriz comparativa de los 5 algoritmos requerida por Fase 2 y para el Dashboard
+    comparison_summary = {
+        "generated_at": datetime.now().isoformat(),
+        "phase": "FASE 2 — 5 ML Algorithms Benchmark",
+        "phenomena": {},
+    }
+    for phen, phen_rep in training_results.items():
+        if phen_rep.get("status") == "trained":
+            comparison_summary["phenomena"][phen] = {
+                "selected_model": phen_rep.get("selected_model"),
+                "selected_algorithm": phen_rep.get("selected_algorithm"),
+                "selection_reason": phen_rep.get("selection_reason"),
+                "models": phen_rep.get("model_comparison", {}),
+                "best_test_metrics": phen_rep.get("best_model_test_metrics", {}),
+                "baselines": phen_rep.get("baselines", {}),
+            }
+        else:
+            comparison_summary["phenomena"][phen] = {
+                "status": phen_rep.get("status"),
+                "message": phen_rep.get("message"),
+                "recommendation": phen_rep.get("recommendation", ""),
+            }
+
+    comp_report_path = REPORTS_DIR / "model_comparison_5_algorithms.json"
+    with open(comp_report_path, "w", encoding="utf-8") as f:
+        json.dump(comparison_summary, f, indent=2, ensure_ascii=False, default=str)
+    print(f"✅ Matriz comparativa de 5 algoritmos guardada en: {comp_report_path}")
+
+    # Sincronizar hacia MODELS_JSON_DIR para consumo directo por la API de Node.js
+    MODELS_JSON_DIR.mkdir(parents=True, exist_ok=True)
+    models_json_comp_path = MODELS_JSON_DIR / "model_comparison_5_algorithms.json"
+    with open(models_json_comp_path, "w", encoding="utf-8") as f:
+        json.dump(comparison_summary, f, indent=2, ensure_ascii=False, default=str)
+    print(f"✅ Sincronizado a models-json para Dashboard API: {models_json_comp_path}")
+    
     return training_results
 
 
 if __name__ == "__main__":
     results = train_all_models()
+

@@ -123,7 +123,7 @@ async function runTestSuite() {
       `Node=${snowPred.risk_level}, Py=${exp.snow.risk_level}`
     );
 
-    // B. HELADAS (GradientBoostingClassifier)
+    // B. HELADAS (LogisticRegression)
     const frostPred = engine.predictFrost(feat);
     const diffFrost = Math.abs(frostPred.probability - exp.frost.probability);
     if (diffFrost > maxDiffFrost) maxDiffFrost = diffFrost;
@@ -163,7 +163,7 @@ async function runTestSuite() {
   console.log(`    - Máxima diferencia:     ${maxDiffSnow.toExponential(4)} (Criterio: <= 1e-6)`);
   console.log(`    - Concordancia de nivel: ${(riskMatchesSnow / goldenCases.length * 100).toFixed(1)}% (${riskMatchesSnow}/${goldenCases.length})`);
 
-  console.log(`  • Heladas (Gradient Boosting):`);
+  console.log(`  • Heladas (Logistic Regression):`);
   console.log(`    - Máxima diferencia:     ${maxDiffFrost.toExponential(4)} (Criterio: <= 1e-4)`);
   console.log(`    - Concordancia de nivel: ${(riskMatchesFrost / goldenCases.length * 100).toFixed(1)}% (${riskMatchesFrost}/${goldenCases.length})`);
 

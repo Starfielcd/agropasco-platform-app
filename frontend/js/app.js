@@ -14,6 +14,7 @@ const routes = {
   '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer', 'admin'] },
   '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
+  '/predictive-dashboard': { title: 'Dashboard Predictivo', subtitle: 'Predicciones meteorológicas multimodelo en tiempo real por parcela', icon: '🔮', render: renderPredictiveDashboardPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
   '/ml-monitor': { title: 'Monitoreo ML', subtitle: 'Predicciones meteorológicas inteligentes por parcela', icon: '🔬', render: renderMLMonitorPage, roles: ['farmer', 'advisor', 'admin'] },
   '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor', 'admin'] },
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
@@ -152,6 +153,7 @@ async function navigateTo(path) {
       if (path === '/advisor/parcels' && typeof initAdvisorMap === 'function') initAdvisorMap();
       if (path === '/advisor/pest-reports' && typeof initPestReportMap === 'function') initPestReportMap();
       if (path === '/supermarket/logistics' && typeof initLogisticsMap === 'function') initLogisticsMap();
+      if (path === '/predictive-dashboard' && typeof initPredictiveDashboardMap === 'function') initPredictiveDashboardMap();
     }, 300);
   } catch (err) {
     console.error('Error al renderizar página:', err);
@@ -407,6 +409,9 @@ function getNavItemsForRole(role) {
       </div>
 
       <div class="nav-section-title">MONITOREO</div>
+      <div class="nav-item" data-route="/predictive-dashboard" onclick="window.location.hash='#/predictive-dashboard'">
+        <span class="nav-item-icon">🔮</span> Dashboard Predictivo
+      </div>
       <div class="nav-item" data-route="/weather" onclick="window.location.hash='#/weather'">
         <span class="nav-item-icon">⛅</span> Clima & Alertas
         <span class="nav-badge-red">1</span>
@@ -438,6 +443,9 @@ function getNavItemsForRole(role) {
     // ===== ASESOR TÉCNICO =====
     advisor: `
       <div class="nav-section-title">Monitoreo Regional</div>
+      <div class="nav-item" data-route="/predictive-dashboard" onclick="window.location.hash='#/predictive-dashboard'">
+        <span class="nav-item-icon">🔮</span> Dashboard Predictivo
+      </div>
       <div class="nav-item" data-route="/advisor/parcels" onclick="window.location.hash='#/advisor/parcels'">
         <span class="nav-item-icon">🗺️</span> Parcelas de la Región
       </div>
@@ -483,6 +491,11 @@ function getNavItemsForRole(role) {
         <span class="nav-item-icon">📋</span> Trazabilidad
       </div>
 
+      <div class="nav-section-title">Monitoreo Predictivo</div>
+      <div class="nav-item" data-route="/predictive-dashboard" onclick="window.location.hash='#/predictive-dashboard'">
+        <span class="nav-item-icon">🔮</span> Dashboard Predictivo
+      </div>
+
       <div class="nav-section-title">Logística</div>
       <div class="nav-item" data-route="/supermarket/logistics" onclick="window.location.hash='#/supermarket/logistics'">
         <span class="nav-item-icon">🚛</span> Rutas de Recogida
@@ -502,6 +515,9 @@ function getNavItemsForRole(role) {
       <div class="nav-section-title">Administración</div>
       <div class="nav-item" data-route="/admin" onclick="window.location.hash='#/admin'">
         <span class="nav-item-icon">📊</span> Panel Admin
+      </div>
+      <div class="nav-item" data-route="/predictive-dashboard" onclick="window.location.hash='#/predictive-dashboard'">
+        <span class="nav-item-icon">🔮</span> Dashboard Predictivo
       </div>
       <div class="nav-item" data-route="/ml-monitor" onclick="window.location.hash='#/ml-monitor'">
         <span class="nav-item-icon">🔬</span> Monitoreo ML

@@ -73,12 +73,16 @@ async function getModelsStatus() {
     if (!defaultEngine.isLoaded) {
       defaultEngine.loadModels();
     }
+    const modelRegistry = require('../config/modelRegistry');
+    const frostAlgo = defaultEngine.models?.frost?.algorithm || modelRegistry.getActiveModel('frost').algorithm;
+    const frostVersion = defaultEngine.models?.frost?.version || modelRegistry.getActiveModel('frost').version;
+
     return {
       frost: {
         available: true,
-        model_type: 'GradientBoosting (Nativo)',
-        algorithm: 'GradientBoostingClassifier',
-        version: '2.0.0_audited_no_leak',
+        model_type: `${frostAlgo} (Nativo)`,
+        algorithm: frostAlgo,
+        version: frostVersion,
         n_features: 18,
         label_type: 'proxy_rule_based_era5',
         evaluation_note: 'Evaluación histórica en split test (ERA5/Open-Meteo, >2025-06-30). No representa validación meteorológica de campo SENAMHI ni garantía de exactitud a 72h.',

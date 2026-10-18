@@ -1,0 +1,21 @@
+{
+  "document_id": "TEST-UNREADABLE-DOC",
+  "pages": [
+    {
+      "page_number": 1,
+      "text": "Introducción válida sobre el cultivo de quinua en la meseta de Bombón.",
+      "is_unreadable": false
+    },
+    {
+      "page_number": 2,
+      "text": "   ",
+      "is_unreadable": true,
+      "warnings": ["Página escaneada con mancha de tinta sin texto legible."]
+    },
+    {
+      "page_number": 3,
+      "text": "Recomendaciones de cosecha y desaponificado tradicional de granos andinos.",
+      "is_unreadable": false
+    }
+  ]
+}
