@@ -143,12 +143,29 @@ async function createOrder(req, res) {
       });
     }
 
-    if (numQty > (product.stock_kg || 0)) {
+    // 3b. Validar stock disponible considerando órdenes activas en curso (reserva de inventario)
+    const committedRow = await dbGet(
+      `SELECT COALESCE(SUM(quantity), 0) as committed_kg
+       FROM purchase_orders
+       WHERE product_id = ?
+         AND status IN (
+           'solicitud_enviada', 'transporte_por_cotizar', 'pendiente_respuesta',
+           'pendiente_aceptacion_condiciones', 'aceptada', 'en_preparacion',
+           'lista_para_entrega', 'en_traslado'
+         )`,
+      [product_id]
+    );
+    const committedKg = parseFloat(committedRow?.committed_kg || 0);
+    const availableStockKg = Math.max(0, parseFloat(product.stock_kg || 0) - committedKg);
+
+    if (numQty > availableStockKg) {
       return res.status(400).json({
         success: false,
-        error: `La cantidad solicitada (${numQty} ${product.unit || 'kg'}) excede el stock disponible actual (${product.stock_kg || 0} ${product.unit || 'kg'}).`,
+        error: `La cantidad solicitada (${numQty} ${product.unit || 'kg'}) excede el stock disponible actual (${availableStockKg.toFixed(2)} ${product.unit || 'kg'}).`,
         code: 'INSUFFICIENT_STOCK',
-        available_stock: product.stock_kg
+        available_stock: availableStockKg,
+        total_stock: product.stock_kg,
+        committed_stock: committedKg
       });
     }
 
@@ -193,8 +210,29 @@ async function createOrder(req, res) {
     const farmerPhone = product.farmer_phone || 'Registrado en sistema';
     const pickupLocation = (product.origin && product.origin.trim()) || product.farmer_location || 'Región Pasco';
 
-    // 6. Transacción atómica en PostgreSQL: Orden + Historial + Notificación
+    // 6. Transacción atómica en PostgreSQL: Bloqueo de Concurrencia + Orden + Historial + Notificación
     const createdOrder = await withTransaction(async (tx) => {
+      // Bloqueo de fila a nivel de base de datos para evitar sobreventa por solicitudes concurrentes
+      const lockedProduct = await tx.dbGet(
+        `SELECT stock_kg FROM products WHERE id = ? FOR UPDATE`,
+        [product.id]
+      );
+      const txCommitted = await tx.dbGet(
+        `SELECT COALESCE(SUM(quantity), 0) as committed_kg
+         FROM purchase_orders
+         WHERE product_id = ?
+           AND status IN (
+             'solicitud_enviada', 'transporte_por_cotizar', 'pendiente_respuesta',
+             'pendiente_aceptacion_condiciones', 'aceptada', 'en_preparacion',
+             'lista_para_entrega', 'en_traslado'
+           )`,
+        [product.id]
+      );
+      const curCommitted = parseFloat(txCommitted?.committed_kg || 0);
+      const curAvailable = Math.max(0, parseFloat(lockedProduct?.stock_kg || 0) - curCommitted);
+      if (numQty > curAvailable) {
+        throw new Error(`INSUFFICIENT_STOCK: Stock disponible insuficiente durante la reserva.`);
+      }
       const orderInsertRes = await tx.dbRun(
         `INSERT INTO purchase_orders (
           order_code, product_id, farmer_id, supermarket_id,
@@ -289,6 +327,9 @@ async function createOrder(req, res) {
     });
   } catch (err) {
     console.error('Error al crear orden de compra B2B:', err);
+    if (err.message && err.message.includes('INSUFFICIENT_STOCK')) {
+      return res.status(400).json({ success: false, error: err.message, code: 'INSUFFICIENT_STOCK' });
+    }
     res.status(500).json({ success: false, error: 'Error interno al registrar la orden de compra B2B.', code: 'ORDER_CREATION_FAILED' });
   }
 }

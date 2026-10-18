@@ -3980,13 +3980,14 @@ body.role-supermarket .timeline-item {
 }
 
 /* 5. Lightbox y Visor de Imagen con Zoom */
+.image-zoom-lightbox,
 .image-lightbox-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(11, 19, 36, 0.94);
+  background: rgba(11, 19, 36, 0.95);
   backdrop-filter: blur(10px);
   z-index: 100000;
   display: flex;
@@ -3995,6 +3996,7 @@ body.role-supermarket .timeline-item {
   box-sizing: border-box;
 }
 
+.image-zoom-toolbar,
 .image-lightbox-header {
   display: flex;
   justify-content: space-between;
@@ -4007,17 +4009,20 @@ body.role-supermarket .timeline-item {
   margin-bottom: 12px;
 }
 
+.image-zoom-title,
 .image-lightbox-title {
   font-weight: 700;
   font-size: 14px;
 }
 
+.image-zoom-controls,
 .image-lightbox-tools {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
+.image-zoom-btn,
 .image-lightbox-btn {
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -4030,11 +4035,20 @@ body.role-supermarket .timeline-item {
   transition: all 0.2s;
 }
 
+.image-zoom-btn:hover,
 .image-lightbox-btn:hover {
   background: #16A34A;
   border-color: #16A34A;
 }
 
+.image-zoom-indicator {
+  font-size: 12px;
+  font-weight: 700;
+  color: #86EFAC;
+  padding: 0 4px;
+}
+
+.image-zoom-viewport,
 .image-lightbox-viewport {
   flex: 1;
   display: flex;
@@ -4047,10 +4061,12 @@ body.role-supermarket .timeline-item {
   cursor: grab;
 }
 
+.image-zoom-viewport:active,
 .image-lightbox-viewport:active {
   cursor: grabbing;
 }
 
+.image-zoom-img,
 .image-lightbox-viewport img {
   max-width: 95%;
   max-height: 90%;
@@ -4058,6 +4074,25 @@ body.role-supermarket .timeline-item {
   transition: transform 0.15s ease-out;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+@media (max-width: 640px) {
+  .image-zoom-toolbar,
+  .image-lightbox-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .image-zoom-title,
+  .image-lightbox-title {
+    font-size: 12px;
+    text-align: center;
+  }
+  .image-zoom-controls,
+  .image-lightbox-tools {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* 6. Modal de Orden de Compra B2B */

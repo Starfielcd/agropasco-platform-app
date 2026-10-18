@@ -305,6 +305,21 @@ Ejecutada con clúster físico PostgreSQL 18 en puerto 55433:
 - **Resultado**: 59 Aprobadas | 0 Fallidas (100% éxito)
 - Aislamiento total de tokens JWT, imposibilidad de manipulación de identidades, secuencias `SERIAL` sincronizadas y 16 tablas del esquema oficial verificadas.
 
+### 5.4. Suite de Validación Técnica Pre-Despliegue (`test_comercio01_predeploy_validation.js`)
+Ejecutada con clúster físico PostgreSQL 18 en puerto 55435:
+- **Total de Pruebas**: 23
+- **Aprobadas**: 23 (100%)
+- **Fallidas**: 0
+- **Verificaciones**:
+  1. Idempotencia y tolerancia a 3 reinicios consecutivos del esquema comercial sin duplicar tablas ni alterar restricciones.
+  2. Control de concurrencia y sobreventa: reserva de stock, bloqueo `FOR UPDATE` en PostgreSQL, rechazo inmediato de órdenes que superen el remanente libre y reasignación automática tras cancelación.
+  3. Notificación persistente con datos completos del comprador (nombre representante, nombre comercial, teléfono autorizado, cantidad, fecha, dirección y modalidad de transporte).
+  4. Cotización de flete por el agricultor y notificación instantánea al supermercado con nuevo total calculado.
+  5. Imposibilidad de entrega unilateral por el agricultor (bloqueo HTTP 400 y HTTP 403); solo el supermercado comprador puede confirmar la entrega definitiva.
+  6. Descuento atómico de inventario en `products.stock_kg` al confirmar la entrega (100 kg - 60 kg = 40 kg).
+  7. Persistencia multi-sesión tras cierre de sesión y reingreso con JWT renovado.
+  8. Aislamiento y privacidad estricta: terceros (Agricultor B o Supermercado B) reciben HTTP 403 al intentar consultar órdenes ajenas.
+
 ---
 
 ## 6. PRESERVACIÓN DE COMPONENTES NO COMERCIALES Y SEGURIDAD GIT
@@ -322,17 +337,52 @@ En cumplimiento estricto de las directivas:
 
 ---
 
-## 7. RIESGOS PENDIENTES Y RECOMENDACIONES PRE-DESPLIEGUE
+## 7. RIESGOS PENDIENTES, PLAN DE DESPLIEGUE Y PLAN DE REVERSIÓN
 
-1. **Migración en Render (Producción)**:
-   - Al desplegar en Render, `initializeCommercialSchema()` correrá automáticamente de forma idempotente al inicio de la aplicación sin alterar registros existentes ni interrumpir conexiones activas.
-2. **Imágenes en Supabase Storage**:
-   - Las fotos existentes cargadas por agricultores se visualizan al 100% de resolución con el nuevo visor. No se requiere migración de archivos binarios.
-3. **Monitoreo de Notificaciones en Producción**:
-   - El sondeo de campana client-side está configurado a 45 segundos para optimizar el consumo de conexiones del pool de producción en Render.
+### 7.1. Riesgos Técnicos Identificados y Mitigaciones
+1. **Concurrencia en Catálogo con Alto Tráfico**:
+   - *Mitigación implementada*: Bloqueo a nivel de fila `SELECT ... FOR UPDATE` dentro de la transacción atómica de `createOrder` y ventana de debounce de 15 segundos para doble clic.
+2. **Compatibilidad de Esquema en Render**:
+   - *Mitigación implementada*: DDL con cláusulas `IF NOT EXISTS` en tablas, columnas e índices. La función `initializeCommercialSchema()` es totalmente no-destructiva y segura frente a múltiples reinicios del contenedor web.
+3. **Consumo de Conexiones en Pool**:
+   - *Mitigación implementada*: El sondeo de notificaciones está configurado a 45 segundos con abort controller en cambios de vista.
+
+### 7.2. Propuesta de Despliegue Seguro (Cuando el Usuario lo Autorice)
+- **Paso 1 (Respaldo Preventivo en Render)**: Ejecutar exportación de esquema y tablas `users`, `products` y `crops` de PostgreSQL.
+- **Paso 2 (Merge Controlado)**:
+  ```bash
+  git checkout main
+  git merge --ff-only feature/comercio01
+  ```
+- **Paso 3 (Publicación en Remoto)**:
+  ```bash
+  git push origin main
+  ```
+- **Paso 4 (Verificación de Arranque en Render)**:
+  - Monitorear logs de Render: verificar la salida `✅ Esquema Comercial B2B verificado`.
+  - Confirmar que no existan errores de conexión ni violación de claves foráneas.
+
+### 7.3. Plan de Reversión Inmediata (Rollback)
+Si durante o después del despliegue en Render se detectara cualquier anomalía imprevista:
+1. **Reversión de Código**:
+   ```bash
+   git checkout main
+   git revert -m 1 HEAD --no-edit
+   git push origin main
+   ```
+2. **Aislamiento en Base de Datos**:
+   - Las tablas `purchase_orders` y `order_status_history` no interfieren con las consultas de versiones anteriores. La columna `notifications.order_id` tiene valor por defecto `NULL` y no bloquea inserts legados.
+   - En caso extremo de requerir limpieza:
+     ```sql
+     ALTER TABLE notifications DROP COLUMN IF EXISTS order_id;
+     DROP TABLE IF EXISTS order_status_history CASCADE;
+     DROP TABLE IF EXISTS purchase_orders CASCADE;
+     ```
 
 ---
 
 ## 8. CONCLUSIÓN TÉCNICA
 
-La iniciativa **COMERCIO01** ha transformado exitosamente la plataforma **AgroPasco Digital** en un entorno de comercio agrícola B2B real, transparente y confiable. El supermercado cuenta con herramientas de compra transparentes y control de fletes; el agricultor conoce la identidad y teléfono de quien compra sus cosechas y puede cotizar su transporte; y ambas partes cuentan con trazabilidad auditada en PostgreSQL respaldada por 51 pruebas automatizadas.
+La iniciativa **COMERCIO01** ha cumplido rigurosamente con los 10 criterios de validación técnica. Todas las funcionalidades comerciales (fotografías con zoom, fichas reales, certificación legítima, órdenes de compra B2B, modalidades de transporte, notificaciones persistentes y control de inventario) están verificadas mediante 74 pruebas automatizadas sobre PostgreSQL 18 físico (51 de suite comercial + 23 de validación pre-despliegue) y 83 pruebas de regresión (24 FIX02 + 59 Seguridad).
+
+El sistema se encuentra en un estado estable, documentado y listo para ser publicado únicamente cuando el usuario emita su autorización explícita.
