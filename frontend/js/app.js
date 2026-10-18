@@ -19,6 +19,7 @@ const routes = {
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
   '/pest-reports': { title: 'Reportes de Plagas', subtitle: 'Reporta plagas y recibe asesoría técnica', icon: '🐛', render: renderPestReportsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/farmer/sales': { title: 'Mis Ventas', subtitle: 'Productos publicados y su estado de validación', icon: '📦', render: renderFarmerSalesPage, roles: ['farmer', 'admin'] },
+  '/farmer/orders': { title: 'Pedidos Recibidos B2B', subtitle: 'Órdenes de compra solicitadas por supermercados', icon: '📥', render: renderFarmerOrdersPage, roles: ['farmer', 'admin'] },
 
   // Advisor routes
   '/advisor/parcels': { title: 'Parcelas de la Región', subtitle: 'Visualiza y monitorea todas las parcelas de Pasco', icon: '🗺️', render: renderAdvisorParcelsPage, roles: ['advisor', 'admin'] },
@@ -29,6 +30,7 @@ const routes = {
 
   // Supermarket routes
   '/supermarket': { title: 'Catálogo de Productos', subtitle: 'Productos certificados con trazabilidad digital', icon: '🏪', render: renderSupermarketPage, roles: ['supermarket', 'admin'] },
+  '/supermarket/orders': { title: 'Órdenes de Compra B2B', subtitle: 'Seguimiento de compras y transporte con agricultores', icon: '📑', render: renderSupermarketOrdersPage, roles: ['supermarket', 'admin'] },
   '/supermarket/traceability': { title: 'Trazabilidad', subtitle: 'Consulta el origen exacto de cada producto', icon: '📋', render: renderTraceabilityPage, roles: ['supermarket', 'admin'] },
   '/supermarket/logistics': { title: 'Rutas de Recogida', subtitle: 'Optimiza las rutas desde campos hasta distribución', icon: '🚛', render: renderLogisticsPage, roles: ['supermarket', 'admin'] },
   '/supermarket/inventory': { title: 'Inventario', subtitle: 'Gestión de stock y ofertas', icon: '📦', render: renderInventoryPage, roles: ['supermarket', 'admin'] },
@@ -341,10 +343,23 @@ function buildAppLayout(user) {
           </div>
 
           <div class="header-right">
-            <button class="btn-icon header-notif-btn" title="Alertas" onclick="window.location.hash='#/weather'" style="position: relative;">
-              🔔
-              <span class="header-notif-badge" id="notif-badge">1</span>
-            </button>
+            <div class="notif-wrapper" style="position: relative;">
+              <button class="btn-icon header-notif-btn" id="header-notif-toggle" title="Notificaciones y Órdenes" onclick="toggleNotificationDropdown(event)" style="position: relative;">
+                🔔
+                <span class="header-notif-badge" id="notif-badge" style="display: none;">0</span>
+              </button>
+              <div class="notif-dropdown" id="notif-dropdown" style="display: none;">
+                <div class="notif-dropdown-header">
+                  <span class="notif-dropdown-title">🔔 Notificaciones AgroPasco</span>
+                  <button type="button" class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 2px 8px;" onclick="handleMarkAllNotificationsRead(event)">
+                    ✓ Leídas
+                  </button>
+                </div>
+                <div class="notif-dropdown-body" id="notif-dropdown-body">
+                  <div style="padding: 24px; text-align: center; color: #64748B; font-size: 12.5px;">Cargando notificaciones...</div>
+                </div>
+              </div>
+            </div>
             <div class="header-user-profile" onclick="window.location.hash='#${homeRoute}'">
               <div class="header-avatar-circle">
                 <img src="${getRoleAvatar(role)}" alt="Usuario" class="header-avatar-img">
@@ -410,6 +425,9 @@ function getNavItemsForRole(role) {
       <div class="nav-item" data-route="/farmer/sales" onclick="window.location.hash='#/farmer/sales'">
         <span class="nav-item-icon">📦</span> Vender Productos
       </div>
+      <div class="nav-item" data-route="/farmer/orders" onclick="window.location.hash='#/farmer/orders'">
+        <span class="nav-item-icon">📥</span> Pedidos Recibidos B2B
+      </div>
 
       <div class="nav-section-title">TRAZABILIDAD</div>
       <div class="nav-item" data-route="/traceability" onclick="window.location.hash='#/traceability'">
@@ -457,6 +475,9 @@ function getNavItemsForRole(role) {
       <div class="nav-section-title">Catálogo</div>
       <div class="nav-item" data-route="/supermarket" onclick="window.location.hash='#/supermarket'">
         <span class="nav-item-icon">🏪</span> Productos
+      </div>
+      <div class="nav-item" data-route="/supermarket/orders" onclick="window.location.hash='#/supermarket/orders'">
+        <span class="nav-item-icon">📑</span> Órdenes B2B
       </div>
       <div class="nav-item" data-route="/supermarket/traceability" onclick="window.location.hash='#/supermarket/traceability'">
         <span class="nav-item-icon">📋</span> Trazabilidad
@@ -511,21 +532,159 @@ function toggleSidebar() {
 
 async function updateNotificationBadge() {
   try {
-    const result = await api.getAlerts();
-    const count = result.data?.alerts?.length || 0;
-    const alertBadge = document.getElementById('alert-badge');
-    const notifBadge = document.getElementById('notif-badge');
+    const token = getToken();
+    if (!token) return;
 
+    const notifBadge = document.getElementById('notif-badge');
+    const alertBadge = document.getElementById('alert-badge');
+
+    // 1. Obtener notificaciones del usuario desde PostgreSQL
+    if (typeof api.getNotifications === 'function') {
+      const res = await api.getNotifications(20);
+      const unread = res.unread_count || 0;
+      if (notifBadge) {
+        notifBadge.style.display = unread > 0 ? 'flex' : 'none';
+        notifBadge.textContent = unread;
+      }
+    }
+
+    // 2. Alertas climáticas de campo
     if (alertBadge) {
+      const weatherRes = await api.getAlerts();
+      const count = weatherRes.data?.alerts?.length || 0;
       alertBadge.style.display = count > 0 ? 'inline' : 'none';
       alertBadge.textContent = count;
     }
-    if (notifBadge) {
-      notifBadge.style.display = count > 0 ? 'flex' : 'none';
-      notifBadge.textContent = count;
-    }
-  } catch (e) {}
+  } catch (e) {
+    // Silently continue on background badge polling
+  }
 }
+
+async function toggleNotificationDropdown(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const dropdown = document.getElementById('notif-dropdown');
+  if (!dropdown) return;
+
+  const isVisible = dropdown.style.display === 'block';
+  if (isVisible) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  dropdown.style.display = 'block';
+  const bodyEl = document.getElementById('notif-dropdown-body');
+  if (bodyEl) {
+    bodyEl.innerHTML = '<div style="padding: 24px; text-align: center; color: #64748B; font-size: 12.5px;">Cargando notificaciones...</div>';
+  }
+
+  try {
+    const res = await api.getNotifications(25);
+    const notifications = res.data || [];
+    renderNotificationDropdownItems(notifications);
+  } catch (err) {
+    if (bodyEl) {
+      bodyEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #EF4444; font-size: 12px;">Error al cargar notificaciones.</div>';
+    }
+  }
+}
+
+function renderNotificationDropdownItems(notifications) {
+  const bodyEl = document.getElementById('notif-dropdown-body');
+  if (!bodyEl) return;
+
+  if (!notifications || notifications.length === 0) {
+    bodyEl.innerHTML = `
+      <div style="padding: 32px 16px; text-align: center; color: #64748B;">
+        <div style="font-size: 32px; margin-bottom: 6px;">📭</div>
+        <div style="font-size: 13px; font-weight: 600;">Bandeja limpia</div>
+        <div style="font-size: 11.5px; color: #94A3B8; margin-top: 2px;">No tienes notificaciones pendientes.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const iconMap = {
+    orden_compra: '🛒',
+    mercado: '📦',
+    alerta_helada: '❄️',
+    alerta_clima: '⛅',
+    sistema: 'ℹ️'
+  };
+
+  bodyEl.innerHTML = notifications.map(n => {
+    const isUnread = !n.read;
+    const timeStr = n.created_at ? new Date(n.created_at).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    const icon = iconMap[n.type] || '🔔';
+
+    return `
+      <div class="notif-item ${isUnread ? 'unread' : ''}" onclick="handleNotificationItemClick(${n.id}, ${n.order_id || 'null'})">
+        <div style="display: flex; gap: 8px; align-items: flex-start;">
+          <span style="font-size: 16px; line-height: 1.2;">${icon}</span>
+          <div style="flex: 1; min-width: 0;">
+            <div class="notif-item-title">${n.title || 'Notificación'}</div>
+            <div class="notif-item-message">${(n.message || '').replace(/\n/g, '<br>')}</div>
+            <div class="notif-item-time">${timeStr} ${n.order_id ? '• <strong style="color: #16A34A;">Ver Orden B2B →</strong>' : ''}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function handleNotificationItemClick(notifId, orderId) {
+  const dropdown = document.getElementById('notif-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+
+  try {
+    if (notifId) {
+      await api.markNotificationRead(notifId);
+      updateNotificationBadge();
+    }
+  } catch (_) {}
+
+  if (orderId && typeof showOrderDetailModal === 'function') {
+    showOrderDetailModal(orderId);
+  } else if (orderId) {
+    const user = getUser();
+    if (user?.role === 'farmer') {
+      window.location.hash = '#/farmer/orders';
+    } else {
+      window.location.hash = '#/supermarket/orders';
+    }
+  }
+}
+
+async function handleMarkAllNotificationsRead(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  try {
+    await api.markAllNotificationsRead();
+    updateNotificationBadge();
+    const res = await api.getNotifications(25);
+    renderNotificationDropdownItems(res.data || []);
+    showToast('Todas las notificaciones marcadas como leídas.', 'success');
+  } catch (err) {
+    showToast('Error al marcar notificaciones.', 'error');
+  }
+}
+
+// Cerrar dropdown al hacer clic fuera
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('notif-dropdown');
+  const toggle = document.getElementById('header-notif-toggle');
+  if (dropdown && dropdown.style.display === 'block') {
+    if (!dropdown.contains(e.target) && !toggle?.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  }
+});
 
 function handleGlobalSearch(query) {
   if (!query || !query.trim()) return;
