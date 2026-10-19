@@ -138,6 +138,9 @@ async function renderPredictiveDashboardPage() {
             <span id="pred-map-altitude-badge" class="badge badge-gray" style="font-size: 11.5px;">-- msnm</span>
           </div>
 
+          <!-- Banner de Estado de Red / Teselas -->
+          <div id="pred-map-error-banner" style="display: none; padding: 8px 12px; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; margin-bottom: 8px; font-size: 12px; color: #92400E;"></div>
+
           <!-- Contenedor del Mapa -->
           <div id="predictive-parcel-map" style="width: 100%; height: 340px; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; background: #E2E8F0;"></div>
 
@@ -201,6 +204,17 @@ async function renderPredictiveDashboardPage() {
           <button type="button" class="btn btn-primary btn-sm" onclick="runManualSimulation()" style="font-size: 12.5px; background: #2563EB; border-color: #1D4ED8;">
             ⚡ Ejecutar Simulación Inmediata
           </button>
+        </div>
+
+        <!-- Banner de Distinción Conceptual Oficial -->
+        <div style="background: #F1F5F9; border-radius: 8px; border-left: 4px solid #3B82F6; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #1E293B; line-height: 1.5;">
+          <strong>Distinción Conceptual Oficial:</strong>
+          <ul style="margin: 4px 0 0; padding-left: 18px;">
+            <li><strong>Pronóstico meteorológico:</strong> Variables atmosféricas de Open-Meteo basadas en modelos físicos globales.</li>
+            <li><strong>Predicción ML:</strong> Evaluación probabilística del riesgo agronómico realizada por los modelos de AgroPasco.</li>
+            <li><strong>Simulación manual:</strong> Escenario hipotético para análisis de sensibilidad (no modifica registros ni observaciones).</li>
+            <li><strong>Monte Carlo:</strong> Propagación estocástica de incertidumbre (P10: escenario favorable, P50: mediana probable, P90: escenario crítico).</li>
+          </ul>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; background: #F8FAFC; padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
@@ -566,6 +580,10 @@ function renderParcelSpecsAndBadges() {
     `;
   }
 
+  const adminLoc = typeof PascoAdminGeo !== 'undefined'
+    ? PascoAdminGeo.resolveParcelLocation(parcel)
+    : { label: 'Región Pasco' };
+
   const specFarmer = document.getElementById('spec-farmer-name');
   const specCrop = document.getElementById('spec-crop-type');
   const specCoords = document.getElementById('spec-coordinates');
@@ -573,12 +591,16 @@ function renderParcelSpecsAndBadges() {
 
   if (specFarmer) specFarmer.textContent = parcel.name || '--';
   if (specCrop) specCrop.textContent = parcel.crop_type || 'Sin cultivo registrado';
-  if (specCoords) specCoords.textContent = `${parcel.latitude ? parcel.latitude.toFixed(4) : '--'}°, ${parcel.longitude ? parcel.longitude.toFixed(4) : '--'}°`;
+  if (specCoords) {
+    const provText = adminLoc.province ? ` · Prov. ${adminLoc.province}` : '';
+    specCoords.textContent = `${parcel.latitude ? parcel.latitude.toFixed(4) : '--'}°, ${parcel.longitude ? parcel.longitude.toFixed(4) : '--'}°${provText}`;
+  }
   if (specMicro) {
     const alt = parcel.altitude_masl || 3800;
-    if (alt >= 4000) specMicro.textContent = 'Puna Alta / Heladas Frecuentes';
-    else if (alt >= 3000) specMicro.textContent = 'Valle Quechua Templado-Frío';
-    else specMicro.textContent = 'Selva Alta Húmeda / Ceja de Selva';
+    const locRef = adminLoc.label ? ` · ${adminLoc.label}` : '';
+    if (alt >= 4000) specMicro.textContent = `Puna Alta / Heladas Frecuentes (≥4,000 msnm)${locRef}`;
+    else if (alt >= 3000) specMicro.textContent = `Valle Quechua Templado-Frío (3,000-3,999 msnm)${locRef}`;
+    else specMicro.textContent = `Selva Alta / Valles Subtropicales (<3,000 msnm)${locRef}`;
   }
 
   const isStale = predictiveDashboardState.horizonsData?.is_stale;
@@ -609,12 +631,53 @@ function renderParcelMap() {
       center: [lat, lng],
       zoom: 15,
       zoomControl: true,
+      attributionControl: true
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap AgroPasco',
-    }).addTo(predictiveDashboardState.mapInstance);
+    // Capa satelital autorizada: Esri World Imagery (mismo proveedor oficial y estable que Mis Parcelas)
+    const satLayer = L.tileLayer(
+      (typeof MapsConfig !== 'undefined' && MapsConfig.ESRI_SAT_URL)
+        ? MapsConfig.ESRI_SAT_URL
+        : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxZoom: 18,
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics'
+      }
+    );
+
+    // Capa de mapa topográfico con CartoDB Voyager (sin bloqueo 403 de OSM)
+    const streetLayer = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      {
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; CartoDB &copy; OpenStreetMap'
+      }
+    );
+
+    // Manejo de errores de carga de teselas
+    let hasShownMapError = false;
+    const onTileError = () => {
+      if (!hasShownMapError) {
+        hasShownMapError = true;
+        const errBanner = document.getElementById('pred-map-error-banner');
+        if (errBanner) {
+          errBanner.style.display = 'block';
+          errBanner.textContent = 'ℹ️ Red con lentitud temporal en teselas de mapa. Cambie entre Satélite y Mapa o recargue.';
+        }
+      }
+    };
+    satLayer.on('tileerror', onTileError);
+    streetLayer.on('tileerror', onTileError);
+
+    // Activar satélite por defecto para visualización agronómica
+    satLayer.addTo(predictiveDashboardState.mapInstance);
+
+    // Control de capas Leaflet
+    L.control.layers({
+      '🛰️ Satélite (Esri)': satLayer,
+      '🗺️ Mapa Topográfico': streetLayer
+    }, null, { position: 'topright' }).addTo(predictiveDashboardState.mapInstance);
 
     predictiveDashboardState.mapLayerGroup = L.layerGroup().addTo(predictiveDashboardState.mapInstance);
   } else {
@@ -622,25 +685,59 @@ function renderParcelMap() {
     predictiveDashboardState.mapLayerGroup.clearLayers();
   }
 
-  // Marcador con popup interactivo
+  // Trazar polígono GeoJSON delimitado si existe
+  let drawnPolygon = false;
+  const rawGeoJson = parcel.geo_json || predictiveDashboardState.horizonsData?.parcel?.geo_json;
+  if (rawGeoJson) {
+    try {
+      const parsedGeo = typeof rawGeoJson === 'string' ? JSON.parse(rawGeoJson) : rawGeoJson;
+      const polyLayer = L.geoJSON(parsedGeo, {
+        style: {
+          color: '#16A34A',
+          weight: 3,
+          fillColor: '#22C55E',
+          fillOpacity: 0.25
+        }
+      });
+      polyLayer.addTo(predictiveDashboardState.mapLayerGroup);
+      if (polyLayer.getBounds && polyLayer.getBounds().isValid()) {
+        predictiveDashboardState.mapInstance.fitBounds(polyLayer.getBounds(), { padding: [30, 30] });
+        drawnPolygon = true;
+      }
+    } catch (_) {
+      drawnPolygon = false;
+    }
+  }
+
+  // Localización administrativa oficial verificable
+  const adminLoc = typeof PascoAdminGeo !== 'undefined'
+    ? PascoAdminGeo.resolveParcelLocation(parcel)
+    : { label: 'Región Pasco', province: 'Pasco' };
+
+  // Marcador del centroide con popup interactivo
   const marker = L.marker([lat, lng])
     .bindPopup(`
-      <div style="font-size: 12px; font-family: 'Inter', sans-serif;">
-        <strong style="color: #166534;">${parcel.name}</strong><br>
-        <span>Cultivo: ${parcel.crop_type || 'N/A'}</span><br>
-        <span>Altitud: ${parcel.altitude_masl || 'N/A'} msnm</span><br>
-        <div style="margin-top: 4px; font-weight: 700; color: #DC2626;">Monitoreo de Heladas Activo</div>
+      <div style="font-size: 12px; font-family: 'Inter', sans-serif; min-width: 170px;">
+        <strong style="color: #166534; font-size: 13px;">${parcel.name}</strong><br>
+        <span>🌾 <strong>Cultivo:</strong> ${parcel.crop_type || 'N/A'}</span><br>
+        <span>⛰️ <strong>Altitud:</strong> ${parcel.altitude_masl || 'N/A'} msnm</span><br>
+        <span>📍 <strong>Ámbito:</strong> ${adminLoc.label || 'Región Pasco'}</span><br>
+        <div style="margin-top: 6px; padding: 4px; background: #FEF2F2; border-radius: 4px; font-weight: 700; color: #DC2626; text-align: center;">
+          Monitoreo de Heladas Activo
+        </div>
       </div>
     `)
     .addTo(predictiveDashboardState.mapLayerGroup);
 
-  // Círculo de área de influencia microclimática
-  L.circle([lat, lng], {
-    color: '#16A34A',
-    fillColor: '#22C55E',
-    fillOpacity: 0.15,
-    radius: 350,
-  }).addTo(predictiveDashboardState.mapLayerGroup);
+  if (!drawnPolygon) {
+    // Círculo de área de influencia microclimática si no hay polígono delimitado
+    L.circle([lat, lng], {
+      color: '#16A34A',
+      fillColor: '#22C55E',
+      fillOpacity: 0.18,
+      radius: 350,
+    }).addTo(predictiveDashboardState.mapLayerGroup);
+  }
 
   // Invalidate size para asegurar renderizado correcto al cambiar layout
   setTimeout(() => {
@@ -897,6 +994,11 @@ function renderBenchmarkTable() {
           ${rows}
         </tbody>
       </table>
+    </div>
+
+    <!-- Criterio Multi-Objetivo de Selección -->
+    <div style="margin-top: 14px; padding: 12px 16px; background: #F8FAFC; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; color: #475569; line-height: 1.5;">
+      <strong>💡 ¿Por qué no se selecciona únicamente por F1-Score?</strong> En agrometeorología operativa, un modelo con F1 ligeramente inferior puede ser el elegido si presenta una calibración probabilística superior (menor ECE &lt; 0.10 y menor Brier Score), mayor solidez en PR-AUC ante eventos infrecuentes y mínima brecha de sobreajuste entre entrenamiento y validación cruzada cronológica. Esto asegura que la probabilidad de helada refleje la frecuencia real del fenómeno, evitando alarmas falsas que minen la confianza del agricultor.
     </div>
   `;
 }

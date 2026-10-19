@@ -20,21 +20,43 @@
 
 const db = require('../config/database');
 const mlService = require('./mlService');
+const pascoAdminGeo = require('./pascoAdminGeoService');
 
 /**
  * Determina la zona geográfica/ecológica aproximada sin inventar datos ni usar coordenadas exactas.
  */
 function resolveApproximateZone(parcel, userLocation = '') {
-  const textSources = `${parcel.name || ''} ${parcel.notes || ''} ${userLocation || ''}`.toLowerCase();
+  // 1. Si la parcela cuenta con coordenadas o centroide, clasificar por límites territoriales oficiales
+  const lat = parcel.center_lat ?? parcel.latitude;
+  const lng = parcel.center_lng ?? parcel.longitude;
   const altitude = parcel.altitude_masl !== undefined && parcel.altitude_masl !== null
     ? Number(parcel.altitude_masl)
     : null;
 
-  // 1. Detección por topónimo conocido
+  if (lat !== null && lng !== null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    const geoClas = pascoAdminGeo.classifyProvinceByCoordinates(Number(lat), Number(lng));
+    if (geoClas.province === 'Oxapampa') {
+      return 'Provincia de Oxapampa (Selva Alta / Valles Subtropicales)';
+    } else if (geoClas.province === 'Daniel Alcides Carrión') {
+      return 'Provincia Daniel Alcides Carrión (Valles Interandinos / Quechua)';
+    } else if (geoClas.province === 'Pasco') {
+      if (altitude !== null && altitude >= 3900) {
+        return 'Cerro de Pasco y Altiplano Central (Meseta del Bombón, >3,900 msnm)';
+      }
+      return 'Provincia de Pasco (Valles y Quebradas Interandinas)';
+    }
+  }
+
+  const textSources = `${parcel.name || ''} ${parcel.notes || ''} ${userLocation || ''}`.toLowerCase();
+
+  // 2. Detección por topónimo conocido (evitando coincidencia espuria de 'paucar' con 'paucartambo')
   if (textSources.includes('oxapampa') || textSources.includes('villa rica') || textSources.includes('pozuzo') || textSources.includes('chontabamba')) {
     return 'Provincia de Oxapampa (Selva Alta / Valles Subtropicales)';
   }
-  if (textSources.includes('yanahuanca') || textSources.includes('chacayán') || textSources.includes('tusi') || textSources.includes('tapuc')) {
+  if (textSources.includes('paucartambo')) {
+    return 'Cuencas y Valles Interandinos de Pasco (Paucartambo, Pasco)';
+  }
+  if (textSources.includes('yanahuanca') || textSources.includes('chacayán') || textSources.includes('chacayan') || textSources.includes('tusi') || textSources.includes('tapuc') || textSources.includes('tápuc')) {
     return 'Provincia Daniel Alcides Carrión (Valles Interandinos / Quechua)';
   }
   if (textSources.includes('huayllay') || textSources.includes('vicco') || textSources.includes('tinyahuarco') || textSources.includes('ninacaca')) {
@@ -43,11 +65,11 @@ function resolveApproximateZone(parcel, userLocation = '') {
   if (textSources.includes('cerro de pasco') || textSources.includes('chaupimarca') || textSources.includes('yanacancha')) {
     return 'Cerro de Pasco y alrededores (Altiplano >4,000 msnm)';
   }
-  if (textSources.includes('paucartambo') || textSources.includes('huariaca')) {
+  if (textSources.includes('huariaca')) {
     return 'Cuencas y Valles Interandinos de Pasco (~2,800 - 3,200 msnm)';
   }
 
-  // 2. Clasificación ecológica aproximada por altitud (si está disponible)
+  // 3. Clasificación ecológica aproximada por altitud (si está disponible)
   if (altitude !== null) {
     if (altitude < 2200) {
       return 'Zona de Ceja de Selva / Selva Alta (<2,200 msnm, Pasco)';
@@ -64,32 +86,77 @@ function resolveApproximateZone(parcel, userLocation = '') {
 }
 
 /**
- * Normaliza y extrae las métricas numéricas de la predicción en caché.
+ * Normaliza y extrae las métricas numéricas de la predicción en caché (soporta Arrays y Objetos).
  */
 function extractPredictionMetrics(rawCache) {
   if (!rawCache || typeof rawCache !== 'object') return null;
 
-  const predictions = rawCache.predictions || {};
-  const snapshot = rawCache.weather_snapshot || {};
+  const payload = rawCache.data && typeof rawCache.data === 'object' ? rawCache.data : rawCache;
+
+  let frostRisk = null;
+  let snowRisk = null;
+  let rainRisk = null;
+  let hailRisk = null;
+
+  // Caso 1: predictions es un Array (formato estándar emitido por mlService)
+  if (Array.isArray(payload.predictions)) {
+    const frostPred = payload.predictions.find(p => p.phenomenon === 'frost');
+    const snowPred = payload.predictions.find(p => p.phenomenon === 'snow');
+    const rainPred = payload.predictions.find(p => p.phenomenon === 'heavy_rain');
+    const hailPred = payload.predictions.find(p => p.phenomenon === 'hail');
+
+    if (frostPred && frostPred.risk_score !== undefined) frostRisk = Number(frostPred.risk_score);
+    if (snowPred && snowPred.risk_score !== undefined) snowRisk = Number(snowPred.risk_score);
+    if (rainPred && rainPred.risk_score !== undefined) rainRisk = Number(rainPred.risk_score);
+    if (hailPred && hailPred.risk_score !== undefined) hailRisk = Number(hailPred.risk_score);
+  } else if (payload.predictions && typeof payload.predictions === 'object') {
+    // Caso 2: predictions es un objeto con subobjetos por fenómeno
+    frostRisk = payload.predictions.frost?.risk_score !== undefined ? Number(payload.predictions.frost.risk_score) : null;
+    snowRisk = payload.predictions.snow?.risk_score !== undefined ? Number(payload.predictions.snow.risk_score) : null;
+    rainRisk = payload.predictions.heavy_rain?.risk_score !== undefined ? Number(payload.predictions.heavy_rain.risk_score) : null;
+    hailRisk = payload.predictions.hail?.risk_score !== undefined ? Number(payload.predictions.hail.risk_score) : null;
+  }
+
+  // Fallbacks para campos directos
+  if (frostRisk === null && payload.frost_risk !== undefined) frostRisk = Number(payload.frost_risk);
+  if (snowRisk === null && payload.snow_risk !== undefined) snowRisk = Number(payload.snow_risk);
+  if (rainRisk === null && payload.heavy_rain_risk !== undefined) rainRisk = Number(payload.heavy_rain_risk);
+  if (hailRisk === null && payload.hail_risk !== undefined) hailRisk = Number(payload.hail_risk);
+
+  const snapshot = payload.weather_snapshot || {};
+  const forecastSummary = payload.forecast_summary || {};
+
+  const tempMin = snapshot.temp_min !== undefined
+    ? snapshot.temp_min
+    : (Array.isArray(forecastSummary.temp_min) && forecastSummary.temp_min.length > 0 ? forecastSummary.temp_min[0] : null);
+
+  const tempMax = snapshot.temp_max !== undefined
+    ? snapshot.temp_max
+    : (Array.isArray(forecastSummary.temp_max) && forecastSummary.temp_max.length > 0 ? forecastSummary.temp_max[0] : null);
+
+  const precip = snapshot.precipitation !== undefined
+    ? snapshot.precipitation
+    : (Array.isArray(forecastSummary.precipitation) && forecastSummary.precipitation.length > 0 ? forecastSummary.precipitation[0] : null);
 
   return {
-    ml_frost_risk: predictions.frost?.risk_score !== undefined
-      ? predictions.frost.risk_score
-      : (rawCache.frost_risk !== undefined ? rawCache.frost_risk : null),
-    ml_snow_risk: predictions.snow?.risk_score !== undefined
-      ? predictions.snow.risk_score
-      : (rawCache.snow_risk !== undefined ? rawCache.snow_risk : null),
-    ml_heavy_rain_risk: predictions.heavy_rain?.risk_score !== undefined
-      ? predictions.heavy_rain.risk_score
-      : (rawCache.heavy_rain_risk !== undefined ? rawCache.heavy_rain_risk : null),
-    ml_hail_risk: predictions.hail?.risk_score !== undefined
-      ? predictions.hail.risk_score
-      : (rawCache.hail_risk !== undefined ? rawCache.hail_risk : null),
+    ml_frost_risk: frostRisk,
+    ml_snow_risk: snowRisk,
+    ml_heavy_rain_risk: rainRisk,
+    ml_hail_risk: hailRisk,
+    frost_risk_pct: frostRisk,
+    frost_risk_level: frostRisk !== null ? (frostRisk >= 60 ? 'high' : frostRisk >= 30 ? 'moderate' : 'low') : null,
+    heavy_rain_risk_pct: rainRisk,
+    snow_risk_pct: snowRisk,
+    hail_risk_pct: hailRisk,
+    min_temp_c: tempMin,
+    max_temp_c: tempMax,
     temperature_current: snapshot.temperature !== undefined ? snapshot.temperature : null,
-    temperature_min: snapshot.temp_min !== undefined ? snapshot.temp_min : null,
-    temperature_max: snapshot.temp_max !== undefined ? snapshot.temp_max : null,
-    valid_until: rawCache.valid_until || null,
-    fetched_at: rawCache.fetched_at || rawCache.last_updated || null
+    temperature_min: tempMin,
+    temperature_max: tempMax,
+    precipitation_sum: precip,
+    valid_until: payload.valid_until || null,
+    fetched_at: payload.fetched_at || payload.last_updated || payload.issued_at || null,
+    prediction_source: payload.prediction_source || payload.source || (payload.is_stale ? 'cache_stale' : 'ml_trained')
   };
 }
 

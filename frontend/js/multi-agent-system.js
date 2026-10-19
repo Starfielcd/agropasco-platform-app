@@ -109,7 +109,7 @@ function renderMultiAgentSystemSection() {
         </div>
         <div style="background: #FFFFFF; padding: 12px 14px; border-radius: 10px; border: 1px solid #E2E8F0; text-align: center;">
           <div style="font-size: 11px; font-weight: 700; color: #7C3AED; text-transform: uppercase;">Tasa de Éxito</div>
-          <div id="metric-success-rate" style="font-size: 22px; font-weight: 800; color: #7C3AED;">100%</div>
+          <div id="metric-success-rate" style="font-size: 18px; font-weight: 800; color: #7C3AED;">Sin datos</div>
         </div>
         <div style="background: #FFFFFF; padding: 12px 14px; border-radius: 10px; border: 1px solid #E2E8F0; text-align: center;">
           <div style="font-size: 11px; font-weight: 700; color: #D97706; text-transform: uppercase;">Tiempo Medio</div>
@@ -376,7 +376,11 @@ async function refreshMultiAgentStatus(showFeedback = false) {
       if (elRunning) elRunning.textContent = t.running ?? 0;
       if (elCompleted) elCompleted.textContent = t.completed ?? 0;
       if (elFailed) elFailed.textContent = t.failed ?? 0;
-      if (elRate) elRate.textContent = `${t.success_rate_pct ?? 100}%`;
+      if (elRate) {
+        elRate.textContent = (t.total_tasks_24h > 0 && t.success_rate_pct !== null && t.success_rate_pct !== undefined)
+          ? `${t.success_rate_pct}%`
+          : 'Sin datos';
+      }
       if (elAvg) elAvg.textContent = `${t.avg_execution_ms ?? 0} ms`;
 
       // Actualizar badges individuales de los 5 agentes

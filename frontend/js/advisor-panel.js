@@ -26,19 +26,36 @@ async function renderAdvisorParcelsPage() {
   };
 
   parcels.forEach(p => {
-    const loc = ((p.farmer_location || '') + ' ' + (p.name || '') + ' ' + (p.notes || '')).toLowerCase();
+    let resolvedProvince = null;
+    if (typeof PascoAdminGeo !== 'undefined') {
+      const locRes = PascoAdminGeo.resolveParcelLocation(p);
+      if (locRes && locRes.province) {
+        resolvedProvince = locRes.province;
+      }
+    }
 
-    if (loc.includes('yanahuanca') || loc.includes('chacayan') || loc.includes('chacayán') ||
-        loc.includes('tapuc') || loc.includes('paucar') || loc.includes('vilcabamba') ||
-        loc.includes('tusi') || loc.includes('goyllarisquizga') || loc.includes('carrión') || loc.includes('carrion')) {
+    if (resolvedProvince === 'Daniel Alcides Carrión') {
       provinceGroups['Provincia Daniel Alcides Carrión'].push(p);
-    } else if (loc.includes('oxapampa') || loc.includes('villa rica') || loc.includes('chontabamba') ||
-               loc.includes('huancabamba') || loc.includes('pozuzo') || loc.includes('bermudez') ||
-               loc.includes('bermúdez') || loc.includes('constitucion') || loc.includes('constitución') || loc.includes('palcazu')) {
+    } else if (resolvedProvince === 'Oxapampa') {
       provinceGroups['Provincia de Oxapampa'].push(p);
-    } else {
-      // Provincia de Pasco (Cerro de Pasco, Chaupimarca, Yanacancha, Tinyahuarco, Ninacaca, Huayllay, Vicco, Paucartambo...)
+    } else if (resolvedProvince === 'Pasco') {
       provinceGroups['Provincia de Pasco'].push(p);
+    } else {
+      // Fallback a análisis textual riguroso (distinguiendo Paucartambo de Páucar)
+      const loc = ((p.name || '') + ' ' + (p.notes || '') + ' ' + (p.farmer_location || '')).toLowerCase();
+      if (loc.includes('paucartambo')) {
+        provinceGroups['Provincia de Pasco'].push(p);
+      } else if (loc.includes('yanahuanca') || loc.includes('chacayan') || loc.includes('chacayán') ||
+          loc.includes('tapuc') || loc.includes('tápuc') || loc.includes('vilcabamba') ||
+          loc.includes('tusi') || loc.includes('goyllarisquizga') || loc.includes('carrión') || loc.includes('carrion')) {
+        provinceGroups['Provincia Daniel Alcides Carrión'].push(p);
+      } else if (loc.includes('oxapampa') || loc.includes('villa rica') || loc.includes('chontabamba') ||
+                 loc.includes('huancabamba') || loc.includes('pozuzo') || loc.includes('bermudez') ||
+                 loc.includes('bermúdez') || loc.includes('constitucion') || loc.includes('constitución') || loc.includes('palcazu')) {
+        provinceGroups['Provincia de Oxapampa'].push(p);
+      } else {
+        provinceGroups['Provincia de Pasco'].push(p);
+      }
     }
   });
 
