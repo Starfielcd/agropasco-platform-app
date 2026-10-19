@@ -42,7 +42,7 @@ class MeteorologicalAgent {
 
     // 1. Obtener y validar datos de la parcela
     const parcel = await db.dbGet(
-      'SELECT id, user_id, name, latitude, longitude, altitude_masl, crop_type, created_at FROM parcels WHERE id = ?',
+      'SELECT id, user_id, name, center_lat AS latitude, center_lng AS longitude, altitude_masl, crop_type, created_at FROM parcels WHERE id = ?',
       [parcel_id]
     );
 

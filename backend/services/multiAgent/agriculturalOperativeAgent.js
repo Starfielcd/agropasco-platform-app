@@ -55,7 +55,7 @@ class AgriculturalOperativeAgent {
     let parcel = parcel_context;
     if (!parcel.crop_type) {
       const dbParcel = await db.dbGet(
-        'SELECT id, user_id, name, crop_type, area_hectares, altitude_masl, location FROM parcels WHERE id = ?',
+        'SELECT id, user_id, name, crop_type, area_hectares, altitude_masl FROM parcels WHERE id = ?',
         [parcel_id]
       );
       if (dbParcel) {
@@ -101,7 +101,7 @@ class AgriculturalOperativeAgent {
         // Si el riesgo supera ninguno/bajo, o si es helada/lluvia con score >= 25, generar mitigación
         const isActionable = (pred.risk_level === 'high' || pred.risk_level === 'moderate' || (pred.risk_score && pred.risk_score >= 25));
         if (isActionable) {
-          const recommendations = defaultMitigationService.generateRecommendations({
+          const recResult = defaultMitigationService.generateRecommendations({
             parcel_id,
             crop: cropType,
             phenological_stage: phenologicalStage,
@@ -112,8 +112,12 @@ class AgriculturalOperativeAgent {
             monte_carlo_results: predictive_output.monte_carlo_sensitivity,
           });
 
-          if (recommendations && recommendations.length > 0) {
-            generatedStrategies.push(...recommendations);
+          const recList = Array.isArray(recResult)
+            ? recResult
+            : (recResult && Array.isArray(recResult.strategies) ? recResult.strategies : (recResult && Array.isArray(recResult.recommendations) ? recResult.recommendations : []));
+
+          if (recList.length > 0) {
+            generatedStrategies.push(...recList);
 
             // Generar alerta estructurada
             internalAlerts.push({
