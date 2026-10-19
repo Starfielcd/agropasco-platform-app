@@ -3,7 +3,7 @@
   "model_type": "logistic_regression",
   "algorithm": "LogisticRegression",
   "version": "2.0.0_audited_no_leak",
-  "trained_at": "2026-09-27T17:01:24.207975",
+  "trained_at": "2026-10-18T00:48:36.589649",
   "features": [
     "temperature_2m_mean",
     "temperature_2m_min",

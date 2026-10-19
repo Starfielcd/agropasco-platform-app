@@ -1,0 +1,68 @@
+{
+  "$schema": "https://agropasco.pe/schemas/v1/technical-factsheet.schema.json",
+  "template_version": "1.0.0",
+  "document_type": "ficha_agronomica_original",
+  "institution": "AgroPasco Digital — Equipo Técnico Agronómico",
+  "id": "FICHA-AGROPASCO-[CULTIVO]-[NUMERO]",
+  "title": "[TÍTULO_FORMAL_DE_LA_GUÍA_TÉCNICA]",
+  "crop": {
+    "crop_type": "[papa | maca | cafe | quinua | granadilla | palto | olluco | otro]",
+    "varieties": ["[variedad_1]", "[variedad_2]"],
+    "phenological_stages": ["[sembrado | crecimiento | floracion | maduracion | cosechado]"]
+  },
+  "agroecological_zones": [
+    "[zona_altoandina | valles_interandinos | selva_alta | puna]"
+  ],
+  "altitude_range_masl": {
+    "min": 0,
+    "max": 4800
+  },
+  "applicable_districts": [
+    "[Cerro de Pasco | Yanahuanca | Oxapampa | Villa Rica | Paucartambo | Huayllay | Ninacaca | etc.]"
+  ],
+  "technical_content": {
+    "general_recommendations": [
+      "[Pauta agronómica preventiva o cultural verificada]"
+    ],
+    "meteorological_risk_management": {
+      "frost_mitigation": "[Directiva preventiva frente a heladas radiativas]",
+      "heavy_rain_management": "[Directiva de drenaje y manejo frente a exceso hídrico]",
+      "hail_snow_protocol": "[Protocolo de inspección y recuperación de follaje]"
+    },
+    "soil_and_irrigation": {
+      "soil_conservation": "[Prácticas culturales de conservación y rotación de suelos]",
+      "irrigation_frequency": "[Criterio de riego según etapa fenológica y tipo de suelo]"
+    },
+    "phytosanitary_guidance": {
+      "preventive_practices": "[Labores culturales, monitoreo y control biológico/etológico]",
+      "chemical_warning": "PROHIBIDA la dosificación química automática. Toda aplicación de plaguicidas de síntesis requiere prescripción presencial y receta técnica de un ingeniero agrónomo colegiado."
+    }
+  },
+  "safety_warnings": [
+    "[Advertencia técnica específica sobre riesgos o limitaciones del cultivo]"
+  ],
+  "verifiable_sources": [
+    {
+      "source_name": "[Nombre de la fuente experimental, ensayo o publicación técnica validada]",
+      "official_url": "https://[repositorio_autorizado_gob_pe_o_agropasco_pe]/[enlace]",
+      "verification_method": "[ensayo_en_campo | validacion_colegiada | publicacion_oficial]"
+    }
+  ],
+  "authorship_and_review": {
+    "author_name": "[Nombre y Apellidos del redactor técnico]",
+    "author_role": "[Especialista en Cultivos / Asesor de Campo AgroPasco]",
+    "technical_reviewer_name": "[Nombre del Revisor Agronómico Colegiado]",
+    "technical_reviewer_credentials": "[Registro CIP / Colegio de Ingenieros del Perú]",
+    "review_date": "[YYYY-MM-DD]",
+    "creation_date": "[YYYY-MM-DD]",
+    "version": "1.0",
+    "approval_status": "draft_pending_review"
+  },
+  "license": {
+    "rights_holder": "AgroPasco Digital",
+    "license_type": "Creative Commons Atribución-CompartirIgual 4.0 Internacional (CC BY-SA 4.0)",
+    "commercial_use_allowed": false,
+    "attribution_required": true,
+    "derivative_works_allowed": true
+  }
+}

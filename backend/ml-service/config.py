@@ -15,9 +15,10 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 REPORTS_DIR = DATA_DIR / "reports"
 MODELS_DIR = DATA_DIR / "models"
+MODELS_JSON_DIR = BASE_DIR / "data" / "models-json"
 
 # Crear directorios si no existen
-for d in [PROCESSED_DIR, REPORTS_DIR, MODELS_DIR]:
+for d in [PROCESSED_DIR, REPORTS_DIR, MODELS_DIR, MODELS_JSON_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ===== CSV FILES (nombres reales encontrados en auditoría) =====

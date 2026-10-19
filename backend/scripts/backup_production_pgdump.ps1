@@ -8,12 +8,16 @@
 
     Principios de Seguridad y Operacion:
       1. Operacion exclusivamente de lectura (pg_dump usa transacciones de solo lectura).
-      2. No expone contrasenas en argumentos de proceso, logs ni archivos de disco.
-      3. Limpieza garantizada de credenciales en memoria mediante bloque try/finally.
-      4. Verificacion estricta del codigo de salida de pg_dump (aborto ante fallos).
-      5. Prevencion de uso de Transaction Pooler (puerto 6543 no apto para dump).
-      6. Verificacion de seguridad antes de restauracion: rechaza hosts remotos.
-      7. Almacenamiento seguro fuera del repositorio en C:\AgroPasco_Backups.
+      2. No expone contrasenas en comandos visibles, argumentos de procesos, logs, manifiestos ni archivos persistentes.
+      3. Limpieza de credenciales en memoria en condiciones normales mediante bloque try/finally.
+         Nota de diseno: No se afirma ni garantiza eliminacion absoluta de credenciales en caso de que el
+         proceso o la terminal finalicen de forma abrupta (e.g. cierre forzado, crash o suspension del SO).
+      4. Verificacion estricta del codigo de salida de cada comando (pg_dump, pg_restore, herramientas de sandbox).
+      5. Prevencion total de sobrescritura de respaldos preexistentes o manifiestos.
+      6. Verificacion TLS estricta y obligatoria (sslmode=verify-full) con certificado CA valido; no se desactiva ante errores.
+      7. Deteccion preventiva contra el uso de Transaction Pooler (puerto 6543 no apto para dump).
+      8. Verificacion de seguridad antes de restauracion sandbox: rechaza hosts no locales.
+      9. Almacenamiento seguro fuera del repositorio en C:\AgroPasco_Backups.
 #>
 
 [CmdletBinding()]
@@ -23,6 +27,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string]$PgBinPath = "C:\Program Files\PostgreSQL\18\bin",
+
+    [Parameter(Mandatory = $false)]
+    [string]$SslRootCert = "",
 
     [Parameter(Mandatory = $false)]
     [switch]$TestRestoreInLocalSandbox = $false,
@@ -45,6 +52,7 @@ $pgDumpExe = Join-Path $PgBinPath "pg_dump.exe"
 $pgRestoreExe = Join-Path $PgBinPath "pg_restore.exe"
 $createdbExe = Join-Path $PgBinPath "createdb.exe"
 $dropdbExe = Join-Path $PgBinPath "dropdb.exe"
+$psqlExe = Join-Path $PgBinPath "psql.exe"
 
 if (-not (Test-Path $pgDumpExe)) {
     throw "No se encontro pg_dump.exe en: $pgDumpExe. Verifique la ruta del motor PostgreSQL."
@@ -59,7 +67,43 @@ if (-not (Test-Path $BackupDirectory)) {
     Write-Host "[INFO] Directorio de respaldo creado: $BackupDirectory" -ForegroundColor Gray
 }
 
-# 3. Solicitar parametros de conexion al operador (sin exponer contrasenas)
+# 3. Validacion y Resolucion de Certificado CA para TLS (sslmode=verify-full obligatorio)
+# Comprueba rutas estandar si no se envio por parametro
+if ([string]::IsNullOrWhiteSpace($SslRootCert)) {
+    $candidatePaths = @(
+        (Join-Path $BackupDirectory "prod-ca-2021.crt"),
+        (Join-Path $BackupDirectory "root.crt"),
+        (Join-Path $env:APPDATA "postgresql\root.crt"),
+        (Join-Path $PSScriptRoot "..\certs\prod-ca-2021.crt")
+    )
+    foreach ($cand in $candidatePaths) {
+        if (Test-Path $cand) {
+            $SslRootCert = (Resolve-Path $cand).Path
+            Write-Host "[INFO] Certificado CA detectado automaticamente: $SslRootCert" -ForegroundColor Gray
+            break
+        }
+    }
+}
+
+# Si sigue vacio, solicitar interactivamente la ruta del certificado CA
+if ([string]::IsNullOrWhiteSpace($SslRootCert)) {
+    Write-Host ""
+    Write-Host "[SEGURIDAD TLS] 'sslmode=verify-full' es obligatorio. Se requiere el certificado CA raiz de Supabase." -ForegroundColor Yellow
+    Write-Host "                 (Ejemplo: C:\AgroPasco_Backups\prod-ca-2021.crt o %APPDATA%\postgresql\root.crt)" -ForegroundColor Gray
+    $promptCert = Read-Host "Ruta al archivo de certificado CA de Supabase (.crt / .pem)"
+    if (-not [string]::IsNullOrWhiteSpace($promptCert)) {
+        $SslRootCert = $promptCert.Trim().Trim('"')
+    }
+}
+
+# Verificacion estricta: No se permite continuar ni degradar si el certificado no existe
+if ([string]::IsNullOrWhiteSpace($SslRootCert) -or (-not (Test-Path $SslRootCert))) {
+    throw "ABORTO DE SEGURIDAD TLS: No se especifico o no existe el certificado CA en '$SslRootCert'. Con 'sslmode=verify-full' es obligatorio contar con el certificado CA valido de Supabase. La verificacion TLS NO se desactivara."
+}
+
+$resolvedSslRootCert = (Resolve-Path $SslRootCert).Path
+
+# 4. Solicitar parametros de conexion al operador (sin exponer contrasenas)
 Write-Host ""
 Write-Host "[CONFIGURACION] Parametros de Conexion a PostgreSQL de Produccion:" -ForegroundColor Yellow
 Write-Host "  Nota: Para Supabase, utilice Direct Connection o Session Pooler." -ForegroundColor Gray
@@ -96,46 +140,73 @@ if ([string]::IsNullOrWhiteSpace($remoteDb)) {
     $remoteDb = "postgres" 
 }
 
-# Captura enmascarada de la contrasena
+# Captura enmascarada de la contrasena (no visible en consola)
 $secPassword = Read-Host -Prompt "Contrasena de PostgreSQL" -AsSecureString
 $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPassword)
 $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($ptr)
 
-# 4. Nombres y rutas de archivos
+# 5. Generacion de nombres y proteccion estricta contra sobrescritura
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $dumpFileName = "agropasco_prod_backup_$timestamp.dump"
 $dumpFilePath = Join-Path $BackupDirectory $dumpFileName
 $manifestFilePath = Join-Path $BackupDirectory "agropasco_prod_backup_${timestamp}_manifest.json"
 
+if (Test-Path $dumpFilePath) {
+    throw "ABORTO DE SEGURIDAD: El archivo de respaldo '$dumpFilePath' ya existe. Para proteger respaldos anteriores, no se sobrescribira."
+}
+if (Test-Path $manifestFilePath) {
+    throw "ABORTO DE SEGURIDAD: El manifiesto '$manifestFilePath' ya existe. No se sobrescribira."
+}
+
 $backupSuccessful = $false
 $exitCode = -1
 
-# 5. Ejecucion protegida con try / finally para garantizar limpieza de credenciales
+# 6. Ejecucion protegida con try / finally para limpieza preventiva de credenciales
+# (Sujeto a ejecucion controlada del proceso de PowerShell; ver descripcion)
 try {
     Write-Host ""
     Write-Host "[INICIO] Iniciando volcado transaccional de solo lectura..." -ForegroundColor Cyan
     Write-Host "         Destino: $dumpFilePath" -ForegroundColor Gray
 
-    # Inyeccion de variables de entorno efimeras en la sesion de proceso
-    $env:PGHOST     = $remoteHost.Trim()
-    $env:PGPORT     = $remotePort.Trim()
-    $env:PGDATABASE = $remoteDb.Trim()
-    $env:PGUSER     = $remoteUser.Trim()
-    $env:PGPASSWORD = $plainPassword
-    $env:PGSSLMODE  = "require"
+    # Configuracion de variables de entorno efimeras en la sesion del proceso
+    $env:PGHOST         = $remoteHost.Trim()
+    $env:PGPORT         = $remotePort.Trim()
+    $env:PGDATABASE     = $remoteDb.Trim()
+    $env:PGUSER         = $remoteUser.Trim()
+    $env:PGPASSWORD     = $plainPassword
+    $env:PGSSLMODE      = "verify-full"
+    $env:PGSSLROOTCERT  = $resolvedSslRootCert
 
-    # Invocar pg_dump en modo -Fc (Custom Format comprimido, no destructivo, sin --clean)
+    Write-Host "         Modo TLS: verify-full (Verificacion estricta de CA y hostname)" -ForegroundColor Green
+    Write-Host "         Certificado CA: $env:PGSSLROOTCERT" -ForegroundColor Gray
+
+    # Invocar pg_dump en modo -Fc (Custom Format comprimido, no destructivo, sin credenciales en argumentos)
     $startTime = Get-Date
     & $pgDumpExe -Fc --no-owner --no-privileges -f $dumpFilePath
     $exitCode = $LASTEXITCODE
     $duration = (Get-Date) - $startTime
 
-    # 6. Comprobacion estricta del codigo de salida de pg_dump
+    # Limpieza inmediata de la contrasena tras la finalizacion de pg_dump
+    $env:PGPASSWORD = $null
+    $plainPassword = $null
+    if ($null -ne $ptr -and [IntPtr]::Zero -ne $ptr) {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+        $ptr = [IntPtr]::Zero
+    }
+    Remove-Item env:PGPASSWORD -ErrorAction SilentlyContinue
+
+    # 7. Comprobacion estricta del codigo de salida de pg_dump
     if ($exitCode -ne 0) {
         if (Test-Path $dumpFilePath) {
-            $failedPath = "$dumpFilePath.failed"
+            $failedBase = "$dumpFilePath.failed"
+            $failedPath = $failedBase
+            $failIdx = 1
+            while (Test-Path $failedPath) {
+                $failedPath = "${failedBase}_${failIdx}"
+                $failIdx++
+            }
             Rename-Item -Path $dumpFilePath -NewName (Split-Path $failedPath -Leaf) -Force
-            Write-Host "[AVISO] Archivo incompleto renombrado a: $failedPath" -ForegroundColor DarkYellow
+            Write-Host "[AVISO] Archivo incompleto preservado como: $failedPath" -ForegroundColor DarkYellow
         }
         throw "pg_dump finalizo con codigo de error $exitCode. Operacion abortada sin exito."
     }
@@ -147,7 +218,7 @@ try {
     $elapsedSec = [math]::Round($duration.TotalSeconds, 1)
     Write-Host "[OK] Volcado de pg_dump completado exitosamente en $elapsedSec segundos." -ForegroundColor Green
 
-    # 7. Verificacion de Integridad de la Tabla de Contenidos (TOC)
+    # 8. Verificacion de Integridad de la Tabla de Contenidos (TOC)
     Write-Host ""
     Write-Host "[VERIFICACION] Validando integridad estructural del archivo con pg_restore --list..." -ForegroundColor Cyan
     $tocLines = & $pgRestoreExe --list $dumpFilePath
@@ -160,7 +231,7 @@ try {
     $tableEntries = ($tocLines | Where-Object { $_ -match "\sTABLE DATA\s" }).Count
     Write-Host "[OK] Integridad estructural validada: $($tocLines.Count) objetos y $tableEntries tablas con datos." -ForegroundColor Green
 
-    # 8. Calculo de Hash Criptografico SHA-256 y Registro de Metadatos
+    # 9. Calculo de Hash Criptografico SHA-256 y Registro de Metadatos
     Write-Host ""
     Write-Host "[HASH] Calculando hash SHA-256..." -ForegroundColor Cyan
     $hashResult = Get-FileHash -Path $dumpFilePath -Algorithm SHA256
@@ -169,6 +240,7 @@ try {
     $fileSizeKb = [math]::Round(($fileSizeBytes / 1KB), 2)
     $fileSizeMb = [math]::Round(($fileSizeBytes / 1MB), 2)
 
+    # Manifiesto sin datos sensibles ni contrasenas
     $manifest = @{
         project = "AgroPasco Digital"
         environment = "Production"
@@ -176,6 +248,8 @@ try {
         remote_host = $remoteHost.Trim()
         remote_port = [int]$remotePort.Trim()
         remote_database = $remoteDb.Trim()
+        ssl_mode = "verify-full"
+        ssl_root_cert_file = (Split-Path $resolvedSslRootCert -Leaf)
         backup_file = $dumpFileName
         backup_path = $dumpFilePath
         created_at_utc = (Get-Date).ToUniversalTime().ToString("o")
@@ -209,7 +283,7 @@ try {
 
     $backupSuccessful = $true
 
-    # 9. Prueba de Restauracion Aislada en Base Local (Sandbox)
+    # 10. Prueba Opcional de Restauracion Aislada en Base Local (Sandbox)
     if ($TestRestoreInLocalSandbox) {
         Write-Host ""
         Write-Host "[SANDBOX] Iniciando restauracion de prueba en base local aislada..." -ForegroundColor Yellow
@@ -224,13 +298,13 @@ try {
 
         Write-Host "  Destino local seguro: ${targetHost}:${LocalSandboxPort} (BD: $LocalSandboxDb)" -ForegroundColor Gray
 
-        $psqlExe = Join-Path $PgBinPath "psql.exe"
         $sandboxStatus = "FAILED"
 
         try {
             # CONDICION OBLIGATORIA: Verificar si la base ya existe antes de crearla
             Write-Host "  Verificando que '$LocalSandboxDb' no exista previamente..." -ForegroundColor Gray
             $dbExists = & $psqlExe -h $targetHost -p $LocalSandboxPort -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$LocalSandboxDb'" 2>$null
+            $dbCheckExitCode = $LASTEXITCODE
 
             if ($null -ne $dbExists -and $dbExists.Trim() -eq "1") {
                 throw "ABORTO DE SEGURIDAD: La base de datos '$LocalSandboxDb' ya existe en PostgreSQL local. Por directiva de proteccion, NO se sobrescribira ni eliminara. Proceso detenido."
@@ -238,6 +312,10 @@ try {
 
             # Crear base sandbox
             & $createdbExe -h $targetHost -p $LocalSandboxPort -U postgres $LocalSandboxDb
+            $createdbExitCode = $LASTEXITCODE
+            if ($createdbExitCode -ne 0) {
+                throw "createdb finalizo con codigo de error $createdbExitCode al inicializar la base sandbox."
+            }
             Write-Host "  Base temporal '$LocalSandboxDb' creada localmente sin conflictos." -ForegroundColor Gray
 
             # Ejecutar restauracion
@@ -261,7 +339,12 @@ try {
             # Limpiar base sandbox de prueba
             Write-Host "  Destruyendo base de pruebas local temporal..." -ForegroundColor Gray
             & $dropdbExe -h $targetHost -p $LocalSandboxPort -U postgres $LocalSandboxDb 2>$null
-            Write-Host "  [OK] Base temporal destruida. Sandbox limpio." -ForegroundColor Green
+            $dropExitCode = $LASTEXITCODE
+            if ($dropExitCode -ne 0) {
+                Write-Warning "dropdb retorno codigo $dropExitCode al intentar eliminar la base sandbox '$LocalSandboxDb'."
+            } else {
+                Write-Host "  [OK] Base temporal destruida. Sandbox limpio." -ForegroundColor Green
+            }
         } catch {
             Write-Warning "La restauracion de prueba en sandbox local no pudo completarse: $($_.Exception.Message)"
             Write-Warning "El respaldo en $dumpFilePath mantiene su estado verificado por TOC y hash SHA-256."
@@ -285,7 +368,12 @@ try {
     $backupSuccessful = $false
 } finally {
     # ==============================================================================
-    # LIMPIEZA GARANTIZADA DE CREDENCIALES EN MEMORIA (TRY / FINALLY)
+    # LIMPIEZA DE CREDENCIALES EN MEMORIA (TRY / FINALLY - MEJOR ESFUERZO)
+    # Nota de seguridad: Este bloque se ejecuta en el flujo normal o excepciones
+    # capturadas por PowerShell. Si el proceso es destruido o termina de forma abrupta
+    # a nivel de SO (SIGKILL / fallo de hardware / crash), la limpieza de memoria del
+    # proceso depende exclusivamente del sistema operativo y no puede garantizarse
+    # por el script.
     # ==============================================================================
     $env:PGPASSWORD = $null
     $plainPassword = $null
@@ -299,9 +387,10 @@ try {
     Remove-Item env:PGDATABASE -ErrorAction SilentlyContinue
     Remove-Item env:PGUSER -ErrorAction SilentlyContinue
     Remove-Item env:PGSSLMODE -ErrorAction SilentlyContinue
+    Remove-Item env:PGSSLROOTCERT -ErrorAction SilentlyContinue
 
     Write-Host ""
-    Write-Host "[SEGURIDAD] Variables de entorno y credenciales en memoria eliminadas." -ForegroundColor Gray
+    Write-Host "[SEGURIDAD] Variables de entorno y credenciales en memoria limpiadas (sesion controlada)." -ForegroundColor Gray
 }
 
 if (-not $backupSuccessful) {

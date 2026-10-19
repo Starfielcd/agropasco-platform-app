@@ -1,0 +1,1952 @@
+{
+  "generated_at": "2026-10-18T00:48:36.619519",
+  "phase": "FASE 2 — 5 ML Algorithms Benchmark",
+  "phenomena": {
+    "frost": {
+      "selected_model": "logistic_regression",
+      "selected_algorithm": "LogisticRegression",
+      "selection_reason": "Mayor score de selección multiobjetivo (0.9652): Val F1=0.9231, Val PR-AUC=0.9927, ECE=0.0294, Brier=0.0139, con brecha de sobreajuste de 0.0258 y costo computacional/latencia de 0.44 µs/muestra.",
+      "models": {
+        "logistic_regression": {
+          "algorithm": "LogisticRegression",
+          "fit_time_ms": 47.54,
+          "selection_score": 0.9652,
+          "latency_efficiency": 0.9956,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 792,
+            "n_negative": 2862,
+            "class_balance": 0.2167,
+            "inference_time_ms": 0.465,
+            "latency_per_sample_us": 0.13,
+            "precision": 0.9059,
+            "recall": 0.9962,
+            "f1": 0.9489,
+            "confusion_matrix": [
+              [
+                2780,
+                82
+              ],
+              [
+                3,
+                789
+              ]
+            ],
+            "true_negatives": 2780,
+            "false_positives": 82,
+            "false_negatives": 3,
+            "true_positives": 789,
+            "pr_auc": 0.9978,
+            "roc_auc": 0.9994,
+            "brier_score": 0.0177,
+            "expected_calibration_error": 0.0378,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 42,
+            "n_negative": 320,
+            "class_balance": 0.116,
+            "inference_time_ms": 0.32,
+            "latency_per_sample_us": 0.88,
+            "precision": 0.8571,
+            "recall": 1.0,
+            "f1": 0.9231,
+            "confusion_matrix": [
+              [
+                313,
+                7
+              ],
+              [
+                0,
+                42
+              ]
+            ],
+            "true_negatives": 313,
+            "false_positives": 7,
+            "false_negatives": 0,
+            "true_positives": 42,
+            "pr_auc": 0.9927,
+            "roc_auc": 0.999,
+            "brier_score": 0.0139,
+            "expected_calibration_error": 0.0294,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 168,
+            "n_negative": 738,
+            "class_balance": 0.1854,
+            "inference_time_ms": 0.398,
+            "latency_per_sample_us": 0.44,
+            "precision": 0.8227,
+            "recall": 0.994,
+            "f1": 0.9003,
+            "confusion_matrix": [
+              [
+                702,
+                36
+              ],
+              [
+                1,
+                167
+              ]
+            ],
+            "true_negatives": 702,
+            "false_positives": 36,
+            "false_negatives": 1,
+            "true_positives": 167,
+            "pr_auc": 0.9938,
+            "roc_auc": 0.9985,
+            "brier_score": 0.0252,
+            "expected_calibration_error": 0.0447,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "random_forest": {
+          "algorithm": "RandomForestClassifier",
+          "fit_time_ms": 934.42,
+          "selection_score": 0.8513,
+          "latency_efficiency": 0.4806,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 792,
+            "n_negative": 2862,
+            "class_balance": 0.2167,
+            "inference_time_ms": 69.252,
+            "latency_per_sample_us": 18.95,
+            "precision": 0.9215,
+            "recall": 0.9924,
+            "f1": 0.9556,
+            "confusion_matrix": [
+              [
+                2795,
+                67
+              ],
+              [
+                6,
+                786
+              ]
+            ],
+            "true_negatives": 2795,
+            "false_positives": 67,
+            "false_negatives": 6,
+            "true_positives": 786,
+            "pr_auc": 0.9964,
+            "roc_auc": 0.999,
+            "brier_score": 0.0219,
+            "expected_calibration_error": 0.0582,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 42,
+            "n_negative": 320,
+            "class_balance": 0.116,
+            "inference_time_ms": 42.803,
+            "latency_per_sample_us": 118.24,
+            "precision": 0.8636,
+            "recall": 0.9048,
+            "f1": 0.8837,
+            "confusion_matrix": [
+              [
+                314,
+                6
+              ],
+              [
+                4,
+                38
+              ]
+            ],
+            "true_negatives": 314,
+            "false_positives": 6,
+            "false_negatives": 4,
+            "true_positives": 38,
+            "pr_auc": 0.9437,
+            "roc_auc": 0.9916,
+            "brier_score": 0.0263,
+            "expected_calibration_error": 0.0423,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 168,
+            "n_negative": 738,
+            "class_balance": 0.1854,
+            "inference_time_ms": 47.057,
+            "latency_per_sample_us": 51.94,
+            "precision": 0.7574,
+            "recall": 0.9107,
+            "f1": 0.827,
+            "confusion_matrix": [
+              [
+                689,
+                49
+              ],
+              [
+                15,
+                153
+              ]
+            ],
+            "true_negatives": 689,
+            "false_positives": 49,
+            "false_negatives": 15,
+            "true_positives": 153,
+            "pr_auc": 0.9278,
+            "roc_auc": 0.9789,
+            "brier_score": 0.0556,
+            "expected_calibration_error": 0.0713,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "gradient_boosting": {
+          "algorithm": "GradientBoostingClassifier",
+          "fit_time_ms": 6971.15,
+          "selection_score": 0.9518,
+          "latency_efficiency": 0.8987,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 792,
+            "n_negative": 2862,
+            "class_balance": 0.2167,
+            "inference_time_ms": 18.684,
+            "latency_per_sample_us": 5.11,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "confusion_matrix": [
+              [
+                2862,
+                0
+              ],
+              [
+                0,
+                792
+              ]
+            ],
+            "true_negatives": 2862,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "true_positives": 792,
+            "pr_auc": 1.0,
+            "roc_auc": 1.0,
+            "brier_score": 0.0006,
+            "expected_calibration_error": 0.0085,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 42,
+            "n_negative": 320,
+            "class_balance": 0.116,
+            "inference_time_ms": 5.094,
+            "latency_per_sample_us": 14.07,
+            "precision": 0.9512,
+            "recall": 0.9286,
+            "f1": 0.9398,
+            "confusion_matrix": [
+              [
+                318,
+                2
+              ],
+              [
+                3,
+                39
+              ]
+            ],
+            "true_negatives": 318,
+            "false_positives": 2,
+            "false_negatives": 3,
+            "true_positives": 39,
+            "pr_auc": 0.9888,
+            "roc_auc": 0.9983,
+            "brier_score": 0.0102,
+            "expected_calibration_error": 0.01,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 168,
+            "n_negative": 738,
+            "class_balance": 0.1854,
+            "inference_time_ms": 9.18,
+            "latency_per_sample_us": 10.13,
+            "precision": 0.8674,
+            "recall": 0.9345,
+            "f1": 0.8997,
+            "confusion_matrix": [
+              [
+                714,
+                24
+              ],
+              [
+                11,
+                157
+              ]
+            ],
+            "true_negatives": 714,
+            "false_positives": 24,
+            "false_negatives": 11,
+            "true_positives": 157,
+            "pr_auc": 0.9749,
+            "roc_auc": 0.993,
+            "brier_score": 0.0278,
+            "expected_calibration_error": 0.0178,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "extra_trees": {
+          "algorithm": "ExtraTreesClassifier",
+          "fit_time_ms": 1454.91,
+          "selection_score": 0.8207,
+          "latency_efficiency": 0.5277,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 792,
+            "n_negative": 2862,
+            "class_balance": 0.2167,
+            "inference_time_ms": 106.212,
+            "latency_per_sample_us": 29.07,
+            "precision": 0.7287,
+            "recall": 0.9836,
+            "f1": 0.8372,
+            "confusion_matrix": [
+              [
+                2572,
+                290
+              ],
+              [
+                13,
+                779
+              ]
+            ],
+            "true_negatives": 2572,
+            "false_positives": 290,
+            "false_negatives": 13,
+            "true_positives": 779,
+            "pr_auc": 0.9713,
+            "roc_auc": 0.9913,
+            "brier_score": 0.0582,
+            "expected_calibration_error": 0.1031,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 42,
+            "n_negative": 320,
+            "class_balance": 0.116,
+            "inference_time_ms": 22.753,
+            "latency_per_sample_us": 62.85,
+            "precision": 0.7222,
+            "recall": 0.9286,
+            "f1": 0.8125,
+            "confusion_matrix": [
+              [
+                305,
+                15
+              ],
+              [
+                3,
+                39
+              ]
+            ],
+            "true_negatives": 305,
+            "false_positives": 15,
+            "false_negatives": 3,
+            "true_positives": 39,
+            "pr_auc": 0.8944,
+            "roc_auc": 0.9813,
+            "brier_score": 0.0521,
+            "expected_calibration_error": 0.0901,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 168,
+            "n_negative": 738,
+            "class_balance": 0.1854,
+            "inference_time_ms": 42.794,
+            "latency_per_sample_us": 47.23,
+            "precision": 0.5408,
+            "recall": 0.9464,
+            "f1": 0.6883,
+            "confusion_matrix": [
+              [
+                603,
+                135
+              ],
+              [
+                9,
+                159
+              ]
+            ],
+            "true_negatives": 603,
+            "false_positives": 135,
+            "false_negatives": 9,
+            "true_positives": 159,
+            "pr_auc": 0.9017,
+            "roc_auc": 0.9659,
+            "brier_score": 0.1004,
+            "expected_calibration_error": 0.1482,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          }
+        },
+        "hist_gradient_boosting": {
+          "algorithm": "HistGradientBoostingClassifier",
+          "fit_time_ms": 2447.4,
+          "selection_score": 0.9477,
+          "latency_efficiency": 0.8622,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 792,
+            "n_negative": 2862,
+            "class_balance": 0.2167,
+            "inference_time_ms": 70.063,
+            "latency_per_sample_us": 19.17,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "confusion_matrix": [
+              [
+                2862,
+                0
+              ],
+              [
+                0,
+                792
+              ]
+            ],
+            "true_negatives": 2862,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "true_positives": 792,
+            "pr_auc": 1.0,
+            "roc_auc": 1.0,
+            "brier_score": 0.0007,
+            "expected_calibration_error": 0.0075,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 42,
+            "n_negative": 320,
+            "class_balance": 0.116,
+            "inference_time_ms": 11.289,
+            "latency_per_sample_us": 31.19,
+            "precision": 0.9302,
+            "recall": 0.9524,
+            "f1": 0.9412,
+            "confusion_matrix": [
+              [
+                317,
+                3
+              ],
+              [
+                2,
+                40
+              ]
+            ],
+            "true_negatives": 317,
+            "false_positives": 3,
+            "false_negatives": 2,
+            "true_positives": 40,
+            "pr_auc": 0.9926,
+            "roc_auc": 0.999,
+            "brier_score": 0.0105,
+            "expected_calibration_error": 0.0133,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 168,
+            "n_negative": 738,
+            "class_balance": 0.1854,
+            "inference_time_ms": 12.485,
+            "latency_per_sample_us": 13.78,
+            "precision": 0.8833,
+            "recall": 0.9464,
+            "f1": 0.9138,
+            "confusion_matrix": [
+              [
+                717,
+                21
+              ],
+              [
+                9,
+                159
+              ]
+            ],
+            "true_negatives": 717,
+            "false_positives": 21,
+            "false_negatives": 9,
+            "true_positives": 159,
+            "pr_auc": 0.9789,
+            "roc_auc": 0.9949,
+            "brier_score": 0.0244,
+            "expected_calibration_error": 0.019,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        }
+      },
+      "best_test_metrics": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 168,
+        "n_negative": 738,
+        "class_balance": 0.1854,
+        "inference_time_ms": 0.398,
+        "latency_per_sample_us": 0.44,
+        "precision": 0.8227,
+        "recall": 0.994,
+        "f1": 0.9003,
+        "confusion_matrix": [
+          [
+            702,
+            36
+          ],
+          [
+            1,
+            167
+          ]
+        ],
+        "true_negatives": 702,
+        "false_positives": 36,
+        "false_negatives": 1,
+        "true_positives": 167,
+        "pr_auc": 0.9938,
+        "roc_auc": 0.9985,
+        "brier_score": 0.0252,
+        "expected_calibration_error": 0.0447,
+        "is_calibrated": true,
+        "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+      },
+      "baselines": {
+        "dummy_most_frequent": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "inference_time_ms": 0.15,
+          "latency_per_sample_us": 0.17,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "confusion_matrix": [
+            [
+              738,
+              0
+            ],
+            [
+              168,
+              0
+            ]
+          ],
+          "true_negatives": 738,
+          "false_positives": 0,
+          "false_negatives": 168,
+          "true_positives": 0,
+          "pr_auc": 0.1854,
+          "roc_auc": 0.5,
+          "brier_score": 0.1854,
+          "expected_calibration_error": 0.1854,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "dummy_stratified": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "inference_time_ms": 0.702,
+          "latency_per_sample_us": 0.77,
+          "precision": 0.1709,
+          "recall": 0.2024,
+          "f1": 0.1853,
+          "confusion_matrix": [
+            [
+              573,
+              165
+            ],
+            [
+              134,
+              34
+            ]
+          ],
+          "true_negatives": 573,
+          "false_positives": 165,
+          "false_negatives": 134,
+          "true_positives": 34,
+          "pr_auc": 0.1825,
+          "roc_auc": 0.4894,
+          "brier_score": 0.33,
+          "expected_calibration_error": 0.33,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "simple_domain_rule": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 168,
+          "n_negative": 738,
+          "class_balance": 0.1854,
+          "inference_time_ms": 0.336,
+          "latency_per_sample_us": 0.37,
+          "precision": 0.7209,
+          "recall": 0.1845,
+          "f1": 0.2938,
+          "confusion_matrix": [
+            [
+              726,
+              12
+            ],
+            [
+              137,
+              31
+            ]
+          ],
+          "true_negatives": 726,
+          "false_positives": 12,
+          "false_negatives": 137,
+          "true_positives": 31,
+          "pr_auc": 0.2842,
+          "roc_auc": 0.5841,
+          "brier_score": 0.1645,
+          "expected_calibration_error": 0.1645,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        }
+      }
+    },
+    "heavy_rain": {
+      "selected_model": "random_forest",
+      "selected_algorithm": "RandomForestClassifier",
+      "selection_reason": "Mayor score de selección multiobjetivo (0.7989): Val F1=0.6977, Val PR-AUC=0.7654, ECE=0.0662, Brier=0.0528, con brecha de sobreajuste de 0.0615 y costo computacional/latencia de 10.84 µs/muestra.",
+      "models": {
+        "logistic_regression": {
+          "algorithm": "LogisticRegression",
+          "fit_time_ms": 55.41,
+          "selection_score": 0.7756,
+          "latency_efficiency": 0.9966,
+          "train": {
+            "split": "train",
+            "n_samples": 5481,
+            "n_positive": 313,
+            "n_negative": 5168,
+            "class_balance": 0.0571,
+            "inference_time_ms": 0.811,
+            "latency_per_sample_us": 0.15,
+            "precision": 0.3138,
+            "recall": 0.9393,
+            "f1": 0.4704,
+            "confusion_matrix": [
+              [
+                4525,
+                643
+              ],
+              [
+                19,
+                294
+              ]
+            ],
+            "true_negatives": 4525,
+            "false_positives": 643,
+            "false_negatives": 19,
+            "true_positives": 294,
+            "pr_auc": 0.6735,
+            "roc_auc": 0.9648,
+            "brier_score": 0.0834,
+            "expected_calibration_error": 0.1289,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 543,
+            "n_positive": 50,
+            "n_negative": 493,
+            "class_balance": 0.0921,
+            "inference_time_ms": 0.337,
+            "latency_per_sample_us": 0.62,
+            "precision": 0.363,
+            "recall": 0.98,
+            "f1": 0.5297,
+            "confusion_matrix": [
+              [
+                407,
+                86
+              ],
+              [
+                1,
+                49
+              ]
+            ],
+            "true_negatives": 407,
+            "false_positives": 86,
+            "false_negatives": 1,
+            "true_positives": 49,
+            "pr_auc": 0.8407,
+            "roc_auc": 0.9721,
+            "brier_score": 0.1148,
+            "expected_calibration_error": 0.1775,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 1359,
+            "n_positive": 73,
+            "n_negative": 1286,
+            "class_balance": 0.0537,
+            "inference_time_ms": 0.467,
+            "latency_per_sample_us": 0.34,
+            "precision": 0.2823,
+            "recall": 0.9589,
+            "f1": 0.4361,
+            "confusion_matrix": [
+              [
+                1108,
+                178
+              ],
+              [
+                3,
+                70
+              ]
+            ],
+            "true_negatives": 1108,
+            "false_positives": 178,
+            "false_negatives": 3,
+            "true_positives": 70,
+            "pr_auc": 0.6383,
+            "roc_auc": 0.9676,
+            "brier_score": 0.0919,
+            "expected_calibration_error": 0.1379,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          }
+        },
+        "random_forest": {
+          "algorithm": "RandomForestClassifier",
+          "fit_time_ms": 1617.65,
+          "selection_score": 0.7989,
+          "latency_efficiency": 0.8916,
+          "train": {
+            "split": "train",
+            "n_samples": 5481,
+            "n_positive": 313,
+            "n_negative": 5168,
+            "class_balance": 0.0571,
+            "inference_time_ms": 33.804,
+            "latency_per_sample_us": 6.17,
+            "precision": 0.6168,
+            "recall": 0.9872,
+            "f1": 0.7592,
+            "confusion_matrix": [
+              [
+                4976,
+                192
+              ],
+              [
+                4,
+                309
+              ]
+            ],
+            "true_negatives": 4976,
+            "false_positives": 192,
+            "false_negatives": 4,
+            "true_positives": 309,
+            "pr_auc": 0.9011,
+            "roc_auc": 0.9937,
+            "brier_score": 0.0258,
+            "expected_calibration_error": 0.0448,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 543,
+            "n_positive": 50,
+            "n_negative": 493,
+            "class_balance": 0.0921,
+            "inference_time_ms": 11.791,
+            "latency_per_sample_us": 21.71,
+            "precision": 0.5696,
+            "recall": 0.9,
+            "f1": 0.6977,
+            "confusion_matrix": [
+              [
+                459,
+                34
+              ],
+              [
+                5,
+                45
+              ]
+            ],
+            "true_negatives": 459,
+            "false_positives": 34,
+            "false_negatives": 5,
+            "true_positives": 45,
+            "pr_auc": 0.7654,
+            "roc_auc": 0.9584,
+            "brier_score": 0.0528,
+            "expected_calibration_error": 0.0662,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 1359,
+            "n_positive": 73,
+            "n_negative": 1286,
+            "class_balance": 0.0537,
+            "inference_time_ms": 14.727,
+            "latency_per_sample_us": 10.84,
+            "precision": 0.4646,
+            "recall": 0.8082,
+            "f1": 0.59,
+            "confusion_matrix": [
+              [
+                1218,
+                68
+              ],
+              [
+                14,
+                59
+              ]
+            ],
+            "true_negatives": 1218,
+            "false_positives": 68,
+            "false_negatives": 14,
+            "true_positives": 59,
+            "pr_auc": 0.6288,
+            "roc_auc": 0.9689,
+            "brier_score": 0.0411,
+            "expected_calibration_error": 0.0534,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "gradient_boosting": {
+          "algorithm": "GradientBoostingClassifier",
+          "fit_time_ms": 3479.32,
+          "selection_score": 0.7441,
+          "latency_efficiency": 0.9672,
+          "train": {
+            "split": "train",
+            "n_samples": 5481,
+            "n_positive": 313,
+            "n_negative": 5168,
+            "class_balance": 0.0571,
+            "inference_time_ms": 9.302,
+            "latency_per_sample_us": 1.7,
+            "precision": 1.0,
+            "recall": 0.9489,
+            "f1": 0.9738,
+            "confusion_matrix": [
+              [
+                5168,
+                0
+              ],
+              [
+                16,
+                297
+              ]
+            ],
+            "true_negatives": 5168,
+            "false_positives": 0,
+            "false_negatives": 16,
+            "true_positives": 297,
+            "pr_auc": 0.9958,
+            "roc_auc": 0.9995,
+            "brier_score": 0.004,
+            "expected_calibration_error": 0.0163,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 543,
+            "n_positive": 50,
+            "n_negative": 493,
+            "class_balance": 0.0921,
+            "inference_time_ms": 2.712,
+            "latency_per_sample_us": 4.99,
+            "precision": 0.6923,
+            "recall": 0.54,
+            "f1": 0.6067,
+            "confusion_matrix": [
+              [
+                481,
+                12
+              ],
+              [
+                23,
+                27
+              ]
+            ],
+            "true_negatives": 481,
+            "false_positives": 12,
+            "false_negatives": 23,
+            "true_positives": 27,
+            "pr_auc": 0.7698,
+            "roc_auc": 0.969,
+            "brier_score": 0.0408,
+            "expected_calibration_error": 0.0275,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 1359,
+            "n_positive": 73,
+            "n_negative": 1286,
+            "class_balance": 0.0537,
+            "inference_time_ms": 4.457,
+            "latency_per_sample_us": 3.28,
+            "precision": 0.55,
+            "recall": 0.4521,
+            "f1": 0.4962,
+            "confusion_matrix": [
+              [
+                1259,
+                27
+              ],
+              [
+                40,
+                33
+              ]
+            ],
+            "true_negatives": 1259,
+            "false_positives": 27,
+            "false_negatives": 40,
+            "true_positives": 33,
+            "pr_auc": 0.6043,
+            "roc_auc": 0.9611,
+            "brier_score": 0.0338,
+            "expected_calibration_error": 0.0196,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "extra_trees": {
+          "algorithm": "ExtraTreesClassifier",
+          "fit_time_ms": 389.92,
+          "selection_score": 0.7699,
+          "latency_efficiency": 0.8923,
+          "train": {
+            "split": "train",
+            "n_samples": 5481,
+            "n_positive": 313,
+            "n_negative": 5168,
+            "class_balance": 0.0571,
+            "inference_time_ms": 35.147,
+            "latency_per_sample_us": 6.41,
+            "precision": 0.3695,
+            "recall": 0.9904,
+            "f1": 0.5382,
+            "confusion_matrix": [
+              [
+                4639,
+                529
+              ],
+              [
+                3,
+                310
+              ]
+            ],
+            "true_negatives": 4639,
+            "false_positives": 529,
+            "false_negatives": 3,
+            "true_positives": 310,
+            "pr_auc": 0.8195,
+            "roc_auc": 0.9857,
+            "brier_score": 0.063,
+            "expected_calibration_error": 0.1143,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 543,
+            "n_positive": 50,
+            "n_negative": 493,
+            "class_balance": 0.0921,
+            "inference_time_ms": 11.74,
+            "latency_per_sample_us": 21.62,
+            "precision": 0.4118,
+            "recall": 0.98,
+            "f1": 0.5799,
+            "confusion_matrix": [
+              [
+                423,
+                70
+              ],
+              [
+                1,
+                49
+              ]
+            ],
+            "true_negatives": 423,
+            "false_positives": 70,
+            "false_negatives": 1,
+            "true_positives": 49,
+            "pr_auc": 0.798,
+            "roc_auc": 0.9613,
+            "brier_score": 0.086,
+            "expected_calibration_error": 0.1445,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 1359,
+            "n_positive": 73,
+            "n_negative": 1286,
+            "class_balance": 0.0537,
+            "inference_time_ms": 14.633,
+            "latency_per_sample_us": 10.77,
+            "precision": 0.3255,
+            "recall": 0.9452,
+            "f1": 0.4842,
+            "confusion_matrix": [
+              [
+                1143,
+                143
+              ],
+              [
+                4,
+                69
+              ]
+            ],
+            "true_negatives": 1143,
+            "false_positives": 143,
+            "false_negatives": 4,
+            "true_positives": 69,
+            "pr_auc": 0.6368,
+            "roc_auc": 0.9653,
+            "brier_score": 0.0732,
+            "expected_calibration_error": 0.121,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          }
+        },
+        "hist_gradient_boosting": {
+          "algorithm": "HistGradientBoostingClassifier",
+          "fit_time_ms": 1098.37,
+          "selection_score": 0.7666,
+          "latency_efficiency": 0.9269,
+          "train": {
+            "split": "train",
+            "n_samples": 5481,
+            "n_positive": 313,
+            "n_negative": 5168,
+            "class_balance": 0.0571,
+            "inference_time_ms": 24.562,
+            "latency_per_sample_us": 4.48,
+            "precision": 0.8109,
+            "recall": 1.0,
+            "f1": 0.8956,
+            "confusion_matrix": [
+              [
+                5095,
+                73
+              ],
+              [
+                0,
+                313
+              ]
+            ],
+            "true_negatives": 5095,
+            "false_positives": 73,
+            "false_negatives": 0,
+            "true_positives": 313,
+            "pr_auc": 0.9997,
+            "roc_auc": 1.0,
+            "brier_score": 0.0105,
+            "expected_calibration_error": 0.0274,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 543,
+            "n_positive": 50,
+            "n_negative": 493,
+            "class_balance": 0.0921,
+            "inference_time_ms": 14.669,
+            "latency_per_sample_us": 27.01,
+            "precision": 0.5714,
+            "recall": 0.8,
+            "f1": 0.6667,
+            "confusion_matrix": [
+              [
+                463,
+                30
+              ],
+              [
+                10,
+                40
+              ]
+            ],
+            "true_negatives": 463,
+            "false_positives": 30,
+            "false_negatives": 10,
+            "true_positives": 40,
+            "pr_auc": 0.7502,
+            "roc_auc": 0.9546,
+            "brier_score": 0.0556,
+            "expected_calibration_error": 0.0484,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 1359,
+            "n_positive": 73,
+            "n_negative": 1286,
+            "class_balance": 0.0537,
+            "inference_time_ms": 9.94,
+            "latency_per_sample_us": 7.31,
+            "precision": 0.4701,
+            "recall": 0.7534,
+            "f1": 0.5789,
+            "confusion_matrix": [
+              [
+                1224,
+                62
+              ],
+              [
+                18,
+                55
+              ]
+            ],
+            "true_negatives": 1224,
+            "false_positives": 62,
+            "false_negatives": 18,
+            "true_positives": 55,
+            "pr_auc": 0.6034,
+            "roc_auc": 0.9594,
+            "brier_score": 0.043,
+            "expected_calibration_error": 0.0383,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        }
+      },
+      "best_test_metrics": {
+        "split": "test",
+        "n_samples": 1359,
+        "n_positive": 73,
+        "n_negative": 1286,
+        "class_balance": 0.0537,
+        "inference_time_ms": 14.727,
+        "latency_per_sample_us": 10.84,
+        "precision": 0.4646,
+        "recall": 0.8082,
+        "f1": 0.59,
+        "confusion_matrix": [
+          [
+            1218,
+            68
+          ],
+          [
+            14,
+            59
+          ]
+        ],
+        "true_negatives": 1218,
+        "false_positives": 68,
+        "false_negatives": 14,
+        "true_positives": 59,
+        "pr_auc": 0.6288,
+        "roc_auc": 0.9689,
+        "brier_score": 0.0411,
+        "expected_calibration_error": 0.0534,
+        "is_calibrated": true,
+        "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+      },
+      "baselines": {
+        "dummy_most_frequent": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "inference_time_ms": 0.282,
+          "latency_per_sample_us": 0.21,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "confusion_matrix": [
+            [
+              1286,
+              0
+            ],
+            [
+              73,
+              0
+            ]
+          ],
+          "true_negatives": 1286,
+          "false_positives": 0,
+          "false_negatives": 73,
+          "true_positives": 0,
+          "pr_auc": 0.0537,
+          "roc_auc": 0.5,
+          "brier_score": 0.0537,
+          "expected_calibration_error": 0.0537,
+          "is_calibrated": true,
+          "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+        },
+        "dummy_stratified": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "inference_time_ms": 1.369,
+          "latency_per_sample_us": 1.01,
+          "precision": 0.0488,
+          "recall": 0.0548,
+          "f1": 0.0516,
+          "confusion_matrix": [
+            [
+              1208,
+              78
+            ],
+            [
+              69,
+              4
+            ]
+          ],
+          "true_negatives": 1208,
+          "false_positives": 78,
+          "false_negatives": 69,
+          "true_positives": 4,
+          "pr_auc": 0.0534,
+          "roc_auc": 0.4971,
+          "brier_score": 0.1082,
+          "expected_calibration_error": 0.1082,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "simple_domain_rule": {
+          "split": "test",
+          "n_samples": 1359,
+          "n_positive": 73,
+          "n_negative": 1286,
+          "class_balance": 0.0537,
+          "inference_time_ms": 0.974,
+          "latency_per_sample_us": 0.72,
+          "precision": 0.1589,
+          "recall": 0.9863,
+          "f1": 0.2738,
+          "confusion_matrix": [
+            [
+              905,
+              381
+            ],
+            [
+              1,
+              72
+            ]
+          ],
+          "true_negatives": 905,
+          "false_positives": 381,
+          "false_negatives": 1,
+          "true_positives": 72,
+          "pr_auc": 0.1575,
+          "roc_auc": 0.845,
+          "brier_score": 0.2811,
+          "expected_calibration_error": 0.2811,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        }
+      }
+    },
+    "snow": {
+      "selected_model": "logistic_regression",
+      "selected_algorithm": "LogisticRegression",
+      "selection_reason": "Mayor score de selección multiobjetivo (0.8788): Val F1=0.7970, Val PR-AUC=0.8995, ECE=0.0767, Brier=0.1478, con brecha de sobreajuste de 0.0000 y costo computacional/latencia de 0.24 µs/muestra.",
+      "models": {
+        "logistic_regression": {
+          "algorithm": "LogisticRegression",
+          "fit_time_ms": 12.22,
+          "selection_score": 0.8788,
+          "latency_efficiency": 0.9976,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 1376,
+            "n_negative": 2278,
+            "class_balance": 0.3766,
+            "inference_time_ms": 0.337,
+            "latency_per_sample_us": 0.09,
+            "precision": 0.6898,
+            "recall": 0.7871,
+            "f1": 0.7352,
+            "confusion_matrix": [
+              [
+                1791,
+                487
+              ],
+              [
+                293,
+                1083
+              ]
+            ],
+            "true_negatives": 1791,
+            "false_positives": 487,
+            "false_negatives": 293,
+            "true_positives": 1083,
+            "pr_auc": 0.8114,
+            "roc_auc": 0.8738,
+            "brier_score": 0.1447,
+            "expected_calibration_error": 0.0716,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 192,
+            "n_negative": 170,
+            "class_balance": 0.5304,
+            "inference_time_ms": 0.198,
+            "latency_per_sample_us": 0.55,
+            "precision": 0.7594,
+            "recall": 0.8385,
+            "f1": 0.797,
+            "confusion_matrix": [
+              [
+                119,
+                51
+              ],
+              [
+                31,
+                161
+              ]
+            ],
+            "true_negatives": 119,
+            "false_positives": 51,
+            "false_negatives": 31,
+            "true_positives": 161,
+            "pr_auc": 0.8995,
+            "roc_auc": 0.8766,
+            "brier_score": 0.1478,
+            "expected_calibration_error": 0.0767,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 363,
+            "n_negative": 543,
+            "class_balance": 0.4007,
+            "inference_time_ms": 0.217,
+            "latency_per_sample_us": 0.24,
+            "precision": 0.7904,
+            "recall": 0.7273,
+            "f1": 0.7575,
+            "confusion_matrix": [
+              [
+                473,
+                70
+              ],
+              [
+                99,
+                264
+              ]
+            ],
+            "true_negatives": 473,
+            "false_positives": 70,
+            "false_negatives": 99,
+            "true_positives": 264,
+            "pr_auc": 0.8491,
+            "roc_auc": 0.8931,
+            "brier_score": 0.1304,
+            "expected_calibration_error": 0.0274,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "random_forest": {
+          "algorithm": "RandomForestClassifier",
+          "fit_time_ms": 1746.23,
+          "selection_score": 0.7022,
+          "latency_efficiency": 0.0,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 1376,
+            "n_negative": 2278,
+            "class_balance": 0.3766,
+            "inference_time_ms": 217.64,
+            "latency_per_sample_us": 59.56,
+            "precision": 0.8432,
+            "recall": 0.883,
+            "f1": 0.8626,
+            "confusion_matrix": [
+              [
+                2052,
+                226
+              ],
+              [
+                161,
+                1215
+              ]
+            ],
+            "true_negatives": 2052,
+            "false_positives": 226,
+            "false_negatives": 161,
+            "true_positives": 1215,
+            "pr_auc": 0.9422,
+            "roc_auc": 0.9654,
+            "brier_score": 0.0858,
+            "expected_calibration_error": 0.0928,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 192,
+            "n_negative": 170,
+            "class_balance": 0.5304,
+            "inference_time_ms": 81.144,
+            "latency_per_sample_us": 224.15,
+            "precision": 0.7901,
+            "recall": 0.7448,
+            "f1": 0.7668,
+            "confusion_matrix": [
+              [
+                132,
+                38
+              ],
+              [
+                49,
+                143
+              ]
+            ],
+            "true_negatives": 132,
+            "false_positives": 38,
+            "false_negatives": 49,
+            "true_positives": 143,
+            "pr_auc": 0.8852,
+            "roc_auc": 0.8639,
+            "brier_score": 0.1515,
+            "expected_calibration_error": 0.0627,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 363,
+            "n_negative": 543,
+            "class_balance": 0.4007,
+            "inference_time_ms": 107.909,
+            "latency_per_sample_us": 119.1,
+            "precision": 0.8227,
+            "recall": 0.6777,
+            "f1": 0.7432,
+            "confusion_matrix": [
+              [
+                490,
+                53
+              ],
+              [
+                117,
+                246
+              ]
+            ],
+            "true_negatives": 490,
+            "false_positives": 53,
+            "false_negatives": 117,
+            "true_positives": 246,
+            "pr_auc": 0.8443,
+            "roc_auc": 0.886,
+            "brier_score": 0.1352,
+            "expected_calibration_error": 0.0438,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "gradient_boosting": {
+          "algorithm": "GradientBoostingClassifier",
+          "fit_time_ms": 4855.49,
+          "selection_score": 0.8386,
+          "latency_efficiency": 0.9559,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 1376,
+            "n_negative": 2278,
+            "class_balance": 0.3766,
+            "inference_time_ms": 10.99,
+            "latency_per_sample_us": 3.01,
+            "precision": 0.9109,
+            "recall": 0.8844,
+            "f1": 0.8975,
+            "confusion_matrix": [
+              [
+                2159,
+                119
+              ],
+              [
+                159,
+                1217
+              ]
+            ],
+            "true_negatives": 2159,
+            "false_positives": 119,
+            "false_negatives": 159,
+            "true_positives": 1217,
+            "pr_auc": 0.9705,
+            "roc_auc": 0.9807,
+            "brier_score": 0.061,
+            "expected_calibration_error": 0.0765,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 192,
+            "n_negative": 170,
+            "class_balance": 0.5304,
+            "inference_time_ms": 3.877,
+            "latency_per_sample_us": 10.71,
+            "precision": 0.8415,
+            "recall": 0.7188,
+            "f1": 0.7753,
+            "confusion_matrix": [
+              [
+                144,
+                26
+              ],
+              [
+                54,
+                138
+              ]
+            ],
+            "true_negatives": 144,
+            "false_positives": 26,
+            "false_negatives": 54,
+            "true_positives": 138,
+            "pr_auc": 0.8767,
+            "roc_auc": 0.8631,
+            "brier_score": 0.1603,
+            "expected_calibration_error": 0.0803,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 363,
+            "n_negative": 543,
+            "class_balance": 0.4007,
+            "inference_time_ms": 3.991,
+            "latency_per_sample_us": 4.41,
+            "precision": 0.8191,
+            "recall": 0.6364,
+            "f1": 0.7163,
+            "confusion_matrix": [
+              [
+                492,
+                51
+              ],
+              [
+                132,
+                231
+              ]
+            ],
+            "true_negatives": 492,
+            "false_positives": 51,
+            "false_negatives": 132,
+            "true_positives": 231,
+            "pr_auc": 0.831,
+            "roc_auc": 0.8879,
+            "brier_score": 0.1475,
+            "expected_calibration_error": 0.0933,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "extra_trees": {
+          "algorithm": "ExtraTreesClassifier",
+          "fit_time_ms": 335.08,
+          "selection_score": 0.8088,
+          "latency_efficiency": 0.8292,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 1376,
+            "n_negative": 2278,
+            "class_balance": 0.3766,
+            "inference_time_ms": 37.097,
+            "latency_per_sample_us": 10.15,
+            "precision": 0.7579,
+            "recall": 0.8031,
+            "f1": 0.7798,
+            "confusion_matrix": [
+              [
+                1925,
+                353
+              ],
+              [
+                271,
+                1105
+              ]
+            ],
+            "true_negatives": 1925,
+            "false_positives": 353,
+            "false_negatives": 271,
+            "true_positives": 1105,
+            "pr_auc": 0.8592,
+            "roc_auc": 0.9101,
+            "brier_score": 0.1309,
+            "expected_calibration_error": 0.1028,
+            "is_calibrated": false,
+            "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 192,
+            "n_negative": 170,
+            "class_balance": 0.5304,
+            "inference_time_ms": 12.562,
+            "latency_per_sample_us": 34.7,
+            "precision": 0.7738,
+            "recall": 0.6771,
+            "f1": 0.7222,
+            "confusion_matrix": [
+              [
+                132,
+                38
+              ],
+              [
+                62,
+                130
+              ]
+            ],
+            "true_negatives": 132,
+            "false_positives": 38,
+            "false_negatives": 62,
+            "true_positives": 130,
+            "pr_auc": 0.8568,
+            "roc_auc": 0.8381,
+            "brier_score": 0.1654,
+            "expected_calibration_error": 0.058,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 363,
+            "n_negative": 543,
+            "class_balance": 0.4007,
+            "inference_time_ms": 15.47,
+            "latency_per_sample_us": 17.08,
+            "precision": 0.7712,
+            "recall": 0.6501,
+            "f1": 0.7055,
+            "confusion_matrix": [
+              [
+                473,
+                70
+              ],
+              [
+                127,
+                236
+              ]
+            ],
+            "true_negatives": 473,
+            "false_positives": 70,
+            "false_negatives": 127,
+            "true_positives": 236,
+            "pr_auc": 0.8257,
+            "roc_auc": 0.8753,
+            "brier_score": 0.1434,
+            "expected_calibration_error": 0.054,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        },
+        "hist_gradient_boosting": {
+          "algorithm": "HistGradientBoostingClassifier",
+          "fit_time_ms": 941.88,
+          "selection_score": 0.831,
+          "latency_efficiency": 0.8401,
+          "train": {
+            "split": "train",
+            "n_samples": 3654,
+            "n_positive": 1376,
+            "n_negative": 2278,
+            "class_balance": 0.3766,
+            "inference_time_ms": 27.339,
+            "latency_per_sample_us": 7.48,
+            "precision": 0.8756,
+            "recall": 0.9513,
+            "f1": 0.9119,
+            "confusion_matrix": [
+              [
+                2092,
+                186
+              ],
+              [
+                67,
+                1309
+              ]
+            ],
+            "true_negatives": 2092,
+            "false_positives": 186,
+            "false_negatives": 67,
+            "true_positives": 1309,
+            "pr_auc": 0.9748,
+            "roc_auc": 0.9849,
+            "brier_score": 0.0593,
+            "expected_calibration_error": 0.0856,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "validation": {
+            "split": "validation",
+            "n_samples": 362,
+            "n_positive": 192,
+            "n_negative": 170,
+            "class_balance": 0.5304,
+            "inference_time_ms": 14.105,
+            "latency_per_sample_us": 38.96,
+            "precision": 0.8087,
+            "recall": 0.7708,
+            "f1": 0.7893,
+            "confusion_matrix": [
+              [
+                135,
+                35
+              ],
+              [
+                44,
+                148
+              ]
+            ],
+            "true_negatives": 135,
+            "false_positives": 35,
+            "false_negatives": 44,
+            "true_positives": 148,
+            "pr_auc": 0.8837,
+            "roc_auc": 0.8681,
+            "brier_score": 0.1501,
+            "expected_calibration_error": 0.0605,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          },
+          "test": {
+            "split": "test",
+            "n_samples": 906,
+            "n_positive": 363,
+            "n_negative": 543,
+            "class_balance": 0.4007,
+            "inference_time_ms": 14.49,
+            "latency_per_sample_us": 15.99,
+            "precision": 0.8131,
+            "recall": 0.6832,
+            "f1": 0.7425,
+            "confusion_matrix": [
+              [
+                486,
+                57
+              ],
+              [
+                115,
+                248
+              ]
+            ],
+            "true_negatives": 486,
+            "false_positives": 57,
+            "false_negatives": 115,
+            "true_positives": 248,
+            "pr_auc": 0.8341,
+            "roc_auc": 0.8914,
+            "brier_score": 0.1359,
+            "expected_calibration_error": 0.0762,
+            "is_calibrated": true,
+            "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+          }
+        }
+      },
+      "best_test_metrics": {
+        "split": "test",
+        "n_samples": 906,
+        "n_positive": 363,
+        "n_negative": 543,
+        "class_balance": 0.4007,
+        "inference_time_ms": 0.217,
+        "latency_per_sample_us": 0.24,
+        "precision": 0.7904,
+        "recall": 0.7273,
+        "f1": 0.7575,
+        "confusion_matrix": [
+          [
+            473,
+            70
+          ],
+          [
+            99,
+            264
+          ]
+        ],
+        "true_negatives": 473,
+        "false_positives": 70,
+        "false_negatives": 99,
+        "true_positives": 264,
+        "pr_auc": 0.8491,
+        "roc_auc": 0.8931,
+        "brier_score": 0.1304,
+        "expected_calibration_error": 0.0274,
+        "is_calibrated": true,
+        "calibration_assessment": "Bien calibrado (ECE < 0.10)"
+      },
+      "baselines": {
+        "dummy_most_frequent": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "inference_time_ms": 0.106,
+          "latency_per_sample_us": 0.12,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "confusion_matrix": [
+            [
+              543,
+              0
+            ],
+            [
+              363,
+              0
+            ]
+          ],
+          "true_negatives": 543,
+          "false_positives": 0,
+          "false_negatives": 363,
+          "true_positives": 0,
+          "pr_auc": 0.4007,
+          "roc_auc": 0.5,
+          "brier_score": 0.4007,
+          "expected_calibration_error": 0.4007,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "dummy_stratified": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "inference_time_ms": 0.638,
+          "latency_per_sample_us": 0.7,
+          "precision": 0.4337,
+          "recall": 0.3967,
+          "f1": 0.4144,
+          "confusion_matrix": [
+            [
+              355,
+              188
+            ],
+            [
+              219,
+              144
+            ]
+          ],
+          "true_negatives": 355,
+          "false_positives": 188,
+          "false_negatives": 219,
+          "true_positives": 144,
+          "pr_auc": 0.4138,
+          "roc_auc": 0.5252,
+          "brier_score": 0.4492,
+          "expected_calibration_error": 0.4492,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        },
+        "simple_domain_rule": {
+          "split": "test",
+          "n_samples": 906,
+          "n_positive": 363,
+          "n_negative": 543,
+          "class_balance": 0.4007,
+          "inference_time_ms": 0.455,
+          "latency_per_sample_us": 0.5,
+          "precision": 0.4211,
+          "recall": 0.022,
+          "f1": 0.0419,
+          "confusion_matrix": [
+            [
+              532,
+              11
+            ],
+            [
+              355,
+              8
+            ]
+          ],
+          "true_negatives": 532,
+          "false_positives": 11,
+          "false_negatives": 355,
+          "true_positives": 8,
+          "pr_auc": 0.4011,
+          "roc_auc": 0.5009,
+          "brier_score": 0.404,
+          "expected_calibration_error": 0.404,
+          "is_calibrated": false,
+          "calibration_assessment": "Calibración moderada/baja (se recomienda tratar como puntaje ordinal)"
+        }
+      }
+    },
+    "hail": {
+      "status": "not_viable_supervised_ml",
+      "message": "El granizo en los Andes centrales es un evento convectivo de microescala no capturado por los códigos WMO globales del reanálisis ERA5 (0 horas registradas en 2020-2026). No es metodológicamente viable entrenar un modelo supervisado. Opera bajo reglas físicas heurísticas documentadas (temperatura > 5°C, humedad relativa > 85%, precipitación convectiva > 10mm).",
+      "recommendation": "Incorporar registros de observaciones físicas de campo mediante la nueva tabla ground_truth_observations para futuro entrenamiento."
+    }
+  }
+}
