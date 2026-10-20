@@ -398,9 +398,11 @@ function renderParcelPredictionCard(parcelPred) {
   const adminInfo = (window.PascoAdminGeo && lat && lng)
     ? window.PascoAdminGeo.identifyProvinceDistrict(lat, lng, parcelName)
     : null;
-  const provinceName = adminInfo?.province || (altitude < 2200 ? 'Oxapampa' : altitude < 3600 ? 'Daniel Alcides Carrión' : 'Pasco');
+  const provinceName = (adminInfo?.isVerified && adminInfo?.province)
+    ? adminInfo.province
+    : (adminInfo?.province && adminInfo.province !== 'Ubicación por verificar' ? adminInfo.province : 'Ubicación por verificar');
   const districtName = adminInfo?.district || '';
-  const adminLocationLabel = districtName ? `${districtName}, Prov. ${provinceName}` : `Prov. ${provinceName}`;
+  const adminLocationLabel = adminInfo?.label || (districtName ? `${districtName}, Prov. ${provinceName}` : `Prov. ${provinceName}`);
 
   return `
     <div class="card" style="margin-bottom: 14px; border-left: 4px solid ${riskMeta.bar};">
@@ -574,9 +576,9 @@ function renderPhenomenonCard(pred, context = {}) {
       <!-- Fotografía Referencial de Contexto Agroecológico Territorial -->
       <div style="position: relative; width: 100%; height: 75px; border-radius: 6px; overflow: hidden; margin-bottom: 8px; background: #E2E8F0;">
         <img src="${imgInfo.url}" alt="${imgInfo.alt}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.style.display='none'">
-        <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.75)); padding: 2px 6px; font-size: 9.5px; color: #FFFFFF; display: flex; justify-content: space-between; align-items: center;">
+        <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.85)); padding: 2px 6px; font-size: 9px; color: #FFFFFF; display: flex; justify-content: space-between; align-items: center;">
           <span>📷 ${imgInfo.caption}</span>
-          <span style="opacity: 0.85; font-size: 8.5px;" title="Fotografía referencial territorial (no es observación meteorológica en vivo)">Ref.</span>
+          <span style="background: rgba(0,0,0,0.6); padding: 1px 4px; border-radius: 3px; font-weight: 700; font-size: 8px; letter-spacing: 0.3px;" title="Fotografía referencial territorial (no es observación meteorológica en vivo)">FOTO REFERENCIAL</span>
         </div>
       </div>
 

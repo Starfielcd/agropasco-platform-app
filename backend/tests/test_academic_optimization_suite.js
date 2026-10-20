@@ -22,6 +22,7 @@ const orchestratorAgent = require('../services/multiAgent/orchestratorAgent');
 
 let passedTests = 0;
 let totalTests = 0;
+const asyncQueue = [];
 
 function test(name, fn) {
   totalTests++;
@@ -35,16 +36,18 @@ function test(name, fn) {
   }
 }
 
-async function asyncTest(name, fn) {
+function asyncTest(name, fn) {
   totalTests++;
-  try {
-    await fn();
-    passedTests++;
-    console.log(`  ✓ [PASS] ${name}`);
-  } catch (err) {
-    console.error(`  ❌ [FAIL] ${name}: ${err.message}`);
-    throw err;
-  }
+  asyncQueue.push(async () => {
+    try {
+      await fn();
+      passedTests++;
+      console.log(`  ✓ [PASS] ${name}`);
+    } catch (err) {
+      console.error(`  ❌ [FAIL] ${name}: ${err.message}`);
+      throw err;
+    }
+  });
 }
 
 console.log('='.repeat(80));
@@ -236,6 +239,48 @@ test('Protocolo agronómico de heladas no contiene instrucciones peligrosas de q
   assert.strictEqual(fireHazard, false, 'No debe recomendar encender fogatas de humo a campo abierto');
 });
 
-console.log('\n' + '='.repeat(80));
-console.log(`🎉 SUITE APROBADA: ${passedTests}/${totalTests} PRUEBAS EXITOSAS`);
-console.log('='.repeat(80));
+test('Teléfono oficial de soporte técnico y coordinación técnica es +51 901387303', () => {
+  const fs = require('fs');
+  const weatherJs = fs.readFileSync(__dirname + '/../../frontend/js/weather.js', 'utf8');
+  assert.ok(weatherJs.includes('+51 901387303') || weatherJs.includes('+51901387303'), 'weather.js debe incluir +51 901387303');
+  assert.ok(weatherJs.includes('Coordinación Agrícola y Soporte Técnico Pasco'), 'Debe incluir la etiqueta de coordinación técnica correcta');
+});
+
+test('Frontend PascoAdminGeo.identifyProvinceDistrict clasifica adecuadamente distritos y provincias reales', () => {
+  const frontendGeo = require('../../frontend/services/maps/pascoAdminGeo');
+  const res1 = frontendGeo.identifyProvinceDistrict(-10.6868, -76.2625, 'Parcela Chaupimarca');
+  assert.strictEqual(res1.province, 'Pasco');
+  assert.strictEqual(res1.district, 'Chaupimarca');
+
+  const res2 = frontendGeo.identifyProvinceDistrict(-10.4931, -76.5133, 'Parcela Yanahuanca');
+  assert.strictEqual(res2.province, 'Daniel Alcides Carrión');
+  assert.strictEqual(res2.district, 'Yanahuanca');
+
+  const res3 = frontendGeo.identifyProvinceDistrict(-10.5750, -75.4028, 'Parcela Oxapampa');
+  assert.strictEqual(res3.province, 'Oxapampa');
+  assert.strictEqual(res3.district, 'Oxapampa');
+});
+
+test('Riego por aspersión condicionado y prohibición de quemas en advisory.js y predictive-dashboard.js', () => {
+  const fs = require('fs');
+  const advisoryJs = fs.readFileSync(__dirname + '/../../frontend/js/advisory.js', 'utf8');
+  const predDashJs = fs.readFileSync(__dirname + '/../../frontend/js/predictive-dashboard.js', 'utf8');
+
+  assert.strictEqual(advisoryJs.includes('enciende humo en los bordes del campo'), false, 'No debe recomendar encender humo');
+  assert.ok(advisoryJs.includes('Ley Forestal N° 29763'), 'Debe citar Ley Forestal N° 29763');
+  assert.ok(predDashJs.includes('Riego por aspersión condicionado'), 'predictive-dashboard debe condicionar el riego por aspersión');
+});
+
+async function runAll() {
+  for (const t of asyncQueue) {
+    await t();
+  }
+  console.log('\n' + '='.repeat(80));
+  console.log(`🎉 SUITE APROBADA: ${passedTests}/${totalTests} PRUEBAS EXITOSAS`);
+  console.log('='.repeat(80));
+}
+
+runAll().catch(err => {
+  console.error('Error ejecutando suite:', err);
+  process.exit(1);
+});

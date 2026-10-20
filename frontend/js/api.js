@@ -45,7 +45,7 @@ const FIELD_IMAGES = {
   cosecha: 'frontend/assets/images/crops/cebada.jpg',
   riego_aspersion: 'frontend/assets/images/weather/rain.jpg',
   mantas_termicas: 'frontend/assets/images/phenomena/frost.jpg',
-  fogatas_humo: 'frontend/assets/images/landscapes/dashboard_hero.jpg',
+  cortinas_cortaviento: 'frontend/assets/images/landscapes/dashboard_hero.jpg',
   bioestimulantes: 'frontend/assets/images/crops/habas.jpg',
   malla_sombra: 'frontend/assets/images/weather/sunny.jpg',
   zanjas_drenaje: 'frontend/assets/images/phenomena/heavy_rain.jpg',

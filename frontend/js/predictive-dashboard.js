@@ -1300,7 +1300,7 @@ function openMitigationModal() {
           <div style="margin-bottom: 12px; padding: 10px; background: #FEF3C7; border-radius: 8px; border-left: 3px solid #D97706;">
             <strong>⚠️ Alerta de Helada Radiante (T < 0°C):</strong>
             <ul style="margin: 6px 0 0 16px;">
-              <li>Activar riego por aspersión ligero 2 horas antes del amanecer (liberación de calor latente).</li>
+              <li>Riego por aspersión condicionado (solo en heladas de radiación con cielo despejado, viento &lt;5 km/h y suministro de agua continuo garantizado).</li>
               <li>Despliegue de mantas térmicas agrotéxtiles sobre canteros de papa y maca.</li>
               <li>Aplicación foliar de bioestimulantes osmoprotectores (prolina / potasio).</li>
             </ul>

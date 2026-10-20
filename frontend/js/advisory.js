@@ -466,7 +466,7 @@ function renderExistingGuidesSection({ tips, calendars, guide }) {
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <div style="padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--blue-400); border-radius: 6px;">
             <strong style="color: var(--blue-400); font-size: 13.5px;">🥶 Protocolo Helada:</strong>
-            <div class="text-sm text-muted mt-sm">Activa el riego por aspersión a las 4 AM o enciende humo en los bordes del campo.</div>
+            <div class="text-sm text-muted mt-sm">Manejo térmico pasivo con mantas térmicas agrotéxtiles y barreras cortaviento. Riego por aspersión condicionado a heladas de radiación (cielo despejado, viento &lt;5 km/h y suministro continuo garantizado). Prohibido encender fogatas o quemas a campo abierto (Ley Forestal N° 29763).</div>
           </div>
           <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border-left: 4px solid var(--amber-400); border-radius: 6px;">
             <strong style="color: var(--amber-400); font-size: 13.5px;">☀️ Protocolo Radiación UV:</strong>

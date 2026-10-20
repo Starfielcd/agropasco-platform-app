@@ -364,7 +364,8 @@ async function buildAgriculturalContext({ userId, userRole, parcelId = null }) {
     ml_hail_risk: metrics ? metrics.ml_hail_risk : null,
     temperature_current: metrics ? metrics.temperature_current : null,
     temperature_min: metrics ? metrics.temperature_min : null,
-    temperature_max: metrics ? metrics.temperature_max : null
+    temperature_max: metrics ? metrics.temperature_max : null,
+    metrics: metrics || null
   };
 
   return {
@@ -373,6 +374,10 @@ async function buildAgriculturalContext({ userId, userRole, parcelId = null }) {
     parcel_id: parcelRow.id,
     data_adequacy: dataAdequacy,
     weather_status: weatherStatus,
+    weather_metrics: metrics,
+    weather_source: metrics?.prediction_source || (isStale ? 'cache_stale' : (rawPrediction ? 'ml_trained' : null)),
+    forecast_issued_at: metrics?.fetched_at || null,
+    confidence_level: metrics ? 'calibrated' : null,
     warnings,
     internal_context: internalContext,
     llm_context: llmContext
