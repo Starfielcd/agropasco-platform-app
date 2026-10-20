@@ -156,14 +156,23 @@ runTest('4.2 supermarket.js formatProductValidator no inventa títulos y usa nom
 // -----------------------------------------------------------------------------
 console.log('\n📌 ETAPA 5: Panel por Defecto por Rol');
 
-runTest('5.1 app.js define defaultRoutes correctamente para cada rol', () => {
+runTest('5.1 app.js define defaultRoutes correctamente para cada rol con Dashboard General para asesor', () => {
   const appPath = path.join(ROOT_DIR, 'frontend/js/app.js');
   const content = fs.readFileSync(appPath, 'utf8');
 
   assert.ok(content.includes("farmer: '/dashboard'"), 'Farmer debe ir a /dashboard');
-  assert.ok(content.includes("advisor: '/advisor/parcels'"), 'Advisor debe ir a /advisor/parcels');
+  assert.ok(content.includes("advisor: '/dashboard'"), 'Advisor debe ir a /dashboard');
   assert.ok(content.includes("supermarket: '/supermarket'"), 'Supermarket debe ir a /supermarket');
   assert.ok(content.includes("admin: '/admin'"), 'Admin debe ir a /admin');
+});
+
+runTest('5.2 app.js autoriza al asesor técnico en /dashboard (Panel General)', () => {
+  const appPath = path.join(ROOT_DIR, 'frontend/js/app.js');
+  const content = fs.readFileSync(appPath, 'utf8');
+
+  const routeMatch = content.match(/'\/dashboard':\s*\{[^}]*roles:\s*\[([^\]]+)\]/);
+  assert.ok(routeMatch, 'Debe existir definición de /dashboard');
+  assert.ok(routeMatch[1].includes("'advisor'"), 'Advisor debe tener acceso a /dashboard');
 });
 
 // -----------------------------------------------------------------------------

@@ -364,7 +364,7 @@ async function handleLogin(e) {
     showToast(`¡Bienvenido, ${result.data.user.name}! (${result.data.user.role})`, 'success');
     const roleRoutes = {
       farmer: '/dashboard',
-      advisor: '/advisor/parcels',
+      advisor: '/dashboard',
       supermarket: '/supermarket',
       admin: '/admin'
     };
@@ -821,7 +821,7 @@ async function handleChangePassword(e) {
     const user = getUser();
     const roleRoutes = {
       farmer: '/dashboard',
-      advisor: '/advisor/parcels',
+      advisor: '/dashboard',
       supermarket: '/supermarket',
       admin: '/admin'
     };

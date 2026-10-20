@@ -9,8 +9,8 @@ const routes = {
   '/login': { title: 'Iniciar Sesión', render: () => renderLoginPage('login'), public: true, fullPage: true },
   '/register': { title: 'Registrarse', render: () => renderLoginPage('register'), public: true, fullPage: true },
 
-  // Farmer routes
-  '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas', icon: '📊', render: renderDashboard, roles: ['farmer', 'admin'] },
+  // Farmer and Advisor general routes
+  '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas y monitoreo regional', icon: '📊', render: renderDashboard, roles: ['farmer', 'advisor', 'admin'] },
   '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer', 'admin'] },
   '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
@@ -45,7 +45,7 @@ const routes = {
 // Default route per role
 const defaultRoutes = {
   farmer: '/dashboard',
-  advisor: '/advisor/parcels',
+  advisor: '/dashboard',
   supermarket: '/supermarket',
   admin: '/admin'
 };
@@ -231,6 +231,14 @@ function getMobileBottomNavForRole(role) {
   if (role === 'advisor') {
     return `
       <nav class="mobile-bottom-nav" aria-label="Navegación rápida de Asesor Técnico">
+        <button class="mobile-nav-btn ${window.location.hash.includes('dashboard') && !window.location.hash.includes('predictive-dashboard') ? 'active' : ''}" onclick="window.location.hash='#/dashboard'">
+          <span class="mobile-nav-icon">📊</span>
+          <span>Inicio</span>
+        </button>
+        <button class="mobile-nav-btn ${window.location.hash.includes('predictive-dashboard') ? 'active' : ''}" onclick="window.location.hash='#/predictive-dashboard'">
+          <span class="mobile-nav-icon">🔮</span>
+          <span>Predictivo</span>
+        </button>
         <button class="mobile-nav-btn ${window.location.hash.includes('advisor/parcels') ? 'active' : ''}" onclick="window.location.hash='#/advisor/parcels'">
           <span class="mobile-nav-icon">🗺️</span>
           <span>Parcelas</span>
@@ -242,10 +250,6 @@ function getMobileBottomNavForRole(role) {
         <button class="mobile-nav-btn ${window.location.hash.includes('validate-products') ? 'active' : ''}" onclick="window.location.hash='#/advisor/validate-products'">
           <span class="mobile-nav-icon">✅</span>
           <span>Validar</span>
-        </button>
-        <button class="mobile-nav-btn ${window.location.hash.includes('ml-monitor') ? 'active' : ''}" onclick="window.location.hash='#/ml-monitor'">
-          <span class="mobile-nav-icon">🔬</span>
-          <span>ML</span>
         </button>
       </nav>
     `;
@@ -442,6 +446,11 @@ function getNavItemsForRole(role) {
 
     // ===== ASESOR TÉCNICO =====
     advisor: `
+      <div class="nav-section-title">Principal</div>
+      <div class="nav-item active" data-route="/dashboard" onclick="window.location.hash='#/dashboard'">
+        <span class="nav-item-icon">📊</span> Panel General
+      </div>
+
       <div class="nav-section-title">Monitoreo Regional</div>
       <div class="nav-item" data-route="/predictive-dashboard" onclick="window.location.hash='#/predictive-dashboard'">
         <span class="nav-item-icon">🔮</span> Dashboard Predictivo
@@ -470,11 +479,6 @@ function getNavItemsForRole(role) {
       <div class="nav-section-title">Conocimiento</div>
       <div class="nav-item" data-route="/advisor/advisory" onclick="window.location.hash='#/advisor/advisory'">
         <span class="nav-item-icon">📚</span> Base de Conocimiento
-      </div>
-
-      <div class="nav-section-title">Datos</div>
-      <div class="nav-item" data-route="/dashboard" onclick="window.location.hash='#/dashboard'">
-        <span class="nav-item-icon">📊</span> Panel General
       </div>
     `,
 

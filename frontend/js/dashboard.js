@@ -43,10 +43,10 @@ async function renderDashboard() {
         <div class="dashboard-hero-content">
           <div class="dashboard-hero-text">
             <div class="dashboard-hero-welcome">
-              <span>🌱</span> Bienvenido, ${escapeHtml(userName)}
+              <span>🌱</span> Bienvenido, ${escapeHtml(userName)} ${user?.role === 'advisor' ? '(Asesor Técnico)' : ''}
             </div>
             <h2>Panel Principal</h2>
-            <p>Vista general de tus operaciones agrícolas y monitoreo de campo en Pasco</p>
+            <p>${user?.role === 'advisor' ? 'Monitoreo territorial y vista general de operaciones agrícolas en Pasco' : 'Vista general de tus operaciones agrícolas y monitoreo de campo en Pasco'}</p>
           </div>
 
           <!-- Tarjeta de Clima Embebida en Hero -->
@@ -106,14 +106,14 @@ async function renderDashboard() {
           </div>
         </div>
 
-        <div class="stat-card" onclick="window.location.hash='#/parcels'" style="cursor: pointer;">
+        <div class="stat-card" onclick="window.location.hash='${user?.role === 'advisor' ? '#/advisor/parcels' : '#/parcels'}'" style="cursor: pointer;">
           <div class="stat-card-icon-wrap stat-icon-parcels">
             🗺️
           </div>
           <div class="stat-card-info">
             <div class="stat-card-value">${parcels.length}</div>
-            <div class="stat-card-label">Parcelas Registradas</div>
-            <span class="stat-card-link">Ver mis parcelas →</span>
+            <div class="stat-card-label">${user?.role === 'advisor' ? 'Parcelas Regionales' : 'Parcelas Registradas'}</div>
+            <span class="stat-card-link">${user?.role === 'advisor' ? 'Ver parcelas de la región →' : 'Ver mis parcelas →'}</span>
           </div>
         </div>
 
@@ -130,14 +130,14 @@ async function renderDashboard() {
           </div>
         </div>
 
-        <div class="stat-card" onclick="window.location.hash='#/supermarket'" style="cursor: pointer;">
+        <div class="stat-card" onclick="window.location.hash='${user?.role === 'advisor' ? '#/advisor/validate-products' : '#/supermarket'}'" style="cursor: pointer;">
           <div class="stat-card-icon-wrap stat-icon-catalog">
             📦
           </div>
           <div class="stat-card-info">
             <div class="stat-card-value">${products.length}</div>
             <div class="stat-card-label">Productos en Catálogo</div>
-            <span class="stat-card-link">Gestionar productos →</span>
+            <span class="stat-card-link">${user?.role === 'advisor' ? 'Validar productos →' : 'Gestionar productos →'}</span>
           </div>
         </div>
       </div>
