@@ -14,8 +14,9 @@ const MapsConfig = {
   MAX_ZOOM: 18,
   MIN_ZOOM: 6,
 
-  OSM_TILE_URL: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  OSM_ATTRIBUTION: '&copy; CartoDB &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  OSM_TILE_URL: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  OSM_ATTRIBUTION: '&copy; <a href="https://www.esri.com/">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  OSM_FALLBACK_URL: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
 
   ESRI_SAT_URL: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   ESRI_SAT_ATTRIBUTION: '&copy; Esri, Maxar, Earthstar Geographics',

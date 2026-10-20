@@ -10,11 +10,11 @@ const routes = {
   '/register': { title: 'Registrarse', render: () => renderLoginPage('register'), public: true, fullPage: true },
 
   // Farmer routes
-  '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas', icon: '📊', render: renderDashboard, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
+  '/dashboard': { title: 'Panel Principal', subtitle: 'Vista general de tus operaciones agrícolas', icon: '📊', render: renderDashboard, roles: ['farmer', 'admin'] },
   '/parcels': { title: 'Mis Parcelas', subtitle: 'Delimita tus parcelas en el mapa satelital', icon: '🗺️', render: renderParcelsPage, roles: ['farmer', 'admin'] },
   '/crops': { title: 'Gestión de Cultivos', subtitle: 'Gestiona tus cultivos y registra actividades', icon: '🌿', render: renderCropsPage, roles: ['farmer', 'advisor', 'admin'] },
   '/weather': { title: 'Clima & Alertas', subtitle: 'Pronóstico y alertas climáticas para Cerro de Pasco', icon: '⛅', render: renderWeatherPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
-  '/predictive-dashboard': { title: 'Dashboard Predictivo', subtitle: 'Predicciones meteorológicas multimodelo en tiempo real por parcela', icon: '🔮', render: renderPredictiveDashboardPage, roles: ['farmer', 'advisor', 'supermarket', 'admin'] },
+  '/predictive-dashboard': { title: 'Dashboard Predictivo', subtitle: 'Predicciones meteorológicas multimodelo en tiempo real por parcela', icon: '🔮', render: renderPredictiveDashboardPage, roles: ['farmer', 'advisor', 'admin'] },
   '/ml-monitor': { title: 'Monitoreo ML', subtitle: 'Predicciones meteorológicas inteligentes por parcela', icon: '🔬', render: renderMLMonitorPage, roles: ['farmer', 'advisor', 'admin'] },
   '/advisory': { title: 'Asesoría Agrícola', subtitle: 'Buenas prácticas para cultivos de la Región Pasco', icon: '📚', render: renderAdvisoryPage, roles: ['farmer', 'advisor', 'admin'] },
   '/traceability': { title: 'Trazabilidad Digital', subtitle: 'Historial completo de tus cultivos', icon: '📋', render: renderTraceabilityPage, roles: ['farmer', 'supermarket', 'admin'] },
@@ -734,11 +734,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Set initial route
-  if (!window.location.hash) {
-    const token = getToken();
-    const user = getUser();
-    const defaultRoute = token ? (defaultRoutes[user?.role] || '/dashboard') : '/login';
-    window.location.hash = '#' + defaultRoute;
+  const token = getToken();
+  const user = getUser();
+  const roleDefault = defaultRoutes[user?.role] || '/dashboard';
+
+  if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+    window.location.hash = '#' + (token ? roleDefault : '/login');
+  } else if (token) {
+    // Si la ruta residual pertenece a login o register, dirigir al panel del rol
+    const currentBase = window.location.hash.slice(1).split('?')[0];
+    if (currentBase === '/login' || currentBase === '/register') {
+      window.location.hash = '#' + roleDefault;
+    }
   }
 
   handleHashChange();

@@ -117,11 +117,23 @@ function extractPredictionMetrics(rawCache) {
     hailRisk = payload.predictions.hail?.risk_score !== undefined ? Number(payload.predictions.hail.risk_score) : null;
   }
 
-  // Fallbacks para campos directos
+  // Fallbacks para campos directos (con y sin sufijo _pct)
   if (frostRisk === null && payload.frost_risk !== undefined) frostRisk = Number(payload.frost_risk);
+  if (frostRisk === null && payload.frost_risk_pct !== undefined) frostRisk = Number(payload.frost_risk_pct);
   if (snowRisk === null && payload.snow_risk !== undefined) snowRisk = Number(payload.snow_risk);
+  if (snowRisk === null && payload.snow_risk_pct !== undefined) snowRisk = Number(payload.snow_risk_pct);
   if (rainRisk === null && payload.heavy_rain_risk !== undefined) rainRisk = Number(payload.heavy_rain_risk);
+  if (rainRisk === null && payload.heavy_rain_risk_pct !== undefined) rainRisk = Number(payload.heavy_rain_risk_pct);
   if (hailRisk === null && payload.hail_risk !== undefined) hailRisk = Number(payload.hail_risk);
+  if (hailRisk === null && payload.hail_risk_pct !== undefined) hailRisk = Number(payload.hail_risk_pct);
+
+  // Soporte para estructura phenomenon_risks
+  if (payload.phenomenon_risks && typeof payload.phenomenon_risks === 'object') {
+    if (frostRisk === null && payload.phenomenon_risks.frost?.risk_pct !== undefined) frostRisk = Number(payload.phenomenon_risks.frost.risk_pct);
+    if (snowRisk === null && payload.phenomenon_risks.snow?.risk_pct !== undefined) snowRisk = Number(payload.phenomenon_risks.snow.risk_pct);
+    if (rainRisk === null && payload.phenomenon_risks.heavy_rain?.risk_pct !== undefined) rainRisk = Number(payload.phenomenon_risks.heavy_rain.risk_pct);
+    if (hailRisk === null && payload.phenomenon_risks.hail?.risk_pct !== undefined) hailRisk = Number(payload.phenomenon_risks.hail.risk_pct);
+  }
 
   const snapshot = payload.weather_snapshot || {};
   const forecastSummary = payload.forecast_summary || {};
@@ -138,6 +150,27 @@ function extractPredictionMetrics(rawCache) {
     ? snapshot.precipitation
     : (Array.isArray(forecastSummary.precipitation) && forecastSummary.precipitation.length > 0 ? forecastSummary.precipitation[0] : null);
 
+  // Evaluación integral del riesgo máximo considerando los cuatro fenómenos (sólidos y líquidos)
+  const risks = [
+    { key: 'snow', label: 'Nevada', pct: snowRisk },
+    { key: 'frost', label: 'Helada', pct: frostRisk },
+    { key: 'heavy_rain', label: 'Lluvia Intensa', pct: rainRisk },
+    { key: 'hail', label: 'Granizada', pct: hailRisk }
+  ].filter(r => r.pct !== null && r.pct !== undefined && !isNaN(r.pct));
+
+  let maxRiskPct = 0;
+  let primaryPhenomenon = 'none';
+  let primaryPhenomenonLabel = 'Sin riesgo relevante';
+
+  if (risks.length > 0) {
+    risks.sort((a, b) => b.pct - a.pct);
+    maxRiskPct = Number(risks[0].pct);
+    primaryPhenomenon = risks[0].key;
+    primaryPhenomenonLabel = risks[0].label;
+  }
+
+  const overallRiskLevel = maxRiskPct >= 60 ? 'high' : (maxRiskPct >= 30 ? 'moderate' : 'low');
+
   return {
     ml_frost_risk: frostRisk,
     ml_snow_risk: snowRisk,
@@ -148,6 +181,10 @@ function extractPredictionMetrics(rawCache) {
     heavy_rain_risk_pct: rainRisk,
     snow_risk_pct: snowRisk,
     hail_risk_pct: hailRisk,
+    max_risk_pct: maxRiskPct,
+    overall_risk_level: overallRiskLevel,
+    primary_phenomenon: primaryPhenomenon,
+    primary_phenomenon_label: primaryPhenomenonLabel,
     min_temp_c: tempMin,
     max_temp_c: tempMax,
     temperature_current: snapshot.temperature !== undefined ? snapshot.temperature : null,

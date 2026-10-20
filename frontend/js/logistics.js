@@ -165,6 +165,12 @@ function initLogisticsMap() {
     zoom: 10
   }).init();
 
+  setTimeout(() => {
+    if (logisticsMap && logisticsMap.map) {
+      logisticsMap.map.invalidateSize();
+    }
+  }, 250);
+
   // Agregar marcador del centro de distribución
   logisticsMap.addMarker(
     parseFloat(document.getElementById('dest-lat')?.value) || -10.6868,

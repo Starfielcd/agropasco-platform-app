@@ -171,7 +171,9 @@ async function apiRequest(endpoint, options = {}) {
       data.httpStatus = response.status;
     }
 
-    if (response.status === 401 || response.status === 403) {
+    // Solo 401 (No autenticado / token expirado) invalida la sesión y redirige a login.
+    // 403 (Acceso denegado a recurso específico) no debe destruir la sesión del usuario.
+    if (response.status === 401) {
       const isAuthEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register');
       if (!isAuthEndpoint) {
         clearMLClientCacheInternal();

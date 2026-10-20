@@ -469,10 +469,13 @@ async function loadRecentParcelAgentTasks() {
   try {
     const res = await api.getAgentParcelTasks(currentParcelId, 8);
     if (!res || !res.success || !Array.isArray(res.tasks) || res.tasks.length === 0) {
+      const msg = res?.error
+        ? `ℹ️ ${res.error}`
+        : 'No hay ejecuciones multiagente recientes para esta parcela. Haga clic en <strong>"Ejecutar Flujo de 5 Agentes"</strong> para iniciar.';
       tbody.innerHTML = `
         <tr>
           <td colspan="7" style="text-align: center; padding: 22px; color: #64748B;">
-            No hay ejecuciones multiagente recientes para esta parcela. Haga clic en <strong>"Ejecutar Flujo de 5 Agentes"</strong> para iniciar.
+            ${msg}
           </td>
         </tr>
       `;
@@ -878,7 +881,18 @@ async function loadPredictionHistoryAndMetrics(parcelId) {
 
   try {
     const res = await api.getPredictionHistory(parcelId, 15);
-    if (!res || !res.success) return;
+    if (!res || !res.success) {
+      if (res?.error && tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 20px; color: #64748B;">
+              ℹ️ ${res.error}
+            </td>
+          </tr>
+        `;
+      }
+      return;
+    }
 
     // Pintar métricas de exactitud
     const m = res.metrics || {};

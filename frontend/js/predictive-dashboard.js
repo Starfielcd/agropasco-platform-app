@@ -645,13 +645,16 @@ function renderParcelMap() {
       }
     );
 
-    // Capa de mapa topográfico con CartoDB Voyager (sin bloqueo 403 de OSM)
+    // Capa de mapa topográfico/calle autorizada sin API Key
     const streetLayer = L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      (typeof MapsConfig !== 'undefined' && MapsConfig.OSM_TILE_URL)
+        ? MapsConfig.OSM_TILE_URL
+        : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
       {
         maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '&copy; CartoDB &copy; OpenStreetMap'
+        attribution: (typeof MapsConfig !== 'undefined' && MapsConfig.OSM_ATTRIBUTION)
+          ? MapsConfig.OSM_ATTRIBUTION
+          : '&copy; Esri &copy; OpenStreetMap'
       }
     );
 

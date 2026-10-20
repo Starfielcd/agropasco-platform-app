@@ -881,11 +881,13 @@ function appendAssistantMessageBubble(data, container) {
 
     const chipsGrid = document.createElement('div');
     chipsGrid.className = 'chat-parcel-chips-grid';
+    chipsGrid.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;';
 
     const cu = data.context_used || {};
     if (cu.crop_type) {
       const cropChip = document.createElement('span');
       cropChip.className = 'chat-parcel-chip';
+      cropChip.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; font-size: 12px; font-weight: 600;';
       const varText = (cu.variety && cu.variety !== 'no_especificada') ? ` (${cu.variety})` : '';
       cropChip.textContent = `🥔 Cultivo: ${cu.crop_type}${varText}`;
       chipsGrid.appendChild(cropChip);
@@ -896,12 +898,14 @@ function appendAssistantMessageBubble(data, container) {
       : 'Etapa no especificada';
     const stageChip = document.createElement('span');
     stageChip.className = 'chat-parcel-chip';
+    stageChip.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; font-size: 12px; font-weight: 600;';
     stageChip.textContent = `🌱 Etapa: ${validStage}`;
     chipsGrid.appendChild(stageChip);
 
     if (cu.altitude_masl) {
       const altChip = document.createElement('span');
       altChip.className = 'chat-parcel-chip';
+      altChip.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; font-size: 12px; font-weight: 600;';
       const zoneText = cu.approximate_zone ? ` · ${cu.approximate_zone}` : '';
       altChip.textContent = `⛰️ Altitud: ${cu.altitude_masl} msnm${zoneText}`;
       chipsGrid.appendChild(altChip);
@@ -912,24 +916,27 @@ function appendAssistantMessageBubble(data, container) {
   }
 
   // 2. Banner de estado meteorológico y nivel de riesgo respaldado (Unificado con Monitoreo ML)
-  let weatherRiskPct = null;
-  let weatherTempMin = null;
   const metrics = data.weather_metrics || data.context_used?.metrics;
-  if (metrics) {
-    if (typeof metrics.frost_risk_pct === 'number') {
-      weatherRiskPct = metrics.frost_risk_pct;
-    }
-    if (typeof metrics.min_temp_c === 'number') {
-      weatherTempMin = metrics.min_temp_c;
-    }
-  }
+  const frostPct = typeof metrics?.frost_risk_pct === 'number' ? metrics.frost_risk_pct : null;
+  const snowPct = typeof metrics?.snow_risk_pct === 'number' ? metrics.snow_risk_pct : null;
+  const rainPct = typeof metrics?.heavy_rain_risk_pct === 'number' ? metrics.heavy_rain_risk_pct : null;
+  const hailPct = typeof metrics?.hail_risk_pct === 'number' ? metrics.hail_risk_pct : null;
+  const weatherTempMin = typeof metrics?.min_temp_c === 'number' ? metrics.min_temp_c : null;
+
+  const activeRisks = [
+    { key: 'snow', icon: '🌨️', label: 'Nevada', pct: snowPct },
+    { key: 'frost', icon: '❄️', label: 'Helada', pct: frostPct },
+    { key: 'heavy_rain', icon: '🌧️', label: 'Lluvia Fuerte', pct: rainPct },
+    { key: 'hail', icon: '🌩️', label: 'Granizada', pct: hailPct }
+  ].filter(r => r.pct !== null && !isNaN(r.pct)).sort((a, b) => b.pct - a.pct);
+
+  const dominantRisk = activeRisks.length > 0 ? activeRisks[0] : null;
+  let weatherRiskPct = dominantRisk ? dominantRisk.pct : null;
+
   if (weatherRiskPct === null && Array.isArray(data.tool_executions) && data.tool_executions.length > 0) {
     const execWeather = data.tool_executions[0]?.result?.weather;
     if (execWeather && typeof execWeather.frost_risk_pct === 'number') {
       weatherRiskPct = execWeather.frost_risk_pct;
-    }
-    if (execWeather && typeof execWeather.temp_min_c === 'number') {
-      weatherTempMin = execWeather.temp_min_c;
     }
   }
 
@@ -951,22 +958,27 @@ function appendAssistantMessageBubble(data, container) {
     textDiv.appendChild(strongEl);
     textDiv.appendChild(textSpan);
 
-    if (weatherRiskPct !== null) {
-      const riskBadge = document.createElement('div');
-      riskBadge.style.marginTop = '6px';
-      const badgeSpan = document.createElement('span');
-      if (weatherRiskPct >= 60) {
-        badgeSpan.className = 'chat-risk-badge risk-high';
-        badgeSpan.textContent = `🚨 Riesgo Alto de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
-      } else if (weatherRiskPct >= 30) {
-        badgeSpan.className = 'chat-risk-badge risk-moderate';
-        badgeSpan.textContent = `⚠️ Riesgo Moderado de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
-      } else {
-        badgeSpan.className = 'chat-risk-badge risk-low';
-        badgeSpan.textContent = `🛡️ Riesgo Bajo de Helada: ${weatherRiskPct}%${weatherTempMin !== null ? ' · Mín: ' + weatherTempMin + '°C' : ''}`;
+    if (activeRisks.length > 0) {
+      const riskContainer = document.createElement('div');
+      riskContainer.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;';
+
+      activeRisks.forEach(r => {
+        const badgeSpan = document.createElement('span');
+        const badgeClass = r.pct >= 60 ? 'chat-risk-badge risk-high' : r.pct >= 30 ? 'chat-risk-badge risk-moderate' : 'chat-risk-badge risk-low';
+        badgeSpan.className = badgeClass;
+        badgeSpan.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700;';
+        const tempInfo = (r.key === 'frost' || r.key === 'snow') && weatherTempMin !== null ? ` · Mín: ${weatherTempMin}°C` : '';
+        badgeSpan.textContent = `${r.icon} Riesgo de ${r.label}: ${r.pct}%${tempInfo}`;
+        riskContainer.appendChild(badgeSpan);
+      });
+      textDiv.appendChild(riskContainer);
+
+      if (snowPct && snowPct >= 30 && (rainPct === 0 || rainPct === null)) {
+        const noteDiv = document.createElement('div');
+        noteDiv.style.cssText = 'font-size: 11.5px; color: #1E293B; margin-top: 6px; padding: 6px 10px; background: rgba(59, 130, 246, 0.08); border-radius: 6px; border-left: 3px solid #3B82F6;';
+        noteDiv.textContent = 'ℹ️ Nota física: En pisos de puna/altitud alta (>3800 msnm) y temperaturas cercanas a 0°C, la precipitación ocurre como nevada sólida, por lo que la probabilidad de lluvia líquida es 0% mientras que el riesgo de nevada es significativo.';
+        textDiv.appendChild(noteDiv);
       }
-      riskBadge.appendChild(badgeSpan);
-      textDiv.appendChild(riskBadge);
     }
 
     weatherNotice.appendChild(iconSpan);
@@ -1133,19 +1145,25 @@ function appendAssistantMessageBubble(data, container) {
 
   // Resumen ejecutivo rápido en español claro para agricultores
   const summaryBox = document.createElement('div');
-  summaryBox.style.cssText = 'background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.4;';
+  summaryBox.style.cssText = 'background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; font-size: 13px; line-height: 1.5;';
   
-  const riskTitle = weatherRiskPct !== null
-    ? (weatherRiskPct >= 60 ? '🚨 Riesgo Alto' : weatherRiskPct >= 30 ? '⚠️ Riesgo Moderado' : '🟢 Riesgo Bajo')
-    : 'ℹ️ Orientación General';
+  const riskTitle = dominantRisk
+    ? (dominantRisk.pct >= 60
+        ? `🚨 Riesgo Alto (${dominantRisk.label}: ${dominantRisk.pct}%)`
+        : dominantRisk.pct >= 30
+        ? `⚠️ Riesgo Moderado (${dominantRisk.label}: ${dominantRisk.pct}%)`
+        : `🟢 Riesgo Bajo (${dominantRisk.label}: ${dominantRisk.pct}%)`)
+    : (weatherRiskPct !== null
+        ? (weatherRiskPct >= 60 ? '🚨 Riesgo Alto' : weatherRiskPct >= 30 ? '⚠️ Riesgo Moderado' : '🟢 Riesgo Bajo')
+        : 'ℹ️ Orientación General');
   
   const summaryTitleDiv = document.createElement('div');
-  summaryTitleDiv.style.cssText = 'font-weight: 700; color: #1E293B; margin-bottom: 4px;';
+  summaryTitleDiv.style.cssText = 'font-weight: 700; color: #1E293B; margin-bottom: 6px; font-size: 13.5px;';
   summaryTitleDiv.textContent = `⚡ Resumen Rápido: ${riskTitle}`;
   summaryBox.appendChild(summaryTitleDiv);
 
   const actionDiv = document.createElement('div');
-  actionDiv.style.cssText = 'color: #475569; font-size: 12.5px;';
+  actionDiv.style.cssText = 'color: #334155; font-size: 13px; line-height: 1.45;';
   const actionStrong = document.createElement('strong');
   actionStrong.textContent = '🚜 Acción prioritaria: ';
   actionDiv.appendChild(actionStrong);
@@ -1158,19 +1176,60 @@ function appendAssistantMessageBubble(data, container) {
   // Sección desplegable para justificación y detalles técnicos completos
   const detailsEl = document.createElement('details');
   detailsEl.open = true; // Abierto por defecto para accesibilidad inmediata
-  detailsEl.style.cssText = 'margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;';
+  detailsEl.style.cssText = 'margin-top: 10px; border-top: 1px solid var(--border-color, #E2E8F0); padding-top: 10px;';
   
   const summaryToggle = document.createElement('summary');
-  summaryToggle.style.cssText = 'cursor: pointer; font-weight: 700; font-size: 12.5px; color: var(--primary-color); margin-bottom: 8px;';
+  summaryToggle.style.cssText = 'cursor: pointer; font-weight: 700; font-size: 13px; color: var(--primary-color, #16A34A); margin-bottom: 10px; user-select: none;';
   summaryToggle.textContent = '📖 Ver explicación agronómica y detalles completos';
   detailsEl.appendChild(summaryToggle);
 
   const fullContentDiv = document.createElement('div');
+  fullContentDiv.style.cssText = 'font-size: 13.5px; color: #1E293B; line-height: 1.6;';
+
+  let currentList = null;
+  let currentListType = null;
+
   lines.forEach((line) => {
-    const p = document.createElement('p');
-    p.textContent = line; // Protección anti-XSS estricta
-    fullContentDiv.appendChild(p);
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    // Detectar elementos de lista numerada: "1. Texto" o "1) Texto"
+    const orderedMatch = trimmed.match(/^(\d+)[\.\)]\s*(.+)$/);
+    // Detectar viñetas: "- Texto" o "* Texto" o "• Texto"
+    const unorderedMatch = trimmed.match(/^[\*\-•]\s*(.+)$/);
+
+    if (orderedMatch) {
+      if (!currentList || currentListType !== 'ol') {
+        currentList = document.createElement('ol');
+        currentList.style.cssText = 'margin: 8px 0 12px; padding-left: 24px; display: flex; flex-direction: column; gap: 6px;';
+        currentListType = 'ol';
+        fullContentDiv.appendChild(currentList);
+      }
+      const li = document.createElement('li');
+      li.style.cssText = 'color: #334155; line-height: 1.55;';
+      li.textContent = orderedMatch[2];
+      currentList.appendChild(li);
+    } else if (unorderedMatch) {
+      if (!currentList || currentListType !== 'ul') {
+        currentList = document.createElement('ul');
+        currentList.style.cssText = 'margin: 8px 0 12px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px;';
+        currentListType = 'ul';
+        fullContentDiv.appendChild(currentList);
+      }
+      const li = document.createElement('li');
+      li.style.cssText = 'color: #334155; line-height: 1.55;';
+      li.textContent = unorderedMatch[1];
+      currentList.appendChild(li);
+    } else {
+      currentList = null;
+      currentListType = null;
+      const p = document.createElement('p');
+      p.style.cssText = 'margin: 0 0 10px; color: #334155;';
+      p.textContent = trimmed;
+      fullContentDiv.appendChild(p);
+    }
   });
+
   detailsEl.appendChild(fullContentDiv);
   replyBody.appendChild(detailsEl);
 
@@ -1181,55 +1240,51 @@ function appendAssistantMessageBubble(data, container) {
   if (Array.isArray(data.warnings) && data.warnings.length > 0) {
     const warningsBox = document.createElement('div');
     warningsBox.className = 'chat-warnings-container';
+    warningsBox.style.cssText = 'margin-top: 12px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 8px; padding: 12px 16px;';
 
     const title = document.createElement('div');
     title.className = 'chat-warnings-title';
+    title.style.cssText = 'font-weight: 700; color: #92400E; font-size: 13px; margin-bottom: 6px;';
     title.textContent = '⚠️ Advertencias Agronómicas:';
     warningsBox.appendChild(title);
 
     const ul = document.createElement('ul');
     ul.className = 'chat-warnings-list';
+    ul.style.cssText = 'margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px;';
     data.warnings.forEach(w => {
       const li = document.createElement('li');
       li.className = 'chat-warning-item';
-      const iconSpan = document.createElement('span');
-      iconSpan.className = 'chat-warning-icon';
-      iconSpan.textContent = '⚠️';
-      const textSpan = document.createElement('span');
-      textSpan.textContent = w;
-      li.appendChild(iconSpan);
-      li.appendChild(textSpan);
+      li.style.cssText = 'font-size: 12.5px; color: #78350F; line-height: 1.45;';
+      li.textContent = w;
       ul.appendChild(li);
     });
     warningsBox.appendChild(ul);
     bubble.appendChild(warningsBox);
   }
 
-  // 5. Acciones sugeridas (suggested_actions)
+  // 5. Acciones sugeridas semánticas (suggested_actions)
   if (Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0) {
     const actionsBox = document.createElement('div');
     actionsBox.className = 'chat-actions-container';
+    actionsBox.style.cssText = 'margin-top: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 16px;';
 
     const title = document.createElement('div');
     title.className = 'chat-actions-title';
+    title.style.cssText = 'font-weight: 700; color: #166534; font-size: 13px; margin-bottom: 6px;';
     title.textContent = '✅ Acciones Recomendadas:';
     actionsBox.appendChild(title);
 
-    const ul = document.createElement('ul');
-    ul.className = 'chat-actions-list';
-    data.suggested_actions.forEach((act, idx) => {
+    const ol = document.createElement('ol');
+    ol.className = 'chat-actions-list';
+    ol.style.cssText = 'margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px;';
+    data.suggested_actions.forEach((act) => {
       const li = document.createElement('li');
       li.className = 'chat-action-item';
-      const numSpan = document.createElement('span');
-      numSpan.className = 'chat-action-num';
-      numSpan.textContent = String(idx + 1);
-      const textSpan = document.createElement('span');
-      textSpan.textContent = act;
-      li.appendChild(numSpan);
-      li.appendChild(textSpan);
-      ul.appendChild(li);
+      li.style.cssText = 'font-size: 13px; color: #14532D; line-height: 1.5;';
+      li.textContent = act;
+      ol.appendChild(li);
     });
-    actionsBox.appendChild(ul);
+    actionsBox.appendChild(ol);
     bubble.appendChild(actionsBox);
   }
 

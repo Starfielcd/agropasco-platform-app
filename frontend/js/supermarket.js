@@ -15,6 +15,34 @@ function safePhotoUrl(url) {
   return null;
 }
 
+/**
+ * Formatea profesionalmente la identidad y rol del asesor validador según datos reales
+ * Respeta el requerimiento de no inventar títulos ('Ing.') salvo que vengan en los datos
+ */
+function formatProductValidator(prod) {
+  if (!prod || prod.validation_status !== 'approved') {
+    return 'Pendiente de validación técnica';
+  }
+
+  const rawName = (prod.validator_name || '').trim();
+  if (!rawName) {
+    return 'Validado por Asesor Técnico Autorizado';
+  }
+
+  // Título profesional: únicamente si viene verificado en los datos (ej: "Ing. Carlos Mendoza")
+  const hasIng = /^Ing[\.\s]/i.test(rawName);
+  const nameFormatted = hasIng ? rawName : rawName;
+  const prefix = hasIng ? 'Validado por el ' : 'Validado por: ';
+
+  // Cargo o función institucional verificable
+  const role = prod.validator_role || 'advisor';
+  const roleLabel = (role === 'advisor' || role === 'asesor')
+    ? 'Asesor técnico validador'
+    : (role === 'admin' ? 'Administrador del sistema' : 'Especialista Agrónomo');
+
+  return `${prefix}${nameFormatted} — ${roleLabel}`;
+}
+
 // Visor interactivo en pantalla completa con zoom y pan para fotografías reales
 function showFullImageViewer(imgUrl, title = 'Fotografía de Campo en Alta Resolución') {
   if (!imgUrl) return;
@@ -267,13 +295,11 @@ async function renderSupermarketPage() {
                     ${prod.description || 'Producto agrícola cultivado en los valles andinos de Pasco bajo buenas prácticas agrícolas e inspección técnica.'}
                   </p>
 
-                  <!-- Validación del Asesor Técnico -->
+                  <!-- Validación del Asesor Técnico con Identidad Real -->
                   <div class="product-card-validation">
-                    <span class="product-card-validation-label">
-                      ✅ Validado por Asesor
-                    </span>
-                    <span class="product-card-validation-badge">
-                      ${prod.validator_name ? prod.validator_name : 'Ing. Asesor Certificado'}
+                    <span class="product-card-validation-badge" style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: #166534; background: #DCFCE7; border: 1px solid #BBF7D0; border-radius: 6px; padding: 4px 8px; line-height: 1.35;">
+                      <span>✅</span>
+                      <span>${formatProductValidator(prod)}</span>
                     </span>
                   </div>
 
@@ -466,7 +492,7 @@ async function showProductDetailModal(productId) {
           <span>👨‍🔬</span> Dictamen de Validación Técnica
         </div>
         <div style="font-size: 13px; line-height: 1.5; margin-bottom: 10px;">
-          <div><strong>Asesor Inspector:</strong> ${prod.validator_name || 'Ing. Agrónomo Asesor Técnico'}</div>
+          <div><strong>Dictamen Técnico:</strong> ${formatProductValidator(prod)}</div>
           ${prod.validated_at ? `<div><span class="text-muted">Fecha de Inspección:</span> ${new Date(prod.validated_at).toLocaleString('es-PE')}</div>` : ''}
           <div style="margin-top: 6px; padding: 8px; background: var(--bg-card); border-radius: 6px; font-style: italic;">
             "${prod.validation_notes || (isNatural ? 'Producto 100% natural, sin presencia de pesticidas químicos ni aceleradores hormonales. Certificado para supermercado con incremento del 30%.' : 'Producto verificado cumpliendo estándares de sanidad vegetal convencional.')}"
@@ -1607,7 +1633,7 @@ async function renderFarmerSalesPage() {
                 ${p.validation_notes ? `
                   <div style="padding: 10px; background: var(--bg-glass); border-radius: 6px; font-size: 12px; border-left: 3px solid var(--${statusColors[p.validation_status] || 'amber'}-400);">
                     <strong>Dictamen del Asesor:</strong> ${p.validation_notes}
-                    ${p.validator_name ? `<span class="text-muted"> (por ${p.validator_name})</span>` : ''}
+                    ${p.validator_name ? `<div style="margin-top: 4px; font-weight: 600; color: #166534;">${formatProductValidator(p)}</div>` : ''}
                   </div>
                 ` : ''}
 
@@ -2295,7 +2321,7 @@ async function viewProductTrace(productId) {
 
       <!-- Dictamen del Asesor -->
       <div style="padding: 12px; background: rgba(16,185,129,0.08); border-radius: 8px; border-left: 4px solid var(--green-500); margin-bottom: 16px; font-size: 13px;">
-        <strong>Validación Técnica:</strong> ${trace.validator ? trace.validator.name : 'Asesor Certificado AgroPasco'}<br>
+        <strong>Validación Técnica:</strong> ${trace.validator ? formatProductValidator({ validator_name: trace.validator.name, validator_role: trace.validator.role, validation_status: 'approved' }) : 'Pendiente de validación técnica'}<br>
         <span class="text-muted">${trace.product.validation_notes || 'Validado conforme a la normativa de sanidad agraria.'}</span>
       </div>
 

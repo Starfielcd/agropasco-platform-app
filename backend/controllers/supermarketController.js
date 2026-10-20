@@ -10,7 +10,7 @@ async function getProducts(req, res) {
     const { quality, crop_type, available, search } = req.query;
 
     let sql = `SELECT p.*, u.name as farmer_name, u.location as farmer_location, u.phone as farmer_phone,
-                      val.name as validator_name
+                      val.name as validator_name, val.role as validator_role
                FROM products p
                LEFT JOIN users u ON p.farmer_id = u.id
                LEFT JOIN users val ON p.validated_by = val.id
@@ -51,7 +51,7 @@ async function getProduct(req, res) {
   try {
     const product = await dbGet(
       `SELECT p.*, u.name as farmer_name, u.location as farmer_location, u.phone as farmer_phone,
-              val.name as validator_name
+              val.name as validator_name, val.role as validator_role
        FROM products p
        LEFT JOIN users u ON p.farmer_id = u.id
        LEFT JOIN users val ON p.validated_by = val.id
@@ -122,7 +122,7 @@ async function getProductTrace(req, res) {
       : null;
 
     const validator = product.validated_by
-      ? await dbGet('SELECT name FROM users WHERE id = ?', [product.validated_by])
+      ? await dbGet('SELECT id, name, role FROM users WHERE id = ?', [product.validated_by])
       : null;
 
     res.json({

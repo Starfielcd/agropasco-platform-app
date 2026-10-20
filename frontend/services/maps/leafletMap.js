@@ -48,10 +48,23 @@ class AgroMap {
       attributionControl: true
     });
 
-    // Capa base: OpenStreetMap
+    // Capa base: Mapa Callejero / Topográfico (Esri / OSM)
     const osmLayer = L.tileLayer(MapsConfig.OSM_TILE_URL, {
       attribution: MapsConfig.OSM_ATTRIBUTION,
       maxZoom: MapsConfig.MAX_ZOOM
+    });
+
+    osmLayer.on('tileerror', function(error) {
+      if (MapsConfig.OSM_FALLBACK_URL && error?.tile && !error.tile._fallbackApplied) {
+        error.tile._fallbackApplied = true;
+        const coords = error.coords;
+        if (coords) {
+          error.tile.src = MapsConfig.OSM_FALLBACK_URL
+            .replace('{z}', coords.z)
+            .replace('{x}', coords.x)
+            .replace('{y}', coords.y);
+        }
+      }
     });
 
     // Capa satelital: Esri World Imagery
