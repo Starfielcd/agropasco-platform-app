@@ -238,6 +238,18 @@ async function createParcel(req, res) {
       [result.lastID]
     );
 
+    // Pre-calentamiento asíncrono no bloqueante de la predicción ML/meteorológica para la nueva parcela
+    if (parcel) {
+      setImmediate(async () => {
+        try {
+          const mlService = require('../services/mlService');
+          await mlService.getPredictionForParcel(parcel);
+        } catch (prewarmErr) {
+          console.warn(`[PARCEL_PREWARM_WARN] Pre-warm para parcela ${parcel.id}:`, prewarmErr.message);
+        }
+      });
+    }
+
     res.status(201).json({ success: true, message: 'Parcela registrada exitosamente.', data: parcel });
   } catch (err) {
     console.error('Error al crear parcela:', err);

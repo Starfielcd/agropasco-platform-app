@@ -466,7 +466,7 @@ function renderExistingGuidesSection({ tips, calendars, guide }) {
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <div style="padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--blue-400); border-radius: 6px;">
             <strong style="color: var(--blue-400); font-size: 13.5px;">🥶 Protocolo Helada:</strong>
-            <div class="text-sm text-muted mt-sm">Activa el riego por aspersión a las 4 AM o enciende humo en los bordes del campo.</div>
+            <div class="text-sm text-muted mt-sm">Manejo térmico pasivo con mantas térmicas agrotéxtiles y barreras cortaviento. Riego por aspersión condicionado a heladas de radiación (cielo despejado, viento &lt;5 km/h y suministro continuo garantizado). Prohibido encender fogatas o quemas a campo abierto (Ley Forestal N° 29763).</div>
           </div>
           <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border-left: 4px solid var(--amber-400); border-radius: 6px;">
             <strong style="color: var(--amber-400); font-size: 13.5px;">☀️ Protocolo Radiación UV:</strong>
@@ -911,10 +911,19 @@ function appendAssistantMessageBubble(data, container) {
     bubble.appendChild(parcelCard);
   }
 
-  // 2. Banner de estado meteorológico y nivel de riesgo respaldado
+  // 2. Banner de estado meteorológico y nivel de riesgo respaldado (Unificado con Monitoreo ML)
   let weatherRiskPct = null;
   let weatherTempMin = null;
-  if (Array.isArray(data.tool_executions) && data.tool_executions.length > 0) {
+  const metrics = data.weather_metrics || data.context_used?.metrics;
+  if (metrics) {
+    if (typeof metrics.frost_risk_pct === 'number') {
+      weatherRiskPct = metrics.frost_risk_pct;
+    }
+    if (typeof metrics.min_temp_c === 'number') {
+      weatherTempMin = metrics.min_temp_c;
+    }
+  }
+  if (weatherRiskPct === null && Array.isArray(data.tool_executions) && data.tool_executions.length > 0) {
     const execWeather = data.tool_executions[0]?.result?.weather;
     if (execWeather && typeof execWeather.frost_risk_pct === 'number') {
       weatherRiskPct = execWeather.frost_risk_pct;
@@ -923,6 +932,10 @@ function appendAssistantMessageBubble(data, container) {
       weatherTempMin = execWeather.temp_min_c;
     }
   }
+
+  const weatherSourceLabel = data.weather_source === 'ml_trained'
+    ? 'Motor ML Nativo AgroPasco + Open-Meteo'
+    : (data.weather_source === 'cache_stale' ? 'Caché previa de respaldo' : 'Open-Meteo');
 
   if (data.weather_status === 'fresh') {
     const weatherNotice = document.createElement('div');
@@ -934,7 +947,7 @@ function appendAssistantMessageBubble(data, container) {
     const strongEl = document.createElement('strong');
     strongEl.textContent = 'Pronóstico vigente: ';
     const textSpan = document.createElement('span');
-    textSpan.textContent = 'disponible y dentro de su periodo de validez.';
+    textSpan.textContent = `disponible y dentro de su periodo de validez (${weatherSourceLabel}).`;
     textDiv.appendChild(strongEl);
     textDiv.appendChild(textSpan);
 
@@ -991,7 +1004,7 @@ function appendAssistantMessageBubble(data, container) {
     riskBadge.style.marginTop = '6px';
     const badgeSpan = document.createElement('span');
     badgeSpan.className = 'chat-risk-badge risk-none';
-    badgeSpan.textContent = 'ℹ️ Sin telemetría de helada disponible';
+    badgeSpan.textContent = 'ℹ️ Sin telemetría de helada ni pronóstico activo disponible (No requiere sensores físicos)';
     riskBadge.appendChild(badgeSpan);
     textDiv.appendChild(riskBadge);
 
@@ -1029,16 +1042,138 @@ function appendAssistantMessageBubble(data, container) {
   replyHeader.appendChild(headerText);
   replyCard.appendChild(replyHeader);
 
+  // Audio Toolbar con Web Speech API en navegador
+  if ('speechSynthesis' in window) {
+    const speechBar = document.createElement('div');
+    speechBar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 6px 14px; background: rgba(99, 102, 241, 0.06); border-bottom: 1px solid var(--border-color); flex-wrap: wrap;';
+    
+    const btnPlay = document.createElement('button');
+    btnPlay.type = 'button';
+    btnPlay.className = 'btn btn-secondary btn-sm';
+    btnPlay.innerHTML = '🔊 Escuchar respuesta';
+    btnPlay.style.fontSize = '11.5px';
+
+    const btnPause = document.createElement('button');
+    btnPause.type = 'button';
+    btnPause.className = 'btn btn-secondary btn-sm';
+    btnPause.innerHTML = '⏸️ Pausar';
+    btnPause.style.cssText = 'display: none; font-size: 11.5px;';
+
+    const btnResume = document.createElement('button');
+    btnResume.type = 'button';
+    btnResume.className = 'btn btn-secondary btn-sm';
+    btnResume.innerHTML = '▶️ Reanudar';
+    btnResume.style.cssText = 'display: none; font-size: 11.5px;';
+
+    const btnStop = document.createElement('button');
+    btnStop.type = 'button';
+    btnStop.className = 'btn btn-outline-danger btn-sm';
+    btnStop.innerHTML = '⏹️ Detener';
+    btnStop.style.cssText = 'display: none; font-size: 11.5px;';
+
+    btnPlay.onclick = () => {
+      window.speechSynthesis.cancel();
+      const speakText = (data.reply || '').replace(/\[CITA-[^\]]+\]/g, '').replace(/[*#_`]/g, '');
+      const utter = new SpeechSynthesisUtterance(speakText);
+      utter.lang = 'es-PE';
+      utter.rate = 0.95;
+      const voices = window.speechSynthesis.getVoices();
+      const esVoice = voices.find(v => v.lang.startsWith('es-PE')) || voices.find(v => v.lang.startsWith('es'));
+      if (esVoice) utter.voice = esVoice;
+
+      utter.onstart = () => {
+        btnPlay.style.display = 'none';
+        btnPause.style.display = 'inline-flex';
+        btnResume.style.display = 'none';
+        btnStop.style.display = 'inline-flex';
+      };
+      utter.onend = utter.onerror = () => {
+        btnPlay.style.display = 'inline-flex';
+        btnPause.style.display = 'none';
+        btnResume.style.display = 'none';
+        btnStop.style.display = 'none';
+      };
+      window.speechSynthesis.speak(utter);
+    };
+
+    btnPause.onclick = () => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        btnPause.style.display = 'none';
+        btnResume.style.display = 'inline-flex';
+      }
+    };
+
+    btnResume.onclick = () => {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        btnResume.style.display = 'none';
+        btnPause.style.display = 'inline-flex';
+      }
+    };
+
+    btnStop.onclick = () => {
+      window.speechSynthesis.cancel();
+      btnPlay.style.display = 'inline-flex';
+      btnPause.style.display = 'none';
+      btnResume.style.display = 'none';
+      btnStop.style.display = 'none';
+    };
+
+    speechBar.appendChild(btnPlay);
+    speechBar.appendChild(btnPause);
+    speechBar.appendChild(btnResume);
+    speechBar.appendChild(btnStop);
+    replyCard.appendChild(speechBar);
+  }
+
   const replyBody = document.createElement('div');
   replyBody.className = 'chat-reply-card-body';
-  const lines = (data.reply || '').split('\n');
+  const lines = (data.reply || '').split('\n').filter(l => l.trim().length > 0);
+
+  // Resumen ejecutivo rápido en español claro para agricultores
+  const summaryBox = document.createElement('div');
+  summaryBox.style.cssText = 'background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.4;';
+  
+  const riskTitle = weatherRiskPct !== null
+    ? (weatherRiskPct >= 60 ? '🚨 Riesgo Alto' : weatherRiskPct >= 30 ? '⚠️ Riesgo Moderado' : '🟢 Riesgo Bajo')
+    : 'ℹ️ Orientación General';
+  
+  const summaryTitleDiv = document.createElement('div');
+  summaryTitleDiv.style.cssText = 'font-weight: 700; color: #1E293B; margin-bottom: 4px;';
+  summaryTitleDiv.textContent = `⚡ Resumen Rápido: ${riskTitle}`;
+  summaryBox.appendChild(summaryTitleDiv);
+
+  const actionDiv = document.createElement('div');
+  actionDiv.style.cssText = 'color: #475569; font-size: 12.5px;';
+  const actionStrong = document.createElement('strong');
+  actionStrong.textContent = '🚜 Acción prioritaria: ';
+  actionDiv.appendChild(actionStrong);
+  const actionSpan = document.createElement('span');
+  actionSpan.textContent = lines[0] || 'Seguir recomendaciones de manejo técnico preventivo.';
+  actionDiv.appendChild(actionSpan);
+  summaryBox.appendChild(actionDiv);
+  replyBody.appendChild(summaryBox);
+
+  // Sección desplegable para justificación y detalles técnicos completos
+  const detailsEl = document.createElement('details');
+  detailsEl.open = true; // Abierto por defecto para accesibilidad inmediata
+  detailsEl.style.cssText = 'margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;';
+  
+  const summaryToggle = document.createElement('summary');
+  summaryToggle.style.cssText = 'cursor: pointer; font-weight: 700; font-size: 12.5px; color: var(--primary-color); margin-bottom: 8px;';
+  summaryToggle.textContent = '📖 Ver explicación agronómica y detalles completos';
+  detailsEl.appendChild(summaryToggle);
+
+  const fullContentDiv = document.createElement('div');
   lines.forEach((line) => {
-    if (line.trim() !== '') {
-      const p = document.createElement('p');
-      p.textContent = line; // Protección anti-XSS estricta
-      replyBody.appendChild(p);
-    }
+    const p = document.createElement('p');
+    p.textContent = line; // Protección anti-XSS estricta
+    fullContentDiv.appendChild(p);
   });
+  detailsEl.appendChild(fullContentDiv);
+  replyBody.appendChild(detailsEl);
+
   replyCard.appendChild(replyBody);
   bubble.appendChild(replyCard);
 

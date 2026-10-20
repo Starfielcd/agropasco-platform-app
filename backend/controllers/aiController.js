@@ -437,13 +437,18 @@ DIRECTIVAS ESTRICTAS DE SEGURIDAD Y PRECISIÓN:
         parcel_id: contextResult.parcel_id,
         weather_status: contextResult.weather_status,
         data_adequacy: contextResult.data_adequacy,
+        weather_metrics: contextResult.weather_metrics || null,
+        weather_source: contextResult.weather_source || null,
+        forecast_issued_at: contextResult.forecast_issued_at || null,
+        confidence_level: contextResult.confidence_level || null,
         context_used: {
-          crop_type: contextResult.llm_context.crop_type,
-          variety: contextResult.llm_context.variety,
-          phenological_stage: contextResult.llm_context.phenological_stage,
-          altitude_masl: contextResult.llm_context.altitude_masl,
-          approximate_zone: contextResult.llm_context.approximate_zone,
-          is_stale: contextResult.llm_context.is_stale
+          crop_type: contextResult.llm_context?.crop_type,
+          variety: contextResult.llm_context?.variety,
+          phenological_stage: contextResult.llm_context?.phenological_stage,
+          altitude_masl: contextResult.llm_context?.altitude_masl,
+          approximate_zone: contextResult.llm_context?.approximate_zone,
+          is_stale: contextResult.llm_context?.is_stale,
+          metrics: contextResult.weather_metrics || null
         },
         evidence_status: evidenceStatus,
         references

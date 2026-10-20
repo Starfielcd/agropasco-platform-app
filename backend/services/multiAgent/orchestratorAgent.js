@@ -304,7 +304,7 @@ class OrchestratorAgent {
         avg_execution_ms: Math.round(Number(stats.avg_duration_ms || 0)),
         success_rate_pct: stats.total_tasks > 0 
           ? Number(((Number(stats.completed_count || 0) / Number(stats.total_tasks)) * 100).toFixed(1))
-          : 100,
+          : null,
       },
     };
   }

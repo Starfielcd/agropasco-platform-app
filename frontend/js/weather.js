@@ -15,10 +15,10 @@ const EMERGENCY_PROTOCOLS = {
     btn_type: 'helada',
     btn_label: '🚨 Ejecutar Protocolo Anti-Helada Ahora',
     steps: [
-      { id: 0, title: 'Encender Riego por Aspersión a las 4 AM', img: FIELD_IMAGES.riego_aspersion, desc: 'Aplica agua sobre el cultivo antes del alba. Al congelarse el agua sobre la hoja, libera calor latente y protege las células vegetativas.' },
-      { id: 1, title: 'Colocar Cobertura Térmica o Paja Seca', img: FIELD_IMAGES.mantas_termicas, desc: 'Cubre los surcos de papa o maca con agrotela, plástico agrícola o paja seca al atardecer para evitar la fuga de calor del suelo.' },
-      { id: 2, title: 'Encender Fogatas de Humo en Bordes', img: FIELD_IMAGES.fogatas_humo, desc: 'Enciende paja húmeda en los bordes del terreno a las 4 AM. La manta de humo evita la radiación nocturna del suelo hacia el espacio.' },
-      { id: 3, title: 'Fumigación Foliar de Bioestimulantes', img: FIELD_IMAGES.bioestimulantes, desc: 'Al salir el sol tras la helada, fumiga aminoácidos y fósforo soluble para regenerar y reactivar el metabolismo de la planta.' }
+      { id: 0, title: 'Riego por Aspersión Condicionado (Solo Heladas de Radiación)', img: FIELD_IMAGES.riego_aspersion, desc: 'Aplicar riego solo si el cielo está despejado y el viento es menor a 5 km/h, con suministro hídrico garantizado y continuo hasta el deshielo matutino. Contraindicado con viento fuerte o agua intermitente por riesgo de congelación severa.' },
+      { id: 1, title: 'Colocar Cobertura Térmica o Mulch de Paja Seca', img: FIELD_IMAGES.mantas_termicas, desc: 'Cubre los surcos de papa o maca con agrotela térmica, microtúneles o paja seca al atardecer para reducir la pérdida de calor por radiación nocturna del suelo.' },
+      { id: 2, title: 'Manejo Térmico Pasivo y Cortinas Cortaviento', img: FIELD_IMAGES.mantas_termicas, desc: 'Utilizar cortinas vivas cortaviento y zanjas de infiltración. NO realizar fogatas ni quemas a campo abierto (prohibidas por la Ley Forestal N° 29763 por riesgo crítico de incendios forestales y daño ambiental).' },
+      { id: 3, title: 'Bioestimulantes Foliares Post-Helada', img: FIELD_IMAGES.bioestimulantes, desc: 'Aplicar aminoácidos y potasio soluble únicamente después del deshielo, cuando las plantas hayan recuperado turgencia celular. Consultar previamente con el asesor técnico de la parcela.' }
     ]
   },
   radiacion: {
@@ -415,14 +415,14 @@ function openProtocolModal(scenarioKey) {
         }).join('')}
       </div>
 
-      <!-- Botón de Soporte Comunitario / Agencia Agraria -->
+      <!-- Botón de Coordinación Técnica y Soporte Agrícola -->
       <div class="support-call-card">
         <div>
-          <strong style="font-size: 14px; display: block; color: var(--text-primary);">📞 ¿Necesitas auxilio o maquinaria?</strong>
-          <span class="text-sm text-muted">Central de Riego y Agencia Agraria Pasco (Atención 24h)</span>
+          <strong style="font-size: 14px; display: block; color: var(--text-primary);">📞 ¿Requieres asistencia o coordinación técnica?</strong>
+          <span class="text-sm text-muted">Coordinación Agrícola y Soporte Técnico Pasco</span>
         </div>
-        <a href="tel:063421234" class="btn btn-primary btn-sm" style="font-weight: 800;">
-          📞 Llama al (063) 421234
+        <a href="tel:+51901387303" class="btn btn-primary btn-sm" style="font-weight: 800;">
+          📞 Contactar al +51 901387303
         </a>
       </div>
     </div>

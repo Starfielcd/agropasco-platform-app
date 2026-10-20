@@ -83,11 +83,11 @@ function getFrostProtection(cropType, stage, tempMin) {
   if (tempMin <= -3) {
     message = `⛔ HELADA SEVERA (${tempMin}°C). Su cultivo de ${cropType} en etapa de ${stage} tiene sensibilidad ${stageSens}. ACCIÓN INMEDIATA REQUERIDA.`;
     actions = [
-      'Activar riego por aspersión AHORA (el agua al congelarse libera calor)',
-      `Cubrir todo el campo de ${cropType} con plástico agrícola o paja gruesa`,
-      'Encender fogatas/humaredas en los bordes del campo',
+      'Activar riego por aspersión ligero solo si hay viento bajo (<5 km/h) y agua continua garantizada',
+      `Cubrir todo el campo de ${cropType} con agrotela térmica, microtúneles o paja gruesa`,
+      'Instalar barreras cortaviento y zanjas de amortiguamiento térmico (evitar fogatas por riesgo de incendios)',
       'Si tiene ventiladores agrícolas, activarlos para mover el aire frío',
-      'Revisar daños al amanecer y aplicar fungicida preventivo si hay daño foliar'
+      'Revisar daños al amanecer y aplicar bioestimulantes previa consulta técnica'
     ];
   } else if (tempMin <= 0) {
     message = `⚠️ Helada moderada esperada (${tempMin}°C). Cultivo de ${cropType} en ${stage}, sensibilidad: ${stageSens}.`;

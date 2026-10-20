@@ -98,15 +98,18 @@ function isForecastCompatibleWithMl(forecast) {
  */
 function checkAltitudeCompatibility(targetAlt, refAlt, maxDiff = MAX_COMPATIBLE_ALTITUDE_DIFF_METERS) {
   if (targetAlt === null || targetAlt === undefined || isNaN(Number(targetAlt))) {
-    return { compatible: true, diff: 0 };
+    return { compatible: true, diff: 0, lapseAdjust: 0 };
   }
   if (refAlt === null || refAlt === undefined || isNaN(Number(refAlt))) {
-    return { compatible: true, diff: 0 };
+    return { compatible: true, diff: 0, lapseAdjust: 0 };
   }
   const diff = Math.abs(Number(targetAlt) - Number(refAlt));
+  // Gradiente térmico vertical andino: -0.65 °C por cada 100 metros de elevación
+  const lapseAdjust = Math.round(((Number(targetAlt) - Number(refAlt)) / 100) * -0.65 * 10) / 10;
   return {
     compatible: diff <= maxDiff,
-    diff: Math.round(diff)
+    diff: Math.round(diff),
+    lapseAdjust
   };
 }
 
@@ -207,12 +210,12 @@ async function getSharedForecast(lat, lng, options = {}) {
   const targetAltitude = options.altitude !== undefined && options.altitude !== null && !isNaN(Number(options.altitude))
     ? Number(options.altitude)
     : null;
-  const maxElevationDiff = options.maxElevationDiff || MAX_COMPATIBLE_ALTITUDE_DIFF_METERS;
+  const allowStale = Boolean(options.allowStale);
+  const maxElevationDiff = options.maxElevationDiff || (allowStale ? 600 : MAX_COMPATIBLE_ALTITUDE_DIFF_METERS);
   const requireMl = Boolean(options.requireMlFeatures);
   const scope = options.scope || (requireMl ? 'ml_full' : 'standard');
 
   const ttlMs = options.customTtlMs || SHARED_WEATHER_CACHE_TTL_MS;
-  const allowStale = Boolean(options.allowStale);
   const now = Date.now();
 
   // Candidatas en orden de especificidad: 1) específica con altitud y scope, 2) específica solo con altitud, 3) base regional

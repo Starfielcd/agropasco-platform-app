@@ -33,7 +33,7 @@ async function renderDashboard() {
     ? (live.condition || weather.weather?.[0]?.description || 'Cielo despejado')
     : 'Información en sincronización';
   const alertCount = alerts.alerts?.length || 0;
-  const userName = user?.name ? user.name.split(' ')[0] : 'Agricultor';
+  const userName = user?.name ? user.name.trim() : (user?.username || 'Agricultor');
 
   return `
     <div class="page-content">

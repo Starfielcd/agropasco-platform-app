@@ -210,7 +210,7 @@ async function renderSupermarketPage() {
             const originalP = prod.original_price || (isNatural ? prod.price_per_kg / 1.30 : prod.price_per_kg);
             const photoSrc = safePhotoUrl(prod.photo_url);
             const originText = prod.origin || prod.farmer_location || 'Región Pasco';
-            const farmerText = prod.farmer_name || 'Carlos (Agricultor de Pasco)';
+            const farmerText = prod.farmer_name || 'Productor Registrado de Pasco';
             const searchIndex = `${prod.name} ${prod.crop_type} ${originText} ${farmerText} ${prod.quality || ''}`.toLowerCase();
 
             return `

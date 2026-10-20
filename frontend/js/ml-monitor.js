@@ -351,21 +351,28 @@ function renderParcelPredictionCard(parcelPred) {
       ? 'Servicio meteorológico con alta demanda temporal.'
       : (parcelPred.error || 'Servicio meteorológico temporalmente no disponible.');
     const friendlyDetails = isRateLimited
-      ? 'Estamos preparando la información meteorológica de esta parcela. El sistema se sincronizará automáticamente.'
+      ? 'Estamos preparando la información meteorológica de esta parcela. El sistema se sincronizará automáticamente o puede reintentar manualmente.'
       : 'Se reintentará la consulta en la próxima actualización programada.';
 
     return `
-      <div class="card" style="margin-bottom: 12px; border-left: 4px solid ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; opacity: 0.9;">
-        <div style="display: flex; align-items: flex-start; gap: 10px;">
-          <span style="font-size: 22px;">${isRateLimited ? '⏳' : '⚠️'}</span>
+      <div class="card" id="card-parcel-${parcelId}" style="margin-bottom: 12px; border-left: 4px solid ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; opacity: 0.95;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 22px;">${isRateLimited ? '⏳' : '⚠️'}</span>
+            <div>
+              <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
+              <div class="text-sm" style="color: ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; margin-top: 2px;">
+                ${friendlyError}
+              </div>
+              <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+                ${friendlyDetails}
+              </div>
+            </div>
+          </div>
           <div>
-            <div style="font-weight: 700; font-size: 15px;">${parcelName}</div>
-            <div class="text-sm" style="color: ${isRateLimited ? 'var(--amber-400)' : 'var(--red-400)'}; margin-top: 2px;">
-              ${friendlyError}
-            </div>
-            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
-              ${friendlyDetails}
-            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-retry-${parcelId}" onclick="retrySingleParcelPrediction(${parcelId}, this)" style="font-size: 11.5px; display: flex; align-items: center; gap: 4px;">
+              🔄 Reintentar ahora
+            </button>
           </div>
         </div>
       </div>
@@ -385,6 +392,18 @@ function renderParcelPredictionCard(parcelPred) {
 
   const riskMeta = ML_RISK_LEVELS[maxRisk] || ML_RISK_LEVELS.none;
 
+  // Resolución territorial administrativa verificable
+  const lat = pred?.latitude || parcelPred.center_lat;
+  const lng = pred?.longitude || parcelPred.center_lng;
+  const adminInfo = (window.PascoAdminGeo && lat && lng)
+    ? window.PascoAdminGeo.identifyProvinceDistrict(lat, lng, parcelName)
+    : null;
+  const provinceName = (adminInfo?.isVerified && adminInfo?.province)
+    ? adminInfo.province
+    : (adminInfo?.province && adminInfo.province !== 'Ubicación por verificar' ? adminInfo.province : 'Ubicación por verificar');
+  const districtName = adminInfo?.district || '';
+  const adminLocationLabel = adminInfo?.label || (districtName ? `${districtName}, Prov. ${provinceName}` : `Prov. ${provinceName}`);
+
   return `
     <div class="card" style="margin-bottom: 14px; border-left: 4px solid ${riskMeta.bar};">
       <!-- Parcel Header -->
@@ -392,7 +411,8 @@ function renderParcelPredictionCard(parcelPred) {
         <div>
           <div style="font-weight: 800; font-size: 15px;">🗺️ ${parcelName}</div>
           <div class="text-sm text-muted" style="margin-top: 2px;">
-            ${altitude ? `${altitude} msnm` : ''}
+            <span>📍 ${adminLocationLabel}</span>
+            ${altitude ? ` · ${altitude} msnm` : ''}
             ${farmerName ? ` — ${farmerName}` : ''}
             ${pred?.latitude ? ` · (${pred.latitude.toFixed(4)}, ${pred.longitude.toFixed(4)})` : ''}
           </div>
@@ -421,9 +441,9 @@ function renderParcelPredictionCard(parcelPred) {
         </div>
       ` : '')}
 
-      <!-- Risk Predictions Grid -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
-        ${predictions.map(p => renderPhenomenonCard(p)).join('')}
+      <!-- Risk Predictions Grid con Fotografías Contextuales -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+        ${predictions.map(p => renderPhenomenonCard(p, { altitude, province: provinceName, district: districtName, parcelName })).join('')}
       </div>
 
       <!-- Forecast Summary -->
@@ -454,35 +474,163 @@ function renderParcelPredictionCard(parcelPred) {
   `;
 }
 
-// ===== CARD DE FENÓMENO INDIVIDUAL =====
-function renderPhenomenonCard(pred) {
+// ===== HELPER DE FOTOGRAFÍAS CONTEXTUALES POR PISO ECOLÓGICO =====
+function getContextualPhenomenonImage(phenomenon, altitude, province = '') {
+  const prov = (province || '').toLowerCase();
+  const alt = Number(altitude) || 4000;
+
+  // 1. Oxapampa (Selva Alta / Valles Orientales: 800 - 2,000 msnm)
+  if (prov.includes('oxapampa') || alt < 2200) {
+    if (phenomenon === 'heavy_rain') {
+      return {
+        url: 'frontend/assets/images/phenomena/rain_oxapampa.jpg',
+        caption: 'Oxapampa (Selva Alta)',
+        alt: 'Lluvia intensa en cafetales y vegetación de Oxapampa (1,600 msnm)'
+      };
+    }
+    if (phenomenon === 'frost' || phenomenon === 'snow') {
+      return {
+        url: 'frontend/assets/images/weather/cloudy.jpg',
+        caption: 'Oxapampa (Selva Alta)',
+        alt: 'Nubosidad tropical sin riesgo de helada'
+      };
+    }
+    return {
+      url: 'frontend/assets/images/phenomena/hail.jpg',
+      caption: 'Oxapampa',
+      alt: 'Granizo esporádico'
+    };
+  }
+
+  // 2. Daniel Alcides Carrión / Yanahuanca (Valle Interandino: 2,800 - 3,500 msnm)
+  if (prov.includes('carrion') || prov.includes('carrión') || (alt >= 2200 && alt < 3600)) {
+    if (phenomenon === 'hail') {
+      return {
+        url: 'frontend/assets/images/phenomena/hail_yanahuanca.jpg',
+        caption: 'Yanahuanca (D.A. Carrión)',
+        alt: 'Granizada en cultivos de maíz del valle de Yanahuanca (3,100 msnm)'
+      };
+    }
+    if (phenomenon === 'frost') {
+      return {
+        url: 'frontend/assets/images/phenomena/frost.jpg',
+        caption: 'D.A. Carrión (Valle)',
+        alt: 'Escarcha matutina en valle interandino'
+      };
+    }
+    if (phenomenon === 'heavy_rain') {
+      return {
+        url: 'frontend/assets/images/phenomena/heavy_rain.jpg',
+        caption: 'D.A. Carrión (Cuenca)',
+        alt: 'Lluvia en cuenca de Chaupihuaranga'
+      };
+    }
+    return {
+      url: 'frontend/assets/images/phenomena/snow.jpg',
+      caption: 'D.A. Carrión',
+      alt: 'Nevada en alturas limítrofes'
+    };
+  }
+
+  // 3. Pasco (Puna / Meseta Altoandina: > 3,800 msnm)
+  if (phenomenon === 'frost') {
+    return {
+      url: 'frontend/assets/images/phenomena/frost_pasco_puna.jpg',
+      caption: 'Pasco (Altoandina)',
+      alt: 'Helada severa de radiación en meseta altoandina de Pasco (4,300 msnm)'
+    };
+  }
+  if (phenomenon === 'snow') {
+    return {
+      url: 'frontend/assets/images/phenomena/snow.jpg',
+      caption: 'Pasco (Cordillera)',
+      alt: 'Nevada sobre pastizales y parcelas altoandinas de Pasco'
+    };
+  }
+  if (phenomenon === 'heavy_rain') {
+    return {
+      url: 'frontend/assets/images/phenomena/heavy_rain.jpg',
+      caption: 'Pasco (Meseta)',
+      alt: 'Lluvia gélida en meseta altoandina'
+    };
+  }
+  return {
+    url: 'frontend/assets/images/phenomena/hail.jpg',
+    caption: 'Pasco (Altiplano)',
+    alt: 'Granizada en altiplano de Pasco'
+  };
+}
+
+// ===== CARD DE FENÓMENO INDIVIDUAL CON FOTOGRAFÍA CONTEXTUAL =====
+function renderPhenomenonCard(pred, context = {}) {
   const meta = ML_PHENOMENON_META[pred.phenomenon] || { emoji: '❓', name: pred.phenomenon, color: '#999' };
   const risk = ML_RISK_LEVELS[pred.risk_level] || ML_RISK_LEVELS.none;
   const score = pred.risk_score || 0;
   const isML = pred.model_type === 'ml_trained';
+  const imgInfo = getContextualPhenomenonImage(pred.phenomenon, context.altitude, context.province);
 
   return `
-    <div style="background: var(--bg-glass); border-radius: 10px; padding: 12px; position: relative; overflow: hidden; cursor: pointer;"
+    <div style="background: var(--bg-glass); border-radius: 10px; padding: 12px; position: relative; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between;"
          onclick="showMLPredictionDetail('${pred.phenomenon}', ${JSON.stringify(pred).replace(/'/g, "\\'")})">
-      <div style="position: absolute; top: -5px; right: -5px; font-size: 32px; opacity: 0.1;">${meta.emoji}</div>
-      <div style="font-size: 18px; margin-bottom: 2px;">${meta.emoji}</div>
-      <div style="font-weight: 700; font-size: 13px;">${meta.name}</div>
       
-      <!-- Score Bar -->
-      <div style="margin: 8px 0 4px; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; overflow: hidden;">
-        <div style="width: ${Math.min(score, 100)}%; height: 100%; background: ${risk.bar}; border-radius: 4px; transition: width 0.5s;"></div>
+      <!-- Fotografía Referencial de Contexto Agroecológico Territorial -->
+      <div style="position: relative; width: 100%; height: 75px; border-radius: 6px; overflow: hidden; margin-bottom: 8px; background: #E2E8F0;">
+        <img src="${imgInfo.url}" alt="${imgInfo.alt}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.style.display='none'">
+        <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.85)); padding: 2px 6px; font-size: 9px; color: #FFFFFF; display: flex; justify-content: space-between; align-items: center;">
+          <span>📷 ${imgInfo.caption}</span>
+          <span style="background: rgba(0,0,0,0.6); padding: 1px 4px; border-radius: 3px; font-weight: 700; font-size: 8px; letter-spacing: 0.3px;" title="Fotografía referencial territorial (no es observación meteorológica en vivo)">FOTO REFERENCIAL</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 18px;">${meta.emoji}</div>
+          <span class="badge badge-${risk.badge}" style="font-size: 9px;">${risk.label}</span>
+        </div>
+        <div style="font-weight: 700; font-size: 13px; margin-top: 2px;">${meta.name}</div>
+        
+        <!-- Score Bar -->
+        <div style="margin: 8px 0 4px; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; overflow: hidden;">
+          <div style="width: ${Math.min(score, 100)}%; height: 100%; background: ${risk.bar}; border-radius: 4px; transition: width 0.5s;"></div>
+        </div>
       </div>
       
-      <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
         <span style="font-weight: 800; font-size: 16px; color: ${risk.bar};">${score.toFixed(0)}</span>
-        <span class="badge badge-${risk.badge}" style="font-size: 9px;">${risk.label}</span>
-      </div>
-      <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
-        ${isML ? '🔬 ML' : '⚙️ Reglas'}
+        <div style="font-size: 10px; color: var(--text-muted);">
+          ${isML ? '🔬 ML' : '⚙️ Reglas'}
+        </div>
       </div>
     </div>
   `;
 }
+
+// ===== REINTENTO CONTROLADO DE SINCRONIZACIÓN DE PARCELA =====
+window.retrySingleParcelPrediction = async function(parcelId, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Sincronizando...';
+  }
+  try {
+    const res = await api.getMLPrediction(parcelId);
+    if (res && res.success) {
+      if (typeof showToast === 'function') showToast('Pronóstico actualizado exitosamente.', 'success');
+      if (typeof renderMLMonitorPage === 'function') renderMLMonitorPage();
+    } else {
+      if (typeof showToast === 'function') showToast(res.error || 'Servicio ocupado, reintentando en breve...', 'warning');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Reintentar';
+      }
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('Error al sincronizar: ' + err.message, 'danger');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Reintentar';
+    }
+  }
+};
 
 // ===== MODAL DE DETALLE DE PREDICCIÓN =====
 function showMLPredictionDetail(phenomenon, predData) {

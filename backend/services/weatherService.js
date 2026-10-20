@@ -432,9 +432,9 @@ function generateAlerts(weather, forecast, simulatedType = null) {
       title: Boolean(simulatedType) ? '🧪 [DEMO] ALERTA CRÍTICA DE HELADA (< 0°C)' : '🥶 ALERTA CRÍTICA DE HELADA (< 0°C)',
       message: `Temperatura extrema registrada de ${tempMin !== null && tempMin <= 0 ? tempMin : -3.5}°C en Cerro de Pasco. Riesgo alto de congelamiento de follaje en tubérculos y brotes jóvenes.${Boolean(simulatedType) ? ' (Modo demostración visual).' : ''}`,
       actions: [
-        'Activar riego por aspersión antes del amanecer (3:00 - 5:00 AM) para liberar calor latente.',
+        'Activar riego por aspersión ligero antes del amanecer (solo si hay poco viento y agua continua garantizada).',
         'Colocar mantas térmicas, agrotela o paja sobre parcelas de papa, quinua y maca.',
-        'Generar humo controlado en bordes del campo usando fogatas con paja húmeda.',
+        'Instalar barreras cortaviento y zanjas térmicas pasivas (evitar quemas a campo abierto por riesgo de incendio forestal).',
         'Aplicar bioestimulantes de aminoácidos y fósforo al reaparecer el sol.'
       ]
     });
