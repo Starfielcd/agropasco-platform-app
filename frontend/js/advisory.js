@@ -916,12 +916,24 @@ function appendAssistantMessageBubble(data, container) {
   }
 
   // 2. Banner de estado meteorológico y nivel de riesgo respaldado (Unificado con Monitoreo ML)
-  const metrics = data.weather_metrics || data.context_used?.metrics;
+  let execWeather = null;
+  if (Array.isArray(data.tool_executions)) {
+    for (const exec of data.tool_executions) {
+      if (exec?.result?.weather) {
+        execWeather = exec.result.weather;
+        break;
+      }
+    }
+  }
+
+  const metrics = data.weather_metrics || data.context_used?.metrics || execWeather;
   const frostPct = typeof metrics?.frost_risk_pct === 'number' ? metrics.frost_risk_pct : null;
   const snowPct = typeof metrics?.snow_risk_pct === 'number' ? metrics.snow_risk_pct : null;
   const rainPct = typeof metrics?.heavy_rain_risk_pct === 'number' ? metrics.heavy_rain_risk_pct : null;
   const hailPct = typeof metrics?.hail_risk_pct === 'number' ? metrics.hail_risk_pct : null;
-  const weatherTempMin = typeof metrics?.min_temp_c === 'number' ? metrics.min_temp_c : null;
+  const weatherTempMin = typeof metrics?.min_temp_c === 'number'
+    ? metrics.min_temp_c
+    : (typeof metrics?.temp_min_c === 'number' ? metrics.temp_min_c : null);
 
   const activeRisks = [
     { key: 'snow', icon: '🌨️', label: 'Nevada', pct: snowPct },
@@ -932,13 +944,6 @@ function appendAssistantMessageBubble(data, container) {
 
   const dominantRisk = activeRisks.length > 0 ? activeRisks[0] : null;
   let weatherRiskPct = dominantRisk ? dominantRisk.pct : null;
-
-  if (weatherRiskPct === null && Array.isArray(data.tool_executions) && data.tool_executions.length > 0) {
-    const execWeather = data.tool_executions[0]?.result?.weather;
-    if (execWeather && typeof execWeather.frost_risk_pct === 'number') {
-      weatherRiskPct = execWeather.frost_risk_pct;
-    }
-  }
 
   const weatherSourceLabel = data.weather_source === 'ml_trained'
     ? 'Motor ML Nativo AgroPasco + Open-Meteo'
@@ -964,11 +969,12 @@ function appendAssistantMessageBubble(data, container) {
 
       activeRisks.forEach(r => {
         const badgeSpan = document.createElement('span');
+        const levelLabel = r.pct >= 60 ? 'Alto' : r.pct >= 30 ? 'Moderado' : 'Bajo';
         const badgeClass = r.pct >= 60 ? 'chat-risk-badge risk-high' : r.pct >= 30 ? 'chat-risk-badge risk-moderate' : 'chat-risk-badge risk-low';
         badgeSpan.className = badgeClass;
         badgeSpan.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700;';
         const tempInfo = (r.key === 'frost' || r.key === 'snow') && weatherTempMin !== null ? ` · Mín: ${weatherTempMin}°C` : '';
-        badgeSpan.textContent = `${r.icon} Riesgo de ${r.label}: ${r.pct}%${tempInfo}`;
+        badgeSpan.textContent = `${r.icon} Riesgo ${levelLabel} de ${r.label}: ${r.pct}%${tempInfo}`;
         riskContainer.appendChild(badgeSpan);
       });
       textDiv.appendChild(riskContainer);
@@ -1055,7 +1061,7 @@ function appendAssistantMessageBubble(data, container) {
   replyCard.appendChild(replyHeader);
 
   // Audio Toolbar con Web Speech API en navegador
-  if ('speechSynthesis' in window) {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     const speechBar = document.createElement('div');
     speechBar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 6px 14px; background: rgba(99, 102, 241, 0.06); border-bottom: 1px solid var(--border-color); flex-wrap: wrap;';
     
@@ -1255,7 +1261,13 @@ function appendAssistantMessageBubble(data, container) {
       const li = document.createElement('li');
       li.className = 'chat-warning-item';
       li.style.cssText = 'font-size: 12.5px; color: #78350F; line-height: 1.45;';
-      li.textContent = w;
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'chat-warning-icon';
+      iconSpan.textContent = '⚠️ ';
+      const textSpan = document.createElement('span');
+      textSpan.textContent = w;
+      li.appendChild(iconSpan);
+      li.appendChild(textSpan);
       ul.appendChild(li);
     });
     warningsBox.appendChild(ul);
@@ -1277,11 +1289,17 @@ function appendAssistantMessageBubble(data, container) {
     const ol = document.createElement('ol');
     ol.className = 'chat-actions-list';
     ol.style.cssText = 'margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px;';
-    data.suggested_actions.forEach((act) => {
+    data.suggested_actions.forEach((act, idx) => {
       const li = document.createElement('li');
       li.className = 'chat-action-item';
       li.style.cssText = 'font-size: 13px; color: #14532D; line-height: 1.5;';
-      li.textContent = act;
+      const numSpan = document.createElement('span');
+      numSpan.className = 'chat-action-num';
+      numSpan.textContent = `${idx + 1}. `;
+      const textSpan = document.createElement('span');
+      textSpan.textContent = act;
+      li.appendChild(numSpan);
+      li.appendChild(textSpan);
       ol.appendChild(li);
     });
     actionsBox.appendChild(ol);

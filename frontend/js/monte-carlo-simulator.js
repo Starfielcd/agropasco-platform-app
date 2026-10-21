@@ -394,7 +394,7 @@ function renderMonteCarloSimulatorSection() {
           <select id="mc-select-iterations" class="form-control" style="font-size: 12px; padding: 6px 10px;" onchange="monteCarloState.targetIterations = Number(this.value)">
             <option value="500">500 Escenarios</option>
             <option value="1000" selected>1,000 Escenarios (Estándar)</option>
-            <option value="2500">2,500 Escenarios</option>
+            <option value="2000">2,000 Escenarios</option>
             <option value="5000">5,000 Escenarios (Alta Precisión)</option>
           </select>
         </div>

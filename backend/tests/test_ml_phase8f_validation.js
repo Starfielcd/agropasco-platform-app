@@ -77,15 +77,15 @@ async function runTestSuite() {
     const status = await mlService.getModelsStatus();
     assert(status !== null, 'getModelsStatus no debe ser nulo');
 
-    // HELADAS (Gradient Boosting)
+    // HELADAS (Logistic Regression auditado en metadata.json)
     assert.strictEqual(status.frost.test_metrics.f1, frostMeta.test_metrics.f1);
     assert.strictEqual(status.frost.test_metrics.precision, frostMeta.test_metrics.precision);
     assert.strictEqual(status.frost.test_metrics.recall, frostMeta.test_metrics.recall);
     assert.strictEqual(status.frost.test_metrics.pr_auc, frostMeta.test_metrics.pr_auc);
     assert.strictEqual(status.frost.test_metrics.expected_calibration_error, frostMeta.test_metrics.expected_calibration_error);
-    assert.strictEqual(status.frost.test_metrics.f1, 0.8997);
-    assert.strictEqual(status.frost.test_metrics.precision, 0.8674);
-    assert.strictEqual(status.frost.test_metrics.recall, 0.9345);
+    assert.strictEqual(status.frost.test_metrics.f1, 0.9003);
+    assert.strictEqual(status.frost.test_metrics.precision, 0.8227);
+    assert.strictEqual(status.frost.test_metrics.recall, 0.994);
 
     // LLUVIAS INTENSAS (Random Forest)
     assert.strictEqual(status.heavy_rain.test_metrics.f1, rainMeta.test_metrics.f1);
@@ -628,11 +628,18 @@ async function runTestSuite() {
     assert.strictEqual(result.loaded, true);
     assert.deepStrictEqual(result.models, ['frost', 'heavy_rain', 'snow']);
 
-    // Frost
+    // Frost (Soporta arquitectura LogisticRegression o Árboles según algoritmo activo)
     assert.strictEqual(engine.models.frost.phenomenon, 'frost');
     assert.strictEqual(engine.models.frost.n_features, 18);
-    assert.strictEqual(engine.models.frost.trees.length, 100);
-    assert.strictEqual(typeof engine.models.frost.learning_rate, 'number');
+    if (engine.models.frost.algorithm === 'LogisticRegression' || Array.isArray(engine.models.frost.coefficients)) {
+      assert.strictEqual(engine.models.frost.coefficients.length, 18);
+      assert.strictEqual(typeof engine.models.frost.intercept, 'number');
+      assert.strictEqual(engine.models.frost.scaler.mean.length, 18);
+      assert.strictEqual(engine.models.frost.scaler.scale.length, 18);
+    } else {
+      assert.strictEqual(engine.models.frost.trees.length, 100);
+      assert.strictEqual(typeof engine.models.frost.learning_rate, 'number');
+    }
 
     // Heavy Rain
     assert.strictEqual(engine.models.heavy_rain.phenomenon, 'heavy_rain');

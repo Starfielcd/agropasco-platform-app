@@ -497,7 +497,8 @@ async function setupApprovedPassword(req, res) {
     // 2. Validación mediante token firmado (token)
     if (!isAuthorized && token) {
       try {
-        const JWT_SECRET = process.env.JWT_SECRET || 'agropasco_secret_key_2026';
+        const { getJwtSecret } = require('../middleware/auth');
+        const JWT_SECRET = getJwtSecret();
         const decoded = jwt.verify(token, JWT_SECRET);
         
         // Comprobar explícitamente la identidad del usuario objetivo (id, userId, sub, email)

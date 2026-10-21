@@ -26,7 +26,7 @@
     "applicability": "especifica_zona",
     "status": "approved",
     "content_nature": "official_original",
-    "origin_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+    "origin_file_sha256": "7402961dd3b62d09aa310fbd3e93f9089342b8c32704853d2b09972934c7596a",
     "extraction_method": "txt",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -39,7 +39,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "72ef622cad9f89a7c4d8dbc2c5b17226e9d12d502b579a25f83bc2476501fa58",
-    "created_at": "2026-10-15T22:55:33.901Z"
+    "created_at": "2026-10-21T15:28:02.260Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-MACA-002-P01-002",
@@ -68,7 +68,7 @@
     "applicability": "especifica_zona",
     "status": "approved",
     "content_nature": "official_original",
-    "origin_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+    "origin_file_sha256": "7402961dd3b62d09aa310fbd3e93f9089342b8c32704853d2b09972934c7596a",
     "extraction_method": "txt",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -81,7 +81,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "8e766eef4f879801134c89fcb5d1fd2b3b1003c8ad09f9b16ae165caaf453370",
-    "created_at": "2026-10-15T22:55:33.902Z"
+    "created_at": "2026-10-21T15:28:02.260Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-MACA-002-P01-003",
@@ -110,7 +110,7 @@
     "applicability": "especifica_zona",
     "status": "approved",
     "content_nature": "official_original",
-    "origin_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+    "origin_file_sha256": "7402961dd3b62d09aa310fbd3e93f9089342b8c32704853d2b09972934c7596a",
     "extraction_method": "txt",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -123,7 +123,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "a56f27d9482b3f4aa6528c8849d7f99e8ee80a16bdd2daec7a296193d4ec5b3e",
-    "created_at": "2026-10-15T22:55:33.902Z"
+    "created_at": "2026-10-21T15:28:02.260Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-MACA-002-P02-004",
@@ -152,7 +152,7 @@
     "applicability": "dependiente_etapa_fenologica",
     "status": "approved",
     "content_nature": "official_original",
-    "origin_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+    "origin_file_sha256": "7402961dd3b62d09aa310fbd3e93f9089342b8c32704853d2b09972934c7596a",
     "extraction_method": "txt",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -165,7 +165,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "55b799e6597845ea76abb95ed525b30ad2c52b2cab2bf31b7496107b1f6ebed0",
-    "created_at": "2026-10-15T22:55:33.902Z"
+    "created_at": "2026-10-21T15:28:02.260Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-MACA-002-P02-005",
@@ -194,7 +194,7 @@
     "applicability": "dependiente_etapa_fenologica",
     "status": "approved",
     "content_nature": "official_original",
-    "origin_file_sha256": "54752c13f973c9ccb022aca131ae246537d493a5401a093f62f313545687daa4",
+    "origin_file_sha256": "7402961dd3b62d09aa310fbd3e93f9089342b8c32704853d2b09972934c7596a",
     "extraction_method": "txt",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -207,6 +207,6 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "f080eaa83e14eebd9db14deb66737176e72aa9dfb52dd1db70c4d6af364692e4",
-    "created_at": "2026-10-15T22:55:33.902Z"
+    "created_at": "2026-10-21T15:28:02.260Z"
   }
 ]

@@ -37,6 +37,9 @@ async function runBenchmark() {
   console.log('⏱️  AUDITORÍA EMPÍRICA: TIEMPO HASTA LA PRIMERA PREDICCIÓN Y RESILIENCIA');
   console.log('='.repeat(80));
 
+  const prevEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'benchmark';
+
   // Almacén simulado en memoria para aislar 100% de la BD productiva
   const mockCacheStore = new Map();
   const testDb = new Map();

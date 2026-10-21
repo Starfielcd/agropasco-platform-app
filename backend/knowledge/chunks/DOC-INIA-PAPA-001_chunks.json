@@ -26,7 +26,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -39,7 +39,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "efab2fcc09d53c6d098b12eecefaec938389485e64e4073819a960473f0c7e1c",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P01-002",
@@ -68,7 +68,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -81,7 +81,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "800b04cbb568cd8de7bf655582159d1d5a267102d9349ff43bc71336cad3f31b",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P01-003",
@@ -110,7 +110,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -123,7 +123,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "46fe65dd908ed01b0eeb0e8baf09b47754b0e92cd2204d8fe17a9f0772f33865",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P02-004",
@@ -152,7 +152,7 @@
     "applicability": "dependiente_etapa_fenologica",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -165,7 +165,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "71aa332972282d46b367d2d8677ef0bbed9971bb6912bef381486f6de62b2cf9",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P02-005",
@@ -194,7 +194,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -207,7 +207,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "632b9f45e3b2063860879c953e44e62824fbb9988e6121bd386d886f2af91dce",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P03-006",
@@ -236,7 +236,7 @@
     "applicability": "dependiente_etapa_fenologica",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -249,7 +249,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "db2b0f1b04eb0197c5eaea50443e5c46ab9d71f8651b449a6186679352e85ec9",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P03-007",
@@ -278,7 +278,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -291,7 +291,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "1417779fab05b2b91e5223e3feef07f67029620672b644198293d659949a22e9",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P04-008",
@@ -320,7 +320,7 @@
     "applicability": "dependiente_etapa_fenologica",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -333,7 +333,7 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "52ad3c1211e9feaf9e8b9efa492d608cf11a0a8b7028d1cfa68045adac2ed248",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   },
   {
     "chunk_id": "CHK-DOC-INIA-PAPA-001-P04-009",
@@ -362,7 +362,7 @@
     "applicability": "especifica_cultivo",
     "status": "active",
     "content_nature": "official_original",
-    "origin_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
+    "origin_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
     "extraction_method": "md",
     "source_page_verified": false,
     "license_status": "review_required",
@@ -375,6 +375,6 @@
     "safety_flags": [],
     "safety_notice": null,
     "integrity_hash": "b65ac6adeb6a055dfe338541117cdc2bbaac8155f3728a7183fef10b1d08880a",
-    "created_at": "2026-10-15T22:55:33.896Z"
+    "created_at": "2026-10-21T15:28:02.257Z"
   }
 ]

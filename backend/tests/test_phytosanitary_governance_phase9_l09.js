@@ -294,13 +294,13 @@ async function runPhytosanitaryGovernanceL09Suite() {
   assert.strictEqual(authNextCalled, false);
   passCheck('Petición administrativa sin token JWT rechazada categóricamente (401 Unauthorized)');
 
-  // Check 15: JWT inválido o manipulado
+  // Check 15: JWT inválido o manipulado (401 Unauthorized según H-02)
   const { req: reqBadJwt, res: resBadJwt } = createMockReqRes({
     headers: { authorization: 'Bearer token_falso_y_manipulado' }
   });
   authenticateToken(reqBadJwt, resBadJwt, () => {});
-  assert.strictEqual(resBadJwt.statusCode, 403);
-  passCheck('Token JWT manipulado, truncado o con firma corrupta rechazado (403 Forbidden)');
+  assert.strictEqual(resBadJwt.statusCode, 401);
+  passCheck('Token JWT manipulado, truncado o con firma corrupta rechazado (401 Unauthorized)');
 
   // Check 16: Identidad de revisor manipulada en body es ignorada
   const { req: reqSpoof, res: resSpoof } = createMockReqRes({

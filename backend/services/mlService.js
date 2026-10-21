@@ -77,6 +77,16 @@ async function getModelsStatus() {
     const frostAlgo = defaultEngine.models?.frost?.algorithm || modelRegistry.getActiveModel('frost').algorithm;
     const frostVersion = defaultEngine.models?.frost?.version || modelRegistry.getActiveModel('frost').version;
 
+    let frostMetaMetrics = null;
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const frostMetaPath = path.resolve(__dirname, '../data/weather-history/models/frost/metadata.json');
+      if (fs.existsSync(frostMetaPath)) {
+        frostMetaMetrics = JSON.parse(fs.readFileSync(frostMetaPath, 'utf8')).test_metrics;
+      }
+    } catch (_) {}
+
     return {
       frost: {
         available: true,
@@ -86,16 +96,16 @@ async function getModelsStatus() {
         n_features: 18,
         label_type: 'proxy_rule_based_era5',
         evaluation_note: 'Evaluación histórica en split test (ERA5/Open-Meteo, >2025-06-30). No representa validación meteorológica de campo SENAMHI ni garantía de exactitud a 72h.',
-        test_metrics: {
+        test_metrics: frostMetaMetrics || {
           split: 'test',
           n_samples: 906,
-          f1: 0.8997,
-          precision: 0.8674,
-          recall: 0.9345,
-          pr_auc: 0.9749,
-          roc_auc: 0.993,
-          brier_score: 0.0278,
-          expected_calibration_error: 0.0178
+          f1: 0.9003,
+          precision: 0.8227,
+          recall: 0.994,
+          pr_auc: 0.9938,
+          roc_auc: 0.9985,
+          brier_score: 0.0252,
+          expected_calibration_error: 0.0447
         }
       },
       heavy_rain: {

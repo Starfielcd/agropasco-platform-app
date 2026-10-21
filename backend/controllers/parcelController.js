@@ -410,19 +410,25 @@ async function updateParcel(req, res) {
         );
 
         // FASE 8L-G28: Si la ubicación geográfica/meteorológica cambió, invalidar weather_cache
-        // dentro de la misma transacción y conexión PostgreSQL
+        // dentro de la misma transacción de forma resiliente
         if (isLocationChanged) {
+          const hasClient = tx.client && typeof tx.client.query === 'function';
+          if (hasClient) {
+            try { await tx.client.query('SAVEPOINT sp_cache_invalidation'); } catch (_) {}
+          }
           try {
             await tx.dbRun(
               "DELETE FROM weather_cache WHERE location = ? AND data_type = 'ml_prediction'",
               [`parcel_${req.params.id}`]
             );
-          } catch (cacheErr) {
-            console.warn(`[CACHE_INVALIDATION_ERROR] Parcela ${req.params.id}: Error al invalidar weather_cache: ${cacheErr.message}`);
-            // En PostgreSQL real con conexión física o si se requiere rollback estricto:
-            if (tx.client || tx.rollbackOnError) {
-              throw cacheErr;
+            if (hasClient) {
+              try { await tx.client.query('RELEASE SAVEPOINT sp_cache_invalidation'); } catch (_) {}
             }
+          } catch (cacheErr) {
+            if (hasClient) {
+              try { await tx.client.query('ROLLBACK TO SAVEPOINT sp_cache_invalidation'); } catch (_) {}
+            }
+            console.warn(`[CACHE_INVALIDATION_ERROR] Parcela ${req.params.id}: Error al invalidar weather_cache: ${cacheErr.message}`);
           }
         }
       });

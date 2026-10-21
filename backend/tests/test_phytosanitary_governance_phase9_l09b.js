@@ -274,15 +274,15 @@ async function runPhytosanitaryGovernanceL09BSuite() {
   assert.strictEqual(nextNoTokenCalled, false);
   passCheck('JWT sin token: denegación categórica con HTTP 401 Unauthorized');
 
-  // Check 15: JWT manipulado (403 Forbidden)
+  // Check 15: JWT manipulado (401 Unauthorized según H-02)
   const { req: reqTampered, res: resTampered } = createMockReqRes({
     headers: { authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.payload.invalida' }
   });
   let nextTamperedCalled = false;
   authenticateToken(reqTampered, resTampered, () => { nextTamperedCalled = true; });
-  assert.strictEqual(resTampered.statusCode, 403);
+  assert.strictEqual(resTampered.statusCode, 401);
   assert.strictEqual(nextTamperedCalled, false);
-  passCheck('JWT manipulado: firma corrupta o payload alterado denegado con HTTP 403');
+  passCheck('JWT manipulado: firma corrupta o payload alterado denegado con HTTP 401');
 
   // Check 16: Algoritmo JWT no permitido (rechazo explícito de algoritmos fuera de HS256)
   assert.deepStrictEqual(ALLOWED_ALGORITHMS, ['HS256']);
@@ -292,9 +292,9 @@ async function runPhytosanitaryGovernanceL09BSuite() {
   });
   let nextUnsignedCalled = false;
   authenticateToken(reqUnsigned, resUnsigned, () => { nextUnsignedCalled = true; });
-  assert.strictEqual(resUnsigned.statusCode, 403);
+  assert.strictEqual(resUnsigned.statusCode, 401);
   assert.strictEqual(nextUnsignedCalled, false);
-  passCheck('Algoritmo JWT restringido: algoritmo "none" u otros no autorizados categóricamente rechazados');
+  passCheck('Algoritmo JWT restringido: algoritmo "none" u otros no autorizados categóricamente rechazados (HTTP 401)');
 
   // --------------------------------------------------------------------------
   // BLOQUE 4: VALIDACIÓN DOCUMENTAL INSTITUCIONAL Y CORRESPONDENCIA

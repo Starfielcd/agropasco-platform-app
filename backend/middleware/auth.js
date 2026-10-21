@@ -4,9 +4,40 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'agropasco_secret_key_2026';
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const ALLOWED_ALGORITHMS = ['HS256'];
+
+// Claves conocidas no permitidas en producción
+const KNOWN_INSECURE_SECRETS = new Set([
+  'agropasco_secret_key_2026',
+  'agropasco_secret_key_2026_pasco_peru',
+  'tu_clave_secreta_jwt_aqui',
+  'secret',
+  'jwt_secret',
+  'mi_clave_secreta_segura'
+]);
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    if (!secret || KNOWN_INSECURE_SECRETS.has(secret) || secret.length < 32) {
+      throw new Error(
+        'FATAL SEGURIDAD: JWT_SECRET no está configurado de forma segura en producción. ' +
+        'Debe ser una clave secreta aleatoria de al menos 32 caracteres y no un valor de plantilla conocido.'
+      );
+    }
+    return secret;
+  }
+
+  // Entorno de desarrollo o pruebas locales
+  return secret || 'agropasco_secret_key_2026';
+}
+
+const JWT_SECRET = getJwtSecret();
 
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -22,12 +53,14 @@ async function authenticateToken(req, res, next) {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET, { algorithms: ALLOWED_ALGORITHMS });
+    const secret = getJwtSecret();
+    decoded = jwt.verify(token, secret, { algorithms: ALLOWED_ALGORITHMS });
   } catch (err) {
-    return res.status(403).json({
+    return res.status(401).json({
       success: false,
       error: 'Token inválido o expirado.',
-      hint: 'Inicia sesión nuevamente para obtener un token válido.'
+      hint: 'Inicia sesión nuevamente para obtener un token válido.',
+      code: 'TOKEN_EXPIRED'
     });
   }
 
@@ -77,7 +110,8 @@ function optionalAuth(req, res, next) {
     return next();
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ALLOWED_ALGORITHMS });
+    const secret = getJwtSecret();
+    const decoded = jwt.verify(token, secret, { algorithms: ALLOWED_ALGORITHMS });
     req.user = decoded;
   } catch (err) {
     req.user = null;
@@ -100,9 +134,10 @@ function requireRole(...roles) {
 
 // Generar token JWT
 function generateToken(user) {
+  const secret = getJwtSecret();
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, name: user.name },
-    JWT_SECRET,
+    secret,
     { algorithm: 'HS256', expiresIn: '24h' }
   );
 }
@@ -123,6 +158,7 @@ module.exports = {
   requireRole,
   generateToken,
   verifyActiveUserStatus,
+  getJwtSecret,
   ALLOWED_ALGORITHMS
 };
 

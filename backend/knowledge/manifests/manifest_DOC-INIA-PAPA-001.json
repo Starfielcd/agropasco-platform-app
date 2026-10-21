@@ -1,18 +1,18 @@
 {
-  "manifest_id": "MNF-DOC-INIA-PAPA-001-1792104933900",
+  "manifest_id": "MNF-DOC-INIA-PAPA-001-1792596482259",
   "document_id": "DOC-INIA-PAPA-001",
   "document_title": "MANUAL TÉCNICO: MANEJO INTEGRADO DEL CULTIVO DE PAPA",
   "institution": "Instituto Nacional de Innovación Agraria (INIA - Perú)",
   "version": "1.0",
   "source_file_name": "DOC-INIA-PAPA-001.md",
-  "source_file_sha256": "c438f69a60cd1e476b7201276c785c02b65fb65b9ac700bd9465934a3dbeef82",
-  "source_file_size_bytes": 3226,
+  "source_file_sha256": "8783237eb8844e8498a2942349b15596239327293f4702ee657923e0d0070e17",
+  "source_file_size_bytes": 3253,
   "total_pages_analyzed": 4,
   "unreadable_pages_count": 0,
   "total_chunks_generated": 9,
   "mandatory_review_chunks_count": 0,
   "chunks_storage_path": "C:\\Users\\DEYVIS\\Desktop\\agropasco-platform\\backend\\knowledge\\chunks\\DOC-INIA-PAPA-001_chunks.json",
-  "ingested_at": "2026-10-15T22:55:33.900Z",
-  "processing_time_ms": 5,
-  "reproducibility_signature": "4590c915199427f1e80037f0147949fac066a0aef92e030f9fe8bf373cee62eb"
+  "ingested_at": "2026-10-21T15:28:02.259Z",
+  "processing_time_ms": 3,
+  "reproducibility_signature": "0cdcc2d492d5b0ac1967ffa77480a395394958d47d5cb4f5dc95ba03ab8ea92a"
 }

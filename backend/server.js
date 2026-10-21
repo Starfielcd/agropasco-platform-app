@@ -22,7 +22,38 @@ app.set('trust proxy', 1);
 
 // ===== SEGURIDAD =====
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors());
+
+// Política CORS segura y adaptada a la arquitectura web / API
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.APP_URL,
+  'https://agropasco-platform.onrender.com',
+  'https://agropasco.onrender.com'
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Permitir solicitudes same-origin, curl, Postman o herramientas internas sin cabecera origin
+    if (!origin) return callback(null, true);
+
+    // Permitir orígenes de desarrollo local (localhost o 127.0.0.1 en cualquier puerto)
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    // Permitir dominios productivos en Render o configurados explícitamente
+    if (allowedOrigins.includes(origin) || /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    // Denegar cualquier otro origen no autorizado sin romper la conexión
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+};
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 

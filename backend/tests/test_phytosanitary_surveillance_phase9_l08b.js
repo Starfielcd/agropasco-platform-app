@@ -233,16 +233,16 @@ async function runPhytosanitarySurveillanceL08BSuite() {
   assert.strictEqual(nextCalled8, false);
   passCheck('Petición sin cabecera Authorization denegada (401 Unauthorized)');
 
-  // Check 9: JWT inválido o manipulado deniega acceso (403 Forbidden)
+  // Check 9: JWT inválido o manipulado deniega acceso (401 Unauthorized según H-02)
   const { req: r9, res: res9 } = createMockReqRes({
     params: { parcelId: '101' },
     headers: { authorization: 'Bearer token.invalido.falso' }
   });
   let nextCalled9 = false;
   authenticateToken(r9, res9, () => { nextCalled9 = true; });
-  assert.strictEqual(res9.statusCode, 403);
+  assert.strictEqual(res9.statusCode, 401);
   assert.strictEqual(nextCalled9, false);
-  passCheck('Token JWT manipulado o expirado denegado (403 Forbidden)');
+  passCheck('Token JWT manipulado o expirado denegado (401 Unauthorized)');
 
   // Check 10: parcelId inválido (NaN, negativos, cero, string no numérico) retorna 400
   const invalidIds = ['abc', '-1', '0', 'NaN', '1.5', 'null'];
