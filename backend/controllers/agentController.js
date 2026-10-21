@@ -201,7 +201,7 @@ async function getAuditLogsEndpoint(req, res) {
     `;
     const params = [];
 
-    if (userRole !== 'admin' && userRole !== 'asesor') {
+    if (userRole !== 'admin' && userRole !== 'asesor' && userRole !== 'advisor') {
       // Agricultores solo ven auditorías de sus parcelas
       sql += ' WHERE a.parcel_id IN (SELECT id FROM parcels WHERE user_id = ?)';
       params.push(userId);

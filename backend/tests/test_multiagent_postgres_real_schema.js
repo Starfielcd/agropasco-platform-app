@@ -436,8 +436,89 @@ async function runRealPostgresMultiagentSuite() {
     );
     console.log('  ✅ [PASS] Anomalía geográfica detectada y auditada con trazabilidad estricta (warning/violation).');
 
+    // -----------------------------------------------------------------------
+    // REGRESIÓN: CONSULTAS DE TELEMETRÍA MULTIAGENTE Y PREDICCIONES POR PARCELA
+    // -----------------------------------------------------------------------
+    console.log('[8/8] Verificando endpoints de telemetría y predicciones para Asesor Técnico (Anti-Regresión "column status does not exist")...');
+    const agentController = require('../controllers/agentController');
+    const schedulerController = require('../controllers/schedulerController');
+    const parcelAuthService = require('../services/parcelAuthService');
+
+    // Crear asesor técnico en PostgreSQL
+    const advisorRes = await db.dbRun(`
+      INSERT INTO users (name, email, password_hash, role, phone, status)
+      VALUES (?, ?, ?, 'advisor', '+51 951753852', 'active')
+    `, ['Ing. Validador Técnico', 'asesor.telemetria@agropasco.pe', '$2a$10$abcdefghijklmnopqrstuvwxyz123456']);
+    const advisorId = advisorRes.lastID;
+
+    // Asignar asesor a la parcela en advisor_parcel_assignments (columna física: active)
+    await db.dbRun(`
+      INSERT INTO advisor_parcel_assignments (advisor_id, parcel_id, assigned_at, active)
+      VALUES (?, ?, NOW(), 1)
+      ON CONFLICT (advisor_id, parcel_id) DO UPDATE SET active = 1
+    `, [advisorId, parcelId]);
+
+    // 1. Validar acceso directo en parcelAuthService sin error de columna inexistente
+    const authAdvisor = await parcelAuthService.checkParcelAccess(advisorId, 'advisor', parcelId);
+    assert.strictEqual(authAdvisor.authorized, true, 'El asesor asignado debe estar autorizado');
+    assert.strictEqual(authAdvisor.role, 'assigned_advisor', 'El rol de asignación debe ser assigned_advisor');
+
+    // 2. Invocar getParcelTasksEndpoint con mock req/res
+    let taskResponseStatus = null;
+    let taskResponseBody = null;
+    const mockTasksReq = {
+      params: { parcelId: String(parcelId) },
+      query: { limit: '10' },
+      user: { id: advisorId, role: 'advisor' },
+    };
+    const mockTasksRes = {
+      status(code) {
+        taskResponseStatus = code;
+        return this;
+      },
+      json(data) {
+        taskResponseBody = data;
+        return this;
+      },
+    };
+
+    await agentController.getParcelTasksEndpoint(mockTasksReq, mockTasksRes);
+    assert.strictEqual(taskResponseStatus, 200, 'getParcelTasksEndpoint debe responder HTTP 200 para asesor');
+    assert.strictEqual(taskResponseBody.success, true, 'getParcelTasksEndpoint debe tener success: true');
+    assert.strictEqual(taskResponseBody.parcel_id, parcelId, 'El parcel_id debe coincidir');
+    assert(Array.isArray(taskResponseBody.tasks), 'tasks debe ser un Array');
+    assert(taskResponseBody.tasks.length >= 1, 'Debe retornar al menos la tarea ejecutada');
+    assert(!JSON.stringify(taskResponseBody).includes('column "status" does not exist'), 'No debe contener error de columna inexistente');
+
+    // 3. Invocar getPredictionHistoryEndpoint con mock req/res
+    let histResponseStatus = null;
+    let histResponseBody = null;
+    const mockHistReq = {
+      params: { parcelId: String(parcelId) },
+      query: { limit: '20' },
+      user: { id: advisorId, role: 'advisor' },
+    };
+    const mockHistRes = {
+      status(code) {
+        histResponseStatus = code;
+        return this;
+      },
+      json(data) {
+        histResponseBody = data;
+        return this;
+      },
+    };
+
+    await schedulerController.getPredictionHistoryEndpoint(mockHistReq, mockHistRes);
+    assert.strictEqual(histResponseStatus, 200, 'getPredictionHistoryEndpoint debe responder HTTP 200 para asesor');
+    assert.strictEqual(histResponseBody.success, true, 'getPredictionHistoryEndpoint debe tener success: true');
+    assert(Array.isArray(histResponseBody.predictions), 'predictions debe ser un Array');
+    assert(!JSON.stringify(histResponseBody).includes('column "status" does not exist'), 'No debe contener error de columna inexistente');
+
+    console.log('  ✅ [PASS] Telemetría y auditoría de tareas para Asesor Técnico: consultas compatibles con columna "active" (sin error de columna "status").');
+
     console.log('\n======================================================================');
-    console.log('RESULTADO FINAL: TODOS LOS TESTS SOBRE POSTGRESQL REAL PASARON (7/7)');
+    console.log('RESULTADO FINAL: TODOS LOS TESTS SOBRE POSTGRESQL REAL PASARON (8/8)');
     console.log('======================================================================\n');
 
   } finally {

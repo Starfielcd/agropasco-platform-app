@@ -66,7 +66,7 @@ class ParcelAuthService {
     if (userRole === 'asesor' || userRole === 'advisor') {
       // A. Asignación explícita activa en advisor_parcel_assignments
       const assignment = await db.dbGet(
-        'SELECT id FROM advisor_parcel_assignments WHERE advisor_id = ? AND parcel_id = ? AND (active = 1 OR status = \'active\')',
+        'SELECT id FROM advisor_parcel_assignments WHERE advisor_id = ? AND parcel_id = ? AND active = 1',
         [userId, parcelId]
       );
       if (assignment) {
